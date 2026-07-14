@@ -1,0 +1,49 @@
+name: Pull Request Build & Lint
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-*.txt
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af || true
+          df -h
+
+      - name: Run lint
+        run: make lint
+
+      - name: Run tests
+        run: make test
+
+      - name: Build application
+        run: make build
+
+      - name: Validate Docker builds
+        uses: ./.github/actions/build-rag-images
+        with:
+          push: false
+          tag: pr-${{ github.event.number }}

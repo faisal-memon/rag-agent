@@ -1,0 +1,56 @@
+name: Build RAG Docker Images
+description: Build the role-specific RAG Docker images with per-target Buildx caches.
+
+inputs:
+  push:
+    description: Whether to push images after building.
+    required: true
+  tag:
+    description: Version tag to apply to each RAG image.
+    required: true
+  latest:
+    description: Whether to also apply the latest tag to each RAG image.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build API Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        target: api
+        push: ${{ inputs.push }}
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/rag-api:${{ inputs.tag }}
+          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-api:latest', github.repository_owner) || '' }}
+        cache-from: type=gha,scope=rag-api
+        cache-to: type=gha,mode=max,scope=rag-api
+
+    - name: Build embed Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        target: embed
+        push: ${{ inputs.push }}
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/rag-embed:${{ inputs.tag }}
+          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-embed:latest', github.repository_owner) || '' }}
+        cache-from: type=gha,scope=rag-embed
+        cache-to: type=gha,mode=max,scope=rag-embed
+
+    - name: Build normalize Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        target: normalize
+        push: ${{ inputs.push }}
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/rag-normalize:${{ inputs.tag }}
+          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-normalize:latest', github.repository_owner) || '' }}
+        cache-from: type=gha,scope=rag-normalize
+        cache-to: type=gha,mode=max,scope=rag-normalize

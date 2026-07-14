@@ -1,0 +1,5 @@
+python-dotenv==1.2.2
+pydantic==2.13.4
+pydantic-settings==2.14.2
+docling==2.112.0
+watchfiles==1.2.0
