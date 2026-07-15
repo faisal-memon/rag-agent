@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -71,27 +71,18 @@ class NormalizeSettings(BaseSettings):
     model_config = SETTINGS_CONFIG
 
     backend: str = Field(default="docling", alias="NORMALIZATION_BACKEND")
-    enabled_suffixes: set[str] = Field(
-        default_factory=lambda: {".pdf", ".docx", ".txt", ".md", ".jpg", ".jpeg", ".png"},
-        alias="RAG_ENABLED_SUFFIXES",
-    )
+    enabled_suffixes_csv: str = Field(default=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png", alias="RAG_ENABLED_SUFFIXES")
     watch_debounce_seconds: float = Field(default=15.0, ge=0.0, alias="NORMALIZE_WATCH_DEBOUNCE_SECONDS")
     reconcile_interval_seconds: float = Field(default=15.0, ge=0.0, alias="NORMALIZE_RECONCILE_INTERVAL_SECONDS")
     stability_checks: int = Field(default=3, ge=1, alias="NORMALIZE_WATCH_STABILITY_CHECKS")
     stability_interval_seconds: float = Field(default=2.0, ge=0.0, alias="NORMALIZE_WATCH_STABILITY_INTERVAL_SECONDS")
     stability_max_wait_seconds: float = Field(default=30.0, ge=0.0, alias="NORMALIZE_WATCH_STABILITY_MAX_WAIT_SECONDS")
 
-    @field_validator("enabled_suffixes", mode="before")
-    @classmethod
-    def parse_enabled_suffixes(cls, value: object) -> set[str]:
-        if isinstance(value, str):
-            suffixes = value.split(",")
-        else:
-            suffixes = value
-
+    @property
+    def enabled_suffixes(self) -> set[str]:
         return {
             suffix if suffix.startswith(".") else f".{suffix}"
-            for suffix in (str(item).strip().lower() for item in suffixes or [])
+            for suffix in (item.strip().lower() for item in self.enabled_suffixes_csv.split(","))
             if suffix
         }
 
