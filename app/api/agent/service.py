@@ -35,11 +35,6 @@ MEMORY_APPROVAL_RESPONSES = {
 MEMORY_APPROVAL_TERMS = {"yes", "y", "yep", "yeah", "sure", "ok", "okay"}
 MEMORY_SAVE_TERMS = {"remember", "save", "store", "keep"}
 MEMORY_NEGATION_TERMS = {"no", "nope", "nah", "not", "dont", "don't", "do not", "never"}
-CASUAL_GREETING_RESPONSES = {
-    "hi": "Hi! How can I help?",
-    "hello": "Hello! How can I help?",
-    "hey": "Hey! How can I help?",
-}
 
 
 def render_system_prompt() -> str:
@@ -48,16 +43,6 @@ def render_system_prompt() -> str:
 
 def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
     history = history or []
-    casual_answer = _direct_casual_answer(question)
-    if casual_answer:
-        return {
-            "answer": casual_answer,
-            "plan": [],
-            "tool_results": [],
-            "reasoning": [],
-            "citations": [],
-        }
-
     max_steps = get_settings().api.agent_max_steps
     conversation = _conversation_context(history)
     plan: list[dict] = []
@@ -370,12 +355,6 @@ def _memory_prompt_content(memory: dict) -> str:
         return "(no saved memory)"
     suffix = "\n\n(memory truncated)" if memory.get("truncated") else ""
     return f"{content}{suffix}"
-
-
-def _direct_casual_answer(question: str) -> str:
-    normalized = re.sub(r"[^\w\s']", "", question.casefold()).strip()
-    normalized = " ".join(normalized.split())
-    return CASUAL_GREETING_RESPONSES.get(normalized, "")
 
 
 def _approved_memory_from_history(question: str, history: list[dict]) -> dict | None:
