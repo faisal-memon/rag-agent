@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from fastapi.testclient import TestClient
+
 from app.api.agent import (
     _bounded_limit,
     _conversation_context,
@@ -19,6 +21,7 @@ from app.api.agent import (
     read_memory,
     read_document,
 )
+from app.api.main import app
 from app.api.agent.prompts import render_prompt
 from app.api.web import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page
 
@@ -365,7 +368,7 @@ class AgentTest(unittest.TestCase):
             patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
             patch("app.api.agent.service._complete_text", side_effect=complete_text),
         ):
-            answer_with_agent("Hi")
+            answer_with_agent("Can you help me understand my documents?")
 
         self.assertIn("You are a personal document agent for the user.", prompts[0][0])
         self.assertIn("Do not use tools for greetings", prompts[0][0])
@@ -373,11 +376,8 @@ class AgentTest(unittest.TestCase):
 
     def test_agent_can_answer_casual_message_without_tools(self) -> None:
         with (
-            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch(
-                "app.api.agent.service._complete_text",
-                return_value='{"action":"answer","answer":"Hi! How can I help?"}',
-            ),
+            patch("app.api.agent.service.get_llm_client") as get_llm_client,
+            patch("app.api.agent.service._complete_text") as complete_text,
             patch("app.api.agent.service._execute_tool") as execute_tool,
         ):
             result = answer_with_agent("Hi")
@@ -385,7 +385,26 @@ class AgentTest(unittest.TestCase):
         self.assertEqual("Hi! How can I help?", result["answer"])
         self.assertEqual([], result["plan"])
         self.assertEqual([], result["tool_results"])
+        get_llm_client.assert_not_called()
+        complete_text.assert_not_called()
         execute_tool.assert_not_called()
+
+    def test_agent_endpoint_answers_casual_message_without_model(self) -> None:
+        with patch("app.api.agent.service.get_llm_client") as get_llm_client:
+            response = TestClient(app).post("/agent/query", json={"question": "hi"})
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(
+            {
+                "answer": "Hi! How can I help?",
+                "plan": [],
+                "tool_results": [],
+                "reasoning": [],
+                "citations": [],
+            },
+            response.json(),
+        )
+        get_llm_client.assert_not_called()
 
     def test_agent_rejects_not_found_after_only_one_search_method(self) -> None:
         responses = iter(
