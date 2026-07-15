@@ -105,6 +105,7 @@ class AgentTest(unittest.TestCase):
         prompt = render_prompt("answer.md", {"question": "What car do I have?"})
 
         self.assertIn("Answer using ONLY the tool results below.", prompt)
+        self.assertIn("empty metadata/document-name search", prompt)
         self.assertIn("What car do I have?", prompt)
 
     def test_system_prompt_defines_personal_document_agent(self) -> None:
@@ -114,6 +115,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("private document archive", prompt)
         self.assertIn("Do not use tools for greetings", prompt)
         self.assertIn("Never invent facts about the user", prompt)
+        self.assertIn("search document content", prompt)
+        self.assertIn("not just document metadata", prompt)
         self.assertIn("Answer from tool evidence only and cite document filenames or paths", prompt)
 
     def test_tool_descriptions_are_generated_from_docstrings(self) -> None:
@@ -247,6 +250,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Saved memory (/memory/MEMORY.md)", prompts[0][1])
         self.assertIn("Available tools:", prompts[0][1])
         self.assertIn("source path, not a normalized Markdown path", prompts[0][1])
+        self.assertIn("It searches metadata, not document contents", prompts[0][1])
+        self.assertIn("If search_documents is empty or inconclusive", prompts[0][1])
         self.assertIn("search /documents/Vehicles first", prompts[0][1])
         self.assertIn("Watch for user corrections", prompts[0][1])
         self.assertIn("Only call remember when the latest user message explicitly asks", prompts[0][1])
