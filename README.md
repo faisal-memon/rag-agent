@@ -1,10 +1,10 @@
-# Personal RAG for Nextcloud
+# RAG Agent
 
-This repository is a local-first MVP for a headless RAG system that ingests files from a Nextcloud-mounted directory, stores chunks in PostgreSQL with `pgvector`, and exposes a small FastAPI query surface.
+RAG Agent is a local-first MVP for a headless document agent that ingests files from a mounted directory, stores normalized chunks in PostgreSQL with `pgvector`, and exposes FastAPI endpoints plus a small web console for cited question answering.
 
 ## MVP scope
 
-- Local filesystem ingestion from a mounted Nextcloud directory
+- Local filesystem ingestion from a mounted document directory, including Nextcloud-backed folders
 - Text extraction for `PDF`, `DOCX`, `TXT`, and `Markdown`
 - PostgreSQL full-text search plus semantic search with `pgvector`
 - Agent-selected keyword or semantic retrieval with cited answers through OpenAI or a local `llama.cpp`
@@ -133,9 +133,9 @@ make docker-build-normalize
 Release builds publish separate GHCR packages:
 
 ```text
-ghcr.io/<owner>/rag-api
-ghcr.io/<owner>/rag-embed
-ghcr.io/<owner>/rag-normalize
+ghcr.io/<owner>/rag-agent-api
+ghcr.io/<owner>/rag-agent-embed
+ghcr.io/<owner>/rag-agent-normalize
 ```
 
 `RAG_ENABLED_SUFFIXES` is the normalizer allowlist. It is intersected with the formats the code knows how to normalize today: `.pdf`, `.docx`, `.txt`, `.md`, `.jpg`, `.jpeg`, and `.png`.
