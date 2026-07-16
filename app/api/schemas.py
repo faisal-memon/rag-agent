@@ -62,6 +62,7 @@ class AgentQueryResponse(BaseModel):
     plan: list[AgentToolCall]
     tool_results: list[AgentToolResult]
     reasoning: list[AgentReasoningStep]
+    debug: list[dict[str, Any]] = Field(default_factory=list)
     citations: list[Citation]
 
 
