@@ -179,6 +179,35 @@ ${escapeHtml(resultJson)}</pre>
   return `<div class="tool-trace visible">${header}${rows}</div>`;
 }
 
+function agentDebugHtml(debugEvents) {
+  const events = Array.isArray(debugEvents) ? debugEvents : [];
+  if (!events.length) {
+    return "";
+  }
+
+  const rows = events.map((event, index) => {
+    const labelParts = [
+      `${index + 1}. ${event.event || "event"}`,
+      event.phase ? `phase=${event.phase}` : "",
+      event.decision ? `decision=${event.decision}` : "",
+      event.tool ? `tool=${event.tool}` : "",
+    ].filter(Boolean);
+    return `
+      <details class="debug-event">
+        <summary>${escapeHtml(labelParts.join(" · "))}</summary>
+        <pre>${escapeHtml(JSON.stringify(event, null, 2))}</pre>
+      </details>
+    `;
+  }).join("");
+
+  return `
+    <details class="agent-debug">
+      <summary>agent debug · ${events.length} event${events.length === 1 ? "" : "s"}</summary>
+      ${rows}
+    </details>
+  `;
+}
+
 function loadAgentConversation() {
   try {
     const saved = JSON.parse(localStorage.getItem(agentHistoryKey) || "[]");
@@ -217,6 +246,7 @@ function renderAgentConversation() {
 
     const sources = message.citations || [];
     const reasoning = Array.isArray(message.reasoning) ? message.reasoning : [];
+    const debugEvents = Array.isArray(message.debug) ? message.debug : [];
     const reasoningPanel = showReasoningToggle.checked && reasoning.length
       ? `
         <section class="model-reasoning">
@@ -243,6 +273,7 @@ function renderAgentConversation() {
         <div class="chat-role">rag agent</div>
         ${reasoningPanel}
         ${agentTraceHtml(message.plan, message.toolResults)}
+        ${agentDebugHtml(debugEvents)}
         <div class="chat-content">${escapeHtml(message.content)}</div>
         ${sourceFold}
       </article>
@@ -394,6 +425,7 @@ async function runAgent() {
       plan: data.plan || [],
       toolResults: data.tool_results || [],
       reasoning: data.reasoning || [],
+      debug: data.debug || [],
       citations: data.citations || [],
       createdAt: new Date().toISOString(),
     });
@@ -408,6 +440,7 @@ async function runAgent() {
       plan: [],
       toolResults: [],
       reasoning: [],
+      debug: [],
       citations: [],
       createdAt: new Date().toISOString(),
     });

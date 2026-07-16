@@ -221,6 +221,10 @@ class AgentTest(unittest.TestCase):
         self.assertIn("/documents/Vehicles/vehicle-contract.pdf", prompts[1][1])
         self.assertIn("Vehicle: Example EV", prompts[2][1])
         self.assertIn("Example EV", result["answer"])
+        self.assertIn("debug", result)
+        self.assertIn("model_response", [event["event"] for event in result["debug"]])
+        self.assertIn("parsed_action", [event["event"] for event in result["debug"]])
+        self.assertIn("tool_result", [event["event"] for event in result["debug"]])
 
     def test_agent_includes_saved_memory_in_planning_prompt(self) -> None:
         prompts = []
@@ -385,6 +389,7 @@ class AgentTest(unittest.TestCase):
         self.assertEqual("Hi! How can I help?", result["answer"])
         self.assertEqual([], result["plan"])
         self.assertEqual([], result["tool_results"])
+        self.assertEqual("return_answer", result["debug"][-1]["decision"])
         execute_tool.assert_not_called()
 
     def test_agent_rejects_not_found_after_only_one_search_method(self) -> None:
@@ -425,6 +430,12 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(["semantic_search", "keyword_search"], [step["tool"] for step in result["plan"]])
         self.assertIn("not-found conclusion was rejected", prompts[2][1])
         self.assertIn("after both searches", result["answer"])
+        rejected = [
+            event
+            for event in result["debug"]
+            if event.get("decision") == "reject_answer"
+        ]
+        self.assertEqual("not_found_requires_more_retrieval", rejected[0]["reason"])
 
     def test_llamacpp_reasoning_content_is_recorded(self) -> None:
         message = SimpleNamespace(
@@ -486,8 +497,12 @@ class AgentTest(unittest.TestCase):
         self.assertIn('id="show-reasoning"', INDEX_HTML)
         self.assertIn("showReasoningKey", APP_JS)
         self.assertIn("reasoning: data.reasoning || []", APP_JS)
+        self.assertIn("debug: data.debug || []", APP_JS)
+        self.assertIn("agentDebugHtml(debugEvents)", APP_JS)
+        self.assertIn('class="agent-debug"', APP_JS)
         self.assertIn("message.reasoning", APP_JS)
         self.assertIn(".model-reasoning", STYLES_CSS)
+        self.assertIn(".agent-debug", STYLES_CSS)
         self.assertIn("@keyframes thinking-pulse", STYLES_CSS)
         self.assertIn("@media (prefers-reduced-motion: reduce)", STYLES_CSS)
 

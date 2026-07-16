@@ -14,6 +14,8 @@ MAX_HISTORY_MESSAGES = 12
 MAX_HISTORY_CHARS = 24000
 MAX_REASONING_STEP_CHARS = 12000
 MAX_REASONING_TOTAL_CHARS = 48000
+MAX_DEBUG_TEXT_CHARS = 12000
+MAX_DEBUG_EVENTS = 80
 MEMORY_DIRECT_WRITE_TERMS = (
     "remember",
     "save",
@@ -48,6 +50,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
     plan: list[dict] = []
     tool_results: list[dict] = []
     reasoning: list[dict] = []
+    debug: list[dict] = []
     answer = ""
     seen_calls: set[str] = set()
     decision_feedback = ""
@@ -61,6 +64,16 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             "plan": [step],
             "tool_results": [tool_result],
             "reasoning": reasoning,
+            "debug": [
+                {
+                    "event": "controller_decision",
+                    "phase": "memory_approval",
+                    "decision": "execute_tool",
+                    "tool": "remember",
+                    "arguments": approved_memory,
+                    "result_summary": _summarize_tool_result(tool_result.get("result")),
+                }
+            ],
             "citations": [],
         }
 
@@ -78,9 +91,11 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             reasoning,
             client,
             model,
+            debug,
         )
         decision_feedback = ""
         if decision["action"] == "synthesize":
+            _append_debug(debug, "controller_decision", phase="planning", decision="synthesize")
             break
         if decision["action"] == "answer":
             if decision["evidence_status"] == "not_found" and not _absence_search_complete(plan):
@@ -88,8 +103,23 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
                     "The not-found conclusion was rejected. Before claiming absence, use at least two different "
                     "retrieval tools, including keyword_search or grep_documents."
                 )
+                _append_debug(
+                    debug,
+                    "controller_decision",
+                    phase="planning",
+                    decision="reject_answer",
+                    reason="not_found_requires_more_retrieval",
+                    parsed=decision,
+                )
                 continue
             answer = decision["answer"]
+            _append_debug(
+                debug,
+                "controller_decision",
+                phase="planning",
+                decision="return_answer",
+                parsed=decision,
+            )
             break
 
         step = {"tool": decision["tool"], "arguments": decision["arguments"]}
@@ -104,14 +134,39 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
                     },
                 }
             )
+            _append_debug(
+                debug,
+                "controller_decision",
+                phase="tool",
+                decision="reject_duplicate_tool_call",
+                tool=step["tool"],
+                arguments=step["arguments"],
+            )
             continue
 
         seen_calls.add(signature)
         plan.append(step)
-        tool_results.append(_execute_tool(step, question, conversation))
+        _append_debug(
+            debug,
+            "controller_decision",
+            phase="planning",
+            decision="execute_tool",
+            tool=step["tool"],
+            arguments=step["arguments"],
+        )
+        tool_result = _execute_tool(step, question, conversation)
+        tool_results.append(tool_result)
+        _append_debug(
+            debug,
+            "tool_result",
+            phase="tool",
+            tool=step["tool"],
+            arguments=step["arguments"],
+            result_summary=_summarize_tool_result(tool_result.get("result")),
+        )
 
     if not answer:
-        answer = _synthesize_answer(question, conversation, memory, plan, tool_results, reasoning, client, model)
+        answer = _synthesize_answer(question, conversation, memory, plan, tool_results, reasoning, client, model, debug)
     citations = _citations_from_tool_results(tool_results)
 
     return {
@@ -119,6 +174,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
         "plan": plan,
         "tool_results": tool_results,
         "reasoning": reasoning,
+        "debug": debug,
         "citations": citations,
     }
 
@@ -132,6 +188,7 @@ def _decide_next_action(
     reasoning: list[dict],
     client: OpenAI,
     model: str,
+    debug: list[dict],
 ) -> dict:
     prompt = render_prompt(
         "planner.md",
@@ -154,8 +211,11 @@ def _decide_next_action(
         reasoning=reasoning,
         phase="planning",
     )
+    _append_debug(debug, "model_response", phase="planning", raw_text=text)
     try:
-        parsed = json.loads(_extract_json_object(text))
+        raw_json = _extract_json_object(text)
+        parsed = json.loads(raw_json)
+        _append_debug(debug, "parsed_action", phase="planning", parsed=parsed)
         if parsed.get("action") == "answer":
             answer = str(parsed.get("answer") or "").strip()
             if answer:
@@ -173,15 +233,45 @@ def _decide_next_action(
             step = _sanitize_step(parsed)
             if step:
                 return {"action": "tool", **step}
-    except (TypeError, ValueError, json.JSONDecodeError):
-        pass
+            _append_debug(
+                debug,
+                "controller_decision",
+                phase="planning",
+                decision="reject_tool",
+                reason="tool_call_failed_sanitization",
+                parsed=parsed,
+            )
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        _append_debug(
+            debug,
+            "parse_error",
+            phase="planning",
+            reason=str(exc),
+            raw_text=text,
+        )
 
     if not tool_results:
+        _append_debug(
+            debug,
+            "controller_decision",
+            phase="planning",
+            decision="fallback_tool",
+            reason="planner_output_unusable_without_tool_results",
+            tool="semantic_search",
+            arguments={"query": question, "limit": tools.DEFAULT_CHUNK_LIMIT},
+        )
         return {
             "action": "tool",
             "tool": "semantic_search",
             "arguments": {"query": question, "limit": tools.DEFAULT_CHUNK_LIMIT},
         }
+    _append_debug(
+        debug,
+        "controller_decision",
+        phase="planning",
+        decision="fallback_synthesize",
+        reason="planner_output_unusable_with_existing_tool_results",
+    )
     return {"action": "synthesize"}
 
 
@@ -251,6 +341,7 @@ def _synthesize_answer(
     reasoning: list[dict],
     client: OpenAI,
     model: str,
+    debug: list[dict],
 ) -> str:
     prompt = render_prompt(
         "answer.md",
@@ -263,7 +354,7 @@ def _synthesize_answer(
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
         },
     )
-    return _complete_text(
+    answer = _complete_text(
         client,
         model,
         system=render_system_prompt(),
@@ -271,6 +362,8 @@ def _synthesize_answer(
         reasoning=reasoning,
         phase="answer",
     )
+    _append_debug(debug, "model_response", phase="answer", raw_text=answer)
+    return answer
 
 
 def _complete_text(
@@ -324,6 +417,52 @@ def _record_reasoning(reasoning: list[dict] | None, phase: str, content: str) ->
             "content": content[: min(MAX_REASONING_STEP_CHARS, remaining_chars)],
         }
     )
+
+
+def _append_debug(debug: list[dict] | None, event: str, **fields: Any) -> None:
+    if debug is None or len(debug) >= MAX_DEBUG_EVENTS:
+        return
+    item = {"event": event}
+    for key, value in fields.items():
+        item[key] = _debug_safe_value(value)
+    debug.append(item)
+
+
+def _debug_safe_value(value: Any) -> Any:
+    if isinstance(value, str):
+        truncated = value[:MAX_DEBUG_TEXT_CHARS]
+        if len(value) > MAX_DEBUG_TEXT_CHARS:
+            return f"{truncated}\n...[truncated {len(value) - MAX_DEBUG_TEXT_CHARS} chars]"
+        return value
+    if isinstance(value, list):
+        return [_debug_safe_value(item) for item in value[:20]]
+    if isinstance(value, dict):
+        return {str(key): _debug_safe_value(item) for key, item in value.items()}
+    return value
+
+
+def _summarize_tool_result(result: Any) -> dict:
+    if isinstance(result, list):
+        return {"type": "list", "count": len(result)}
+    if isinstance(result, dict):
+        if result.get("error"):
+            return {"type": "error", "error": str(result.get("error"))[:1000]}
+        if "content" in result:
+            content = str(result.get("content") or "")
+            return {
+                "type": "document",
+                "chars": len(content),
+                "truncated": bool(result.get("truncated")),
+                "path": result.get("path"),
+            }
+        if "remembered" in result:
+            return {
+                "type": "memory",
+                "remembered": bool(result.get("remembered")),
+                "path": result.get("path"),
+            }
+        return {"type": "object", "keys": sorted(str(key) for key in result.keys())[:20]}
+    return {"type": type(result).__name__}
 
 
 def _conversation_context(history: list[dict]) -> str:
