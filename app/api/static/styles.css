@@ -493,7 +493,9 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  position: relative;
   padding: 8px 11px;
+  padding-left: 28px;
   color: var(--muted);
   cursor: pointer;
   font-size: 11px;
@@ -504,8 +506,32 @@ button:disabled {
 }
 
 .agent-trace > summary::-webkit-details-marker,
-.trace-event summary::-webkit-details-marker {
+.trace-event summary::-webkit-details-marker,
+.source-fold summary::-webkit-details-marker {
   display: none;
+}
+
+.agent-trace > summary::before,
+.trace-event summary::before,
+.source-fold summary::before {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid currentColor;
+  content: "";
+  transform: translateY(-50%);
+  transform-origin: 3px 50%;
+  transition: transform 120ms ease;
+}
+
+.agent-trace[open] > summary::before,
+.trace-event[open] summary::before,
+.source-fold[open] summary::before {
+  transform: translateY(-50%) rotate(90deg);
 }
 
 .trace-event {
@@ -517,7 +543,9 @@ button:disabled {
   grid-template-columns: auto minmax(92px, auto) minmax(0, 1fr) auto;
   gap: 9px;
   align-items: baseline;
+  position: relative;
   padding: 9px 11px;
+  padding-left: 28px;
   color: var(--ink);
   cursor: pointer;
   list-style: none;
@@ -682,6 +710,8 @@ button:disabled {
 }
 
 .source-fold summary {
+  position: relative;
+  padding-left: 18px;
   padding-top: 10px;
   color: var(--accent-2);
   cursor: pointer;

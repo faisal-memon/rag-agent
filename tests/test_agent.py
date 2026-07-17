@@ -547,6 +547,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("debug: data.debug || []", APP_JS)
         self.assertIn("message.reasoning", APP_JS)
         self.assertIn(".agent-trace", STYLES_CSS)
+        self.assertIn(".agent-trace > summary::before", STYLES_CSS)
+        self.assertIn(".trace-event[open] summary::before", STYLES_CSS)
         self.assertIn(".trace-thinking", STYLES_CSS)
         self.assertIn(".trace-tool-call", STYLES_CSS)
         self.assertIn("@keyframes thinking-pulse", STYLES_CSS)
