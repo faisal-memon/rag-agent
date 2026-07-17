@@ -93,10 +93,10 @@ curl -X POST http://localhost:8000/agent/query \
 
 The agent can search indexed passages and document metadata, grep normalized Markdown, and read bounded line ranges from
 candidate documents. Each request is limited by `RAG_AGENT_MAX_STEPS`, which defaults to six tool calls. The web console presents replies as a conversation,
-keeps recent history in browser local storage, and sends recent user/assistant turns with follow-up requests. Tool calls
-are shown inline, while document references can be expanded per assistant reply. When llama.cpp returns
-`reasoning_content`, the UI can retain and display it through the **Show thinking** toggle; saved reasoning is not sent
-back to the model as conversation context.
+keeps recent history in browser local storage, and sends recent user/assistant turns with follow-up requests. Thinking,
+tool calls, tool results, and controller decisions are shown as a folded chronological trace; saved reasoning is not sent
+back to the model as conversation context. See [the agent runtime walkthrough](docs/agent-runtime.md) for the controller,
+protocol, and tool boundaries.
 
 Web routes:
 

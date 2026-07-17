@@ -4,16 +4,20 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.api.agent import (
-    _bounded_limit,
+from app.api.agent.protocol import (
+    extract_json_object as _extract_json_object,
+    extract_native_tool_call as _extract_native_tool_call,
+    sanitize_step as _sanitize_step,
+)
+from app.api.agent.service import (
     _conversation_context,
     _complete_text,
     _execute_tool,
-    _extract_json_object,
-    _extract_native_tool_call,
     _is_memory_approval_response,
-    _sanitize_step,
     answer_with_agent,
+)
+from app.api.agent.tools import (
+    _bounded_limit,
     grep_documents,
     remember,
     render_tool_descriptions,

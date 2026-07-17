@@ -6,6 +6,7 @@ from typing import Any
 from openai import OpenAI
 
 import app.api.agent.tools as tools
+from app.api.agent import protocol
 from app.api.agent.prompts import render_prompt
 from app.core.config import get_settings
 from app.core.embeddings import get_llm_client
@@ -212,7 +213,7 @@ def _decide_next_action(
         phase="planning",
     )
     _append_debug(debug, "model_response", phase="planning", raw_text=text)
-    native_step = _extract_native_tool_call(text)
+    native_step = protocol.extract_native_tool_call(text)
     if native_step:
         _append_debug(
             debug,
@@ -223,7 +224,7 @@ def _decide_next_action(
         return {"action": "tool", **native_step}
 
     try:
-        raw_json = _extract_json_object(text)
+        raw_json = protocol.extract_json_object(text)
         parsed = json.loads(raw_json)
         _append_debug(debug, "parsed_action", phase="planning", parsed=parsed)
         if parsed.get("action") == "answer":
@@ -240,7 +241,7 @@ def _decide_next_action(
                     "answer": answer,
                 }
         if parsed.get("action") == "tool":
-            step = _sanitize_step(parsed)
+            step = protocol.sanitize_step(parsed)
             if step:
                 return {"action": "tool", **step}
             _append_debug(
@@ -575,115 +576,6 @@ def _memory_write_is_allowed(question: str, conversation: str) -> bool:
 
 def _phrase_is_present(text: str, phrase: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text) is not None
-
-
-def _sanitize_step(step: Any) -> dict | None:
-    if not isinstance(step, dict):
-        return None
-    tool = step.get("tool")
-    if tool not in tools.AGENT_TOOL_FUNCTIONS:
-        return None
-    arguments = step.get("arguments")
-    if not isinstance(arguments, dict):
-        arguments = {}
-
-    if tool in {"keyword_search", "semantic_search"}:
-        return {
-            "tool": tool,
-            "arguments": {
-                "query": str(arguments.get("query") or ""),
-                "limit": tools._bounded_limit(arguments.get("limit") or tools.DEFAULT_CHUNK_LIMIT),
-            },
-        }
-
-    if tool == "search_documents":
-        path_prefix = arguments.get("path_prefix")
-        return {
-            "tool": tool,
-            "arguments": {
-                "query": str(arguments.get("query") or ""),
-                "path_prefix": str(path_prefix) if path_prefix else None,
-                "limit": tools._bounded_limit(arguments.get("limit") or tools.DEFAULT_DOCUMENT_LIMIT),
-            },
-        }
-
-    if tool == "grep_documents":
-        path = arguments.get("path")
-        path_prefix = arguments.get("path_prefix")
-        return {
-            "tool": tool,
-            "arguments": {
-                "query": str(arguments.get("query") or ""),
-                "path": str(path) if path else None,
-                "path_prefix": str(path_prefix) if path_prefix else None,
-                "limit": tools._bounded_limit(arguments.get("limit") or tools.DEFAULT_GREP_LIMIT),
-                "context_chars": tools._bounded_context_chars(
-                    arguments.get("context_chars") or tools.DEFAULT_GREP_CONTEXT_CHARS
-                ),
-            },
-        }
-
-    if tool == "remember":
-        return {
-            "tool": tool,
-            "arguments": {
-                "entry": tools._normalize_memory_entry(str(arguments.get("entry") or "")),
-                "section": tools._normalize_memory_section(str(arguments.get("section") or "Inbox")),
-            },
-        }
-
-    return {
-        "tool": tool,
-        "arguments": {
-            "path": str(arguments.get("path") or ""),
-            "start_line": tools._bounded_positive_int(arguments.get("start_line") or 1, maximum=1_000_000),
-            "max_lines": tools._bounded_positive_int(
-                arguments.get("max_lines") or tools.DEFAULT_DOCUMENT_LINES,
-                maximum=1000,
-            ),
-            "max_chars": tools._bounded_max_chars(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
-        },
-    }
-
-
-def _extract_json_object(text: str) -> str:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end < start:
-        raise ValueError("No JSON object found")
-    return text[start : end + 1]
-
-
-def _extract_native_tool_call(text: str) -> dict | None:
-    match = re.search(
-        r"<\|tool_call\>\s*call:(?P<tool>\w+)\s*(?P<args>\{.*?\})\s*<tool_call\|>",
-        text,
-        flags=re.DOTALL,
-    )
-    if not match:
-        return None
-
-    tool = match.group("tool")
-    arguments = _parse_native_tool_arguments(match.group("args"))
-    return _sanitize_step({"tool": tool, "arguments": arguments})
-
-
-def _parse_native_tool_arguments(text: str) -> dict[str, Any]:
-    body = text.strip()
-    if body.startswith("{") and body.endswith("}"):
-        body = body[1:-1]
-    arguments: dict[str, Any] = {}
-    for match in re.finditer(r"(?P<key>\w+)\s*:\s*(?P<value>\"[^\"]*\"|'[^']*'|[^,}]+)", body):
-        key = match.group("key")
-        value = match.group("value").strip()
-        if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-            arguments[key] = value[1:-1]
-            continue
-        try:
-            arguments[key] = int(value)
-        except ValueError:
-            arguments[key] = value
-    return arguments
 
 
 def _absence_search_complete(plan: list[dict]) -> bool:
