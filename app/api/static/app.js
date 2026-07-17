@@ -8,7 +8,6 @@ const result = document.getElementById("result");
 const agentChatToolbar = document.getElementById("agent-chat-toolbar");
 const agentChat = document.getElementById("agent-chat");
 const clearChatButton = document.getElementById("clear-chat");
-const showReasoningToggle = document.getElementById("show-reasoning");
 const pipelineSummary = document.getElementById("pipeline-summary");
 const answer = document.getElementById("answer");
 const citations = document.getElementById("citations");
@@ -21,11 +20,9 @@ let debugLimit = 8;
 let lastDebugQuestion = "";
 let lastDebugMode = "semantic";
 const agentHistoryKey = "nextcloud-rag-agent-history-v1";
-const showReasoningKey = "nextcloud-rag-show-reasoning-v1";
 const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
 let agentIsThinking = false;
-showReasoningToggle.checked = localStorage.getItem(showReasoningKey) === "true";
 
 function citationPreview(text) {
   if (!text) return "";
@@ -126,84 +123,143 @@ function renderPipelineStatus(data) {
   `;
 }
 
-function agentTraceHtml(plan, toolResults) {
-  const plannedCalls = plan || [];
-  const results = toolResults || [];
-  const calls = plannedCalls.length
-    ? plannedCalls
-    : results.map((item) => ({ tool: item.tool, arguments: item.arguments || {} }));
-
-  const header = `
-    <div class="tool-trace-header">
-      <span>agent execution</span>
-      <span>${calls.length} tool call${calls.length === 1 ? "" : "s"}</span>
-    </div>
-  `;
-  const rows = calls.map((step, index) => {
-    const completed = results[index] || {};
-    const toolResult = completed.result ?? null;
-    const argumentsJson = JSON.stringify(step.arguments || {}, null, 2);
-    const resultJson = JSON.stringify(toolResult, null, 2);
-    const argumentSummary = Object.entries(step.arguments || {})
-      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-      .join(" ");
-    const hasError = Boolean(toolResult && !Array.isArray(toolResult) && toolResult.error);
-    let resultSummary = "complete";
-    if (Array.isArray(toolResult)) {
-      resultSummary = `${toolResult.length} result${toolResult.length === 1 ? "" : "s"}`;
-    } else if (hasError) {
-      resultSummary = "error";
-    } else if (toolResult && typeof toolResult.content === "string") {
-      resultSummary = `${toolResult.content.length} chars${toolResult.truncated ? " (truncated)" : ""}`;
-    }
-    return `
-      <details class="tool-call">
-        <summary>
-          <span class="tool-status ${hasError ? "error" : ""}">${hasError ? "x" : "✓"}</span>
-          <span class="tool-name">${escapeHtml(step.tool || completed.tool || "unknown")}</span>
-          <span class="tool-args">${escapeHtml(argumentSummary || "no arguments")}</span>
-          <span class="tool-result-summary ${hasError ? "error" : ""}">${escapeHtml(resultSummary)}</span>
-        </summary>
-        <pre>arguments:
-${escapeHtml(argumentsJson)}
-
-result:
-${escapeHtml(resultJson)}</pre>
-      </details>
-    `;
-  }).join("");
-
-  if (!calls.length) {
-    return `<div class="tool-trace visible">${header}<div class="tool-empty">No tool calls were planned.</div></div>`;
+function summarizeToolResult(result) {
+  const hasError = Boolean(result && !Array.isArray(result) && result.error);
+  if (Array.isArray(result)) {
+    return `${result.length} result${result.length === 1 ? "" : "s"}`;
   }
-  return `<div class="tool-trace visible">${header}${rows}</div>`;
+  if (hasError) {
+    return "error";
+  }
+  if (result && typeof result.content === "string") {
+    return `${result.content.length} chars${result.truncated ? " (truncated)" : ""}`;
+  }
+  if (result && typeof result === "object" && "remembered" in result) {
+    return result.remembered ? "remembered" : "not remembered";
+  }
+  return "complete";
 }
 
-function agentDebugHtml(debugEvents) {
-  const events = Array.isArray(debugEvents) ? debugEvents : [];
-  if (!events.length) {
-    return "";
+function summarizeArguments(argumentsValue) {
+  return Object.entries(argumentsValue || {})
+    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+    .join(" ");
+}
+
+function buildAgentTraceEvents(message) {
+  const reasoning = Array.isArray(message.reasoning) ? [...message.reasoning] : [];
+  const debugEvents = Array.isArray(message.debug) ? message.debug : [];
+  const toolResults = Array.isArray(message.toolResults) ? message.toolResults : [];
+  const traceEvents = [];
+  let toolResultIndex = 0;
+
+  const nextReasoningForPhase = (phase) => {
+    const index = reasoning.findIndex((step) => (step.phase || "model") === (phase || "model"));
+    return index >= 0 ? reasoning.splice(index, 1)[0] : null;
+  };
+
+  debugEvents.forEach((event) => {
+    if (event.event === "model_response") {
+      const reasoningStep = nextReasoningForPhase(event.phase);
+      if (reasoningStep) {
+        traceEvents.push({
+          type: "thinking",
+          title: `${reasoningStep.phase || "model"} thinking`,
+          detail: reasoningStep.content || "",
+        });
+      }
+      traceEvents.push({
+        type: "model",
+        title: `${event.phase || "model"} model output`,
+        detail: event.raw_text || "",
+      });
+      return;
+    }
+
+    if (event.event === "parsed_action") {
+      traceEvents.push({
+        type: "parser",
+        title: "parsed action",
+        detail: JSON.stringify(event.parsed || {}, null, 2),
+      });
+      return;
+    }
+
+    if (event.event === "controller_decision" && event.decision === "execute_tool") {
+      traceEvents.push({
+        type: "tool-call",
+        title: `tool call · ${event.tool || "unknown"}`,
+        meta: summarizeArguments(event.arguments || {}),
+        detail: JSON.stringify(event.arguments || {}, null, 2),
+      });
+      return;
+    }
+
+    if (event.event === "tool_result") {
+      const completed = toolResults[toolResultIndex] || {};
+      toolResultIndex += 1;
+      const result = completed.result ?? null;
+      traceEvents.push({
+        type: result && result.error ? "tool-error" : "tool-result",
+        title: `tool result · ${event.tool || completed.tool || "unknown"}`,
+        meta: summarizeToolResult(result),
+        detail: JSON.stringify(result, null, 2),
+      });
+      return;
+    }
+
+    traceEvents.push({
+      type: event.event === "parse_error" ? "warning" : "controller",
+      title: [event.event || "event", event.decision, event.tool].filter(Boolean).join(" · "),
+      meta: event.reason || "",
+      detail: JSON.stringify(event, null, 2),
+    });
+  });
+
+  reasoning.forEach((step) => {
+    traceEvents.push({
+      type: "thinking",
+      title: `${step.phase || "model"} thinking`,
+      detail: step.content || "",
+    });
+  });
+
+  if (!traceEvents.length && toolResults.length) {
+    toolResults.forEach((item) => {
+      traceEvents.push({
+        type: item.result && item.result.error ? "tool-error" : "tool-result",
+        title: `tool result · ${item.tool || "unknown"}`,
+        meta: summarizeToolResult(item.result),
+        detail: JSON.stringify(item.result ?? null, null, 2),
+      });
+    });
   }
 
-  const rows = events.map((event, index) => {
-    const labelParts = [
-      `${index + 1}. ${event.event || "event"}`,
-      event.phase ? `phase=${event.phase}` : "",
-      event.decision ? `decision=${event.decision}` : "",
-      event.tool ? `tool=${event.tool}` : "",
-    ].filter(Boolean);
-    return `
-      <details class="debug-event">
-        <summary>${escapeHtml(labelParts.join(" · "))}</summary>
-        <pre>${escapeHtml(JSON.stringify(event, null, 2))}</pre>
-      </details>
-    `;
-  }).join("");
+  return traceEvents;
+}
+
+function agentTraceTimelineHtml(message) {
+  const events = buildAgentTraceEvents(message);
+  const toolCount = (message.toolResults || []).length;
+  const rows = events.map((event, index) => `
+    <details class="trace-event trace-${escapeHtml(event.type)}">
+      <summary>
+        <span class="trace-index">${index + 1}</span>
+        <span class="trace-kind">${escapeHtml(event.type.replaceAll("-", " "))}</span>
+        <span class="trace-title">${escapeHtml(event.title || "event")}</span>
+        <span class="trace-meta">${escapeHtml(event.meta || "")}</span>
+      </summary>
+      <pre>${escapeHtml(event.detail || "")}</pre>
+    </details>
+  `).join("");
 
   return `
-    <details class="agent-debug">
-      <summary>agent debug · ${events.length} event${events.length === 1 ? "" : "s"}</summary>
-      ${rows}
+    <details class="agent-trace">
+      <summary>
+        <span>agent trace</span>
+        <span>${events.length} event${events.length === 1 ? "" : "s"} · ${toolCount} tool call${toolCount === 1 ? "" : "s"}</span>
+      </summary>
+      ${rows || '<div class="trace-empty">No trace events were recorded.</div>'}
     </details>
   `;
 }
@@ -245,21 +301,6 @@ function renderAgentConversation() {
     }
 
     const sources = message.citations || [];
-    const reasoning = Array.isArray(message.reasoning) ? message.reasoning : [];
-    const debugEvents = Array.isArray(message.debug) ? message.debug : [];
-    const reasoningPanel = showReasoningToggle.checked && reasoning.length
-      ? `
-        <section class="model-reasoning">
-          <div class="model-reasoning-title">model thinking · ${reasoning.length} phase${reasoning.length === 1 ? "" : "s"}</div>
-          ${reasoning.map((step, index) => `
-            <details class="reasoning-step" open>
-              <summary>${escapeHtml(step.phase || "model")} ${index + 1}</summary>
-              <pre>${escapeHtml(step.content || "")}</pre>
-            </details>
-          `).join("")}
-        </section>
-      `
-      : "";
     const sourceFold = sources.length
       ? `
         <details class="source-fold">
@@ -271,9 +312,7 @@ function renderAgentConversation() {
     return `
       <article class="chat-message assistant">
         <div class="chat-role">rag agent</div>
-        ${reasoningPanel}
-        ${agentTraceHtml(message.plan, message.toolResults)}
-        ${agentDebugHtml(debugEvents)}
+        ${agentTraceTimelineHtml(message)}
         <div class="chat-content">${escapeHtml(message.content)}</div>
         ${sourceFold}
       </article>
@@ -496,10 +535,6 @@ button.addEventListener("click", () => runQuery("query"));
 agentButton.addEventListener("click", runAgent);
 debugButton.addEventListener("click", () => runQuery("debug", 0));
 pipelineButton.addEventListener("click", loadPipelineStatus);
-showReasoningToggle.addEventListener("change", () => {
-  localStorage.setItem(showReasoningKey, String(showReasoningToggle.checked));
-  renderAgentConversation();
-});
 clearChatButton.addEventListener("click", () => {
   agentConversation = [];
   localStorage.removeItem(agentHistoryKey);
