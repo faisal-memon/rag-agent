@@ -141,7 +141,10 @@ function summarizeToolResult(result) {
 }
 
 function summarizeArguments(argumentsValue) {
-  return Object.entries(argumentsValue || {})
+  if (!argumentsValue || typeof argumentsValue !== "object") {
+    return "";
+  }
+  return Object.entries(argumentsValue)
     .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
     .join(" ");
 }
@@ -239,13 +242,23 @@ function buildAgentTraceEvents(message) {
 }
 
 function agentTraceTimelineHtml(message) {
-  const events = buildAgentTraceEvents(message);
-  const toolCount = (message.toolResults || []).length;
+  let events = [];
+  try {
+    events = buildAgentTraceEvents(message || {});
+  } catch (error) {
+    events = [{
+      type: "warning",
+      title: "trace render failed",
+      meta: error.message,
+      detail: error.stack || error.message,
+    }];
+  }
+  const toolCount = Array.isArray(message?.toolResults) ? message.toolResults.length : 0;
   const rows = events.map((event, index) => `
-    <details class="trace-event trace-${escapeHtml(event.type)}">
+    <details class="trace-event trace-${escapeHtml(event.type || "event")}">
       <summary>
         <span class="trace-index">${index + 1}</span>
-        <span class="trace-kind">${escapeHtml(event.type.replaceAll("-", " "))}</span>
+        <span class="trace-kind">${escapeHtml(String(event.type || "event").replaceAll("-", " "))}</span>
         <span class="trace-title">${escapeHtml(event.title || "event")}</span>
         <span class="trace-meta">${escapeHtml(event.meta || "")}</span>
       </summary>
@@ -556,4 +569,11 @@ question.addEventListener("keydown", (event) => {
     runQuery("query");
   }
 });
-renderAgentConversation();
+try {
+  renderAgentConversation();
+} catch (error) {
+  console.error("Failed to render saved agent conversation", error);
+  agentConversation = [];
+  localStorage.removeItem(agentHistoryKey);
+  renderAgentConversation();
+}
