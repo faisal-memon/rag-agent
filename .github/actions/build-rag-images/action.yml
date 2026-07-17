@@ -1,5 +1,5 @@
-name: Build RAG Docker Images
-description: Build the role-specific RAG Docker images with per-target Buildx caches.
+name: Build RAG Agent Docker Images
+description: Build the role-specific RAG Agent Docker images with per-target Buildx caches.
 
 inputs:
   push:
@@ -26,10 +26,10 @@ runs:
         target: api
         push: ${{ inputs.push }}
         tags: |
-          ghcr.io/${{ github.repository_owner }}/rag-api:${{ inputs.tag }}
-          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-api:latest', github.repository_owner) || '' }}
-        cache-from: type=gha,scope=rag-api
-        cache-to: type=gha,mode=max,scope=rag-api
+          ghcr.io/${{ github.repository_owner }}/rag-agent-api:${{ inputs.tag }}
+          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-agent-api:latest', github.repository_owner) || '' }}
+        cache-from: type=gha,scope=rag-agent-api
+        cache-to: type=gha,mode=max,scope=rag-agent-api
 
     - name: Build embed Docker image
       uses: docker/build-push-action@v6
@@ -38,10 +38,10 @@ runs:
         target: embed
         push: ${{ inputs.push }}
         tags: |
-          ghcr.io/${{ github.repository_owner }}/rag-embed:${{ inputs.tag }}
-          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-embed:latest', github.repository_owner) || '' }}
-        cache-from: type=gha,scope=rag-embed
-        cache-to: type=gha,mode=max,scope=rag-embed
+          ghcr.io/${{ github.repository_owner }}/rag-agent-embed:${{ inputs.tag }}
+          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-agent-embed:latest', github.repository_owner) || '' }}
+        cache-from: type=gha,scope=rag-agent-embed
+        cache-to: type=gha,mode=max,scope=rag-agent-embed
 
     - name: Build normalize Docker image
       uses: docker/build-push-action@v6
@@ -50,7 +50,7 @@ runs:
         target: normalize
         push: ${{ inputs.push }}
         tags: |
-          ghcr.io/${{ github.repository_owner }}/rag-normalize:${{ inputs.tag }}
-          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-normalize:latest', github.repository_owner) || '' }}
-        cache-from: type=gha,scope=rag-normalize
-        cache-to: type=gha,mode=max,scope=rag-normalize
+          ghcr.io/${{ github.repository_owner }}/rag-agent-normalize:${{ inputs.tag }}
+          ${{ inputs.latest == 'true' && format('ghcr.io/{0}/rag-agent-normalize:latest', github.repository_owner) || '' }}
+        cache-from: type=gha,scope=rag-agent-normalize
+        cache-to: type=gha,mode=max,scope=rag-agent-normalize
