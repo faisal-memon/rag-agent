@@ -212,6 +212,16 @@ def _decide_next_action(
         phase="planning",
     )
     _append_debug(debug, "model_response", phase="planning", raw_text=text)
+    native_step = _extract_native_tool_call(text)
+    if native_step:
+        _append_debug(
+            debug,
+            "parsed_action",
+            phase="planning",
+            parsed={"action": "tool", **native_step, "format": "native_tool_call"},
+        )
+        return {"action": "tool", **native_step}
+
     try:
         raw_json = _extract_json_object(text)
         parsed = json.loads(raw_json)
@@ -642,6 +652,38 @@ def _extract_json_object(text: str) -> str:
     if start == -1 or end == -1 or end < start:
         raise ValueError("No JSON object found")
     return text[start : end + 1]
+
+
+def _extract_native_tool_call(text: str) -> dict | None:
+    match = re.search(
+        r"<\|tool_call\>\s*call:(?P<tool>\w+)\s*(?P<args>\{.*?\})\s*<tool_call\|>",
+        text,
+        flags=re.DOTALL,
+    )
+    if not match:
+        return None
+
+    tool = match.group("tool")
+    arguments = _parse_native_tool_arguments(match.group("args"))
+    return _sanitize_step({"tool": tool, "arguments": arguments})
+
+
+def _parse_native_tool_arguments(text: str) -> dict[str, Any]:
+    body = text.strip()
+    if body.startswith("{") and body.endswith("}"):
+        body = body[1:-1]
+    arguments: dict[str, Any] = {}
+    for match in re.finditer(r"(?P<key>\w+)\s*:\s*(?P<value>\"[^\"]*\"|'[^']*'|[^,}]+)", body):
+        key = match.group("key")
+        value = match.group("value").strip()
+        if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+            arguments[key] = value[1:-1]
+            continue
+        try:
+            arguments[key] = int(value)
+        except ValueError:
+            arguments[key] = value
+    return arguments
 
 
 def _absence_search_complete(plan: list[dict]) -> bool:
