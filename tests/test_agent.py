@@ -10,6 +10,7 @@ from app.api.agent import (
     _complete_text,
     _execute_tool,
     _extract_json_object,
+    _extract_native_tool_call,
     _is_memory_approval_response,
     _sanitize_step,
     answer_with_agent,
@@ -34,6 +35,17 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(
             '{"tool":"semantic_search","arguments":{"query":"car"}}',
             _extract_json_object(text),
+        )
+
+    def test_extract_native_tool_call_from_model_text(self) -> None:
+        text = '<|tool_call>call:search_documents{limit:8,query:"car vehicle"}<tool_call|>'
+
+        self.assertEqual(
+            {
+                "tool": "search_documents",
+                "arguments": {"query": "car vehicle", "path_prefix": None, "limit": 8},
+            },
+            _extract_native_tool_call(text),
         )
 
     def test_sanitize_step_rejects_unknown_tool(self) -> None:
@@ -436,6 +448,42 @@ class AgentTest(unittest.TestCase):
             if event.get("decision") == "reject_answer"
         ]
         self.assertEqual("not_found_requires_more_retrieval", rejected[0]["reason"])
+
+    def test_agent_executes_native_tool_call_output(self) -> None:
+        responses = iter(
+            [
+                (
+                    '{"action":"tool","tool":"search_documents",'
+                    '"arguments":{"query":"car vehicle registration insurance title","limit":8}}'
+                ),
+                '<|tool_call>call:semantic_search{limit:8,query:"what car do I own"}<tool_call|>',
+                (
+                    '{"action":"answer","evidence_status":"supported",'
+                    '"answer":"You have an Example EV [Doc: vehicle-contract.pdf]."}'
+                ),
+            ]
+        )
+
+        def complete_text(_client, _model, system, prompt, reasoning=None, phase=""):
+            return next(responses)
+
+        chunk = {
+            "path": "/documents/Vehicles/vehicle-contract.pdf",
+            "filename": "vehicle-contract.pdf",
+            "content": "Example EV",
+        }
+
+        with (
+            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.api.agent.service._complete_text", side_effect=complete_text),
+            patch("app.api.agent.service.tools.search_documents", return_value=[]),
+            patch("app.api.agent.service.tools.semantic_search", return_value=[chunk]),
+        ):
+            result = answer_with_agent("What car do I have?")
+
+        self.assertEqual(["search_documents", "semantic_search"], [step["tool"] for step in result["plan"]])
+        self.assertNotIn("<|tool_call>", result["answer"])
+        self.assertIn("Example EV", result["answer"])
 
     def test_llamacpp_reasoning_content_is_recorded(self) -> None:
         message = SimpleNamespace(
