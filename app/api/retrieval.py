@@ -2,7 +2,8 @@ from openai import OpenAI
 
 from app.core.config import get_settings
 from app.core.db import db_cursor
-from app.core.embeddings import embed_texts, get_llm_client
+from app.core.embeddings import embed_texts
+from app.core.llm import get_llm_client
 
 RETRIEVAL_MODE_SEMANTIC = "semantic"
 RETRIEVAL_MODE_KEYWORD = "keyword"
