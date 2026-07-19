@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.api.retrieval import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, retrieve_debug
+from app.api.agent.memory import read_memory, remember
 from app.core.config import get_settings
 from app.core.db import db_cursor
 
@@ -13,8 +14,6 @@ DEFAULT_DOCUMENT_CHARS = 12000
 DEFAULT_DOCUMENT_LINES = 200
 DEFAULT_GREP_LIMIT = 12
 DEFAULT_GREP_CONTEXT_CHARS = 240
-MAX_MEMORY_CHARS = 12000
-MAX_MEMORY_ENTRY_CHARS = 1000
 
 AGENT_TOOL_NAMES = (
     "search_documents",
@@ -251,74 +250,6 @@ def grep_documents(
     return matches
 
 
-def read_memory() -> dict:
-    memory_path = get_settings().api.memory_path
-    try:
-        content = memory_path.read_text(encoding="utf-8", errors="ignore")
-    except FileNotFoundError:
-        return {
-            "path": str(memory_path),
-            "content": "",
-            "exists": False,
-            "truncated": False,
-            "error": None,
-        }
-    except OSError as exc:
-        return {
-            "path": str(memory_path),
-            "content": "",
-            "exists": False,
-            "truncated": False,
-            "error": str(exc),
-        }
-
-    return {
-        "path": str(memory_path),
-        "content": content[:MAX_MEMORY_CHARS],
-        "exists": True,
-        "truncated": len(content) > MAX_MEMORY_CHARS,
-        "error": None,
-    }
-
-
-def remember(entry: str, section: str = "Inbox") -> dict:
-    """Append a concise Markdown bullet to the personal RAG memory file.
-
-    Args:
-        entry: Durable memory bullet, usually starting with "- ". Use for routing hints, vocabulary,
-            evidence rules, durable user preferences, or user-approved corrections.
-        section: Memory section heading, such as Routing Hints, Vocabulary, or Evidence Rules.
-    """
-    memory_path = get_settings().api.memory_path
-    entry = _normalize_memory_entry(entry)
-    section = _normalize_memory_section(section)
-    if not entry:
-        return {"remembered": False, "path": str(memory_path), "error": "Memory entry was empty."}
-
-    memory_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = ""
-    try:
-        existing = memory_path.read_text(encoding="utf-8", errors="ignore")
-    except FileNotFoundError:
-        pass
-
-    prefix = "" if existing.endswith("\n") or not existing else "\n"
-    if existing.strip():
-        addition = f"{prefix}\n## {section}\n\n{entry}\n"
-    else:
-        addition = f"# Personal RAG Memory\n\n## {section}\n\n{entry}\n"
-    with memory_path.open("a", encoding="utf-8") as file:
-        file.write(addition)
-
-    return {
-        "remembered": True,
-        "path": str(memory_path),
-        "section": section,
-        "entry": entry,
-        "error": None,
-    }
-
-
 AGENT_TOOL_FUNCTIONS = {
     "search_documents": search_documents,
     "keyword_search": keyword_search,
@@ -368,19 +299,6 @@ def _tool_doc_parts(tool_function: Any) -> tuple[str, dict[str, str]]:
             argument_docs[current_argument] = f"{argument_docs[current_argument]} {stripped}".strip()
 
     return summary, argument_docs
-
-
-def _normalize_memory_entry(entry: str) -> str:
-    cleaned = " ".join(str(entry or "").split())
-    cleaned = cleaned[:MAX_MEMORY_ENTRY_CHARS].strip()
-    if not cleaned:
-        return ""
-    return cleaned if cleaned.startswith("- ") else f"- {cleaned.lstrip('-').strip()}"
-
-
-def _normalize_memory_section(section: str) -> str:
-    cleaned = " ".join(str(section or "").replace("#", "").split())
-    return (cleaned or "Inbox")[:80]
 
 
 def _bounded_limit(limit: Any) -> int:

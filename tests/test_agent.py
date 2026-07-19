@@ -9,19 +9,21 @@ from app.api.agent.protocol import (
     extract_native_tool_call as _extract_native_tool_call,
     sanitize_step as _sanitize_step,
 )
+from app.api.agent.memory import (
+    is_approval_response as _is_memory_approval_response,
+    read_memory,
+    remember,
+)
 from app.api.agent.service import (
     _conversation_context,
     _complete_text,
     _execute_tool,
-    _is_memory_approval_response,
     answer_with_agent,
 )
 from app.api.agent.tools import (
     _bounded_limit,
     grep_documents,
-    remember,
     render_tool_descriptions,
-    read_memory,
     read_document,
 )
 from app.api.agent.prompts import render_prompt
@@ -274,7 +276,7 @@ class AgentTest(unittest.TestCase):
     def test_read_memory_returns_missing_file_as_empty_memory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             settings = _settings_with_api(memory_path=Path(temp_dir) / "MEMORY.md")
-            with patch("app.api.agent.tools.get_settings", return_value=settings):
+            with patch("app.api.agent.memory.get_settings", return_value=settings):
                 result = read_memory()
 
         self.assertFalse(result["exists"])
@@ -287,7 +289,7 @@ class AgentTest(unittest.TestCase):
             memory_path.write_text("x" * 13000, encoding="utf-8")
             settings = _settings_with_api(memory_path=memory_path)
 
-            with patch("app.api.agent.tools.get_settings", return_value=settings):
+            with patch("app.api.agent.memory.get_settings", return_value=settings):
                 result = read_memory()
 
         self.assertTrue(result["exists"])
@@ -299,7 +301,7 @@ class AgentTest(unittest.TestCase):
             memory_path = Path(temp_dir) / "MEMORY.md"
             settings = _settings_with_api(memory_path=memory_path)
 
-            with patch("app.api.agent.tools.get_settings", return_value=settings):
+            with patch("app.api.agent.memory.get_settings", return_value=settings):
                 result = remember(
                     "For vehicle questions, search /documents/Vehicles first.",
                     section="Routing Hints",
@@ -346,7 +348,7 @@ class AgentTest(unittest.TestCase):
 
             with (
                 patch("app.api.agent.service.get_settings", return_value=settings),
-                patch("app.api.agent.tools.get_settings", return_value=settings),
+                patch("app.api.agent.memory.get_settings", return_value=settings),
                 patch("app.api.agent.service.get_llm_client") as get_llm_client,
                 patch("app.api.agent.service._complete_text") as complete_text,
                 patch("app.api.agent.service.tools.semantic_search") as semantic_search,
