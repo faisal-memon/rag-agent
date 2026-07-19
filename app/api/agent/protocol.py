@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 import app.api.agent.tools as tools
+from app.api.agent import memory
 
 
 def extract_json_object(text: str) -> str:
@@ -109,8 +110,8 @@ def sanitize_step(step: Any) -> dict | None:
         return {
             "tool": tool,
             "arguments": {
-                "entry": tools._normalize_memory_entry(str(arguments.get("entry") or "")),
-                "section": tools._normalize_memory_section(str(arguments.get("section") or "Inbox")),
+                "entry": memory.normalize_entry(str(arguments.get("entry") or "")),
+                "section": memory.normalize_section(str(arguments.get("section") or "Inbox")),
             },
         }
 

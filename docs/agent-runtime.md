@@ -32,9 +32,11 @@ service.answer_with_agent
 - `protocol.py` treats model output as untrusted input. It supports the JSON
   planner format and the native llama.cpp tool-call format, then allowlists
   tool names and bounds their arguments.
-- `tools.py` owns the actual capabilities: document discovery, PostgreSQL
-  keyword and semantic search, literal Markdown grep, bounded document reads,
-  and user-approved memory writes.
+- `tools.py` owns the document capabilities: discovery, PostgreSQL keyword and
+  semantic search, literal Markdown grep, and bounded document reads. It also
+  exposes memory read/write functions in the tool registry.
+- `memory.py` owns the memory file, Markdown normalization, approval detection,
+  proposed-memory extraction, and prompt-safe memory rendering.
 - `prompts/` holds the human-readable instructions for the planner, final
   answer, and shared system role.
 

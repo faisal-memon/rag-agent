@@ -1,11 +1,11 @@
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
 
 import app.api.agent.tools as tools
+from app.api.agent import memory
 from app.api.agent import protocol
 from app.api.agent.prompts import render_prompt
 from app.core.config import get_settings
@@ -17,29 +17,6 @@ MAX_REASONING_STEP_CHARS = 12000
 MAX_REASONING_TOTAL_CHARS = 48000
 MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
-MEMORY_DIRECT_WRITE_TERMS = (
-    "remember",
-    "save",
-    "store",
-    "add it to memory",
-    "add that to memory",
-)
-MEMORY_APPROVAL_RESPONSES = {
-    "yes",
-    "y",
-    "yep",
-    "yeah",
-    "sure",
-    "ok",
-    "okay",
-    "do it",
-    "make it so",
-}
-MEMORY_APPROVAL_TERMS = {"yes", "y", "yep", "yeah", "sure", "ok", "okay"}
-MEMORY_SAVE_TERMS = {"remember", "save", "store", "keep"}
-MEMORY_NEGATION_TERMS = {"no", "nope", "nah", "not", "dont", "don't", "do not", "never"}
-
-
 def render_system_prompt() -> str:
     return render_prompt("system.md", {})
 
@@ -56,12 +33,12 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
     seen_calls: set[str] = set()
     decision_feedback = ""
 
-    approved_memory = _approved_memory_from_history(question, history)
+    approved_memory = memory.approved_from_history(question, history)
     if approved_memory:
         step = {"tool": "remember", "arguments": approved_memory}
         tool_result = _execute_tool(step, question, conversation)
         return {
-            "answer": _memory_result_answer(tool_result),
+            "answer": memory.result_answer(tool_result),
             "plan": [step],
             "tool_results": [tool_result],
             "reasoning": reasoning,
@@ -79,13 +56,13 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
         }
 
     client, model = get_llm_client()
-    memory = tools.read_memory()
+    memory_state = tools.read_memory()
 
     for _ in range(max_steps):
         decision = _decide_next_action(
             question,
             conversation,
-            memory,
+            memory_state,
             tool_results,
             max_steps - len(plan),
             decision_feedback,
@@ -167,7 +144,17 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
         )
 
     if not answer:
-        answer = _synthesize_answer(question, conversation, memory, plan, tool_results, reasoning, client, model, debug)
+        answer = _synthesize_answer(
+            question,
+            conversation,
+            memory_state,
+            plan,
+            tool_results,
+            reasoning,
+            client,
+            model,
+            debug,
+        )
     citations = _citations_from_tool_results(tool_results)
 
     return {
@@ -182,7 +169,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
 def _decide_next_action(
     question: str,
     conversation: str,
-    memory: dict,
+    memory_state: dict,
     tool_results: list[dict],
     remaining_steps: int,
     decision_feedback: str,
@@ -196,8 +183,8 @@ def _decide_next_action(
         {
             "remaining_steps": remaining_steps,
             "decision_feedback": decision_feedback or "(none)",
-            "memory_path": memory.get("path") or "not configured",
-            "memory": _memory_prompt_content(memory),
+            "memory_path": memory_state.get("path") or "not configured",
+            "memory": memory.prompt_content(memory_state),
             "tool_descriptions": tools.render_tool_descriptions(),
             "conversation": conversation or "(none)",
             "question": question,
@@ -322,7 +309,7 @@ def _execute_tool(step: dict, question: str = "", conversation: str = "") -> dic
                 max_chars=int(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
             )
         elif tool == "remember":
-            if not _memory_write_is_allowed(question, conversation):
+            if not memory.write_is_allowed(question, conversation):
                 result = {
                     "remembered": False,
                     "error": (
@@ -346,7 +333,7 @@ def _execute_tool(step: dict, question: str = "", conversation: str = "") -> dic
 def _synthesize_answer(
     question: str,
     conversation: str,
-    memory: dict,
+    memory_state: dict,
     plan: list[dict],
     tool_results: list[dict],
     reasoning: list[dict],
@@ -357,8 +344,8 @@ def _synthesize_answer(
     prompt = render_prompt(
         "answer.md",
         {
-            "memory_path": memory.get("path") or "not configured",
-            "memory": _memory_prompt_content(memory),
+            "memory_path": memory_state.get("path") or "not configured",
+            "memory": memory.prompt_content(memory_state),
             "conversation": conversation or "(none)",
             "question": question,
             "plan": json.dumps(plan, indent=2),
@@ -494,88 +481,6 @@ def _conversation_context(history: list[dict]) -> str:
         total_chars += len(content)
 
     return "\n".join(reversed(messages))
-
-
-def _memory_prompt_content(memory: dict) -> str:
-    error = memory.get("error")
-    if error:
-        return f"(memory unavailable: {error})"
-    content = str(memory.get("content") or "").strip()
-    if not content:
-        return "(no saved memory)"
-    suffix = "\n\n(memory truncated)" if memory.get("truncated") else ""
-    return f"{content}{suffix}"
-
-
-def _approved_memory_from_history(question: str, history: list[dict]) -> dict | None:
-    if not _is_memory_approval_response(question):
-        return None
-
-    for item in reversed(history[-MAX_HISTORY_MESSAGES:]):
-        if not isinstance(item, dict) or item.get("role") != "assistant":
-            continue
-        content = str(item.get("content") or "")
-        if "remember" not in content.casefold():
-            continue
-        entry = _memory_entry_from_proposal(content)
-        if entry:
-            return {"entry": entry, "section": "Inbox"}
-    return None
-
-
-def _is_memory_approval_response(question: str) -> bool:
-    normalized_response = _normalized_memory_response(question)
-    if normalized_response in MEMORY_APPROVAL_RESPONSES:
-        return True
-    if _contains_memory_negation(normalized_response):
-        return False
-    return _contains_approval_term(normalized_response) and _contains_save_term(normalized_response)
-
-
-def _normalized_memory_response(question: str) -> str:
-    return re.sub(r"[^\w\s']", "", question.casefold()).strip()
-
-
-def _contains_approval_term(text: str) -> bool:
-    return any(_phrase_is_present(text, term) for term in MEMORY_APPROVAL_TERMS)
-
-
-def _contains_save_term(text: str) -> bool:
-    return any(_phrase_is_present(text, term) for term in MEMORY_SAVE_TERMS)
-
-
-def _contains_memory_negation(text: str) -> bool:
-    return any(_phrase_is_present(text, term) for term in MEMORY_NEGATION_TERMS)
-
-
-def _memory_entry_from_proposal(content: str) -> str:
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(("- ", "* ")):
-            return tools._normalize_memory_entry(stripped)
-    return ""
-
-
-def _memory_result_answer(tool_result: dict) -> str:
-    result = tool_result.get("result")
-    if isinstance(result, dict) and result.get("remembered"):
-        return "Saved that memory."
-    if isinstance(result, dict) and result.get("error"):
-        return f"I could not save that memory: {result['error']}"
-    return "I could not save that memory."
-
-
-def _memory_write_is_allowed(question: str, conversation: str) -> bool:
-    lowered_question = " ".join(question.casefold().split())
-    if any(_phrase_is_present(lowered_question, term) for term in MEMORY_DIRECT_WRITE_TERMS):
-        return True
-
-    lowered_conversation = conversation.casefold()
-    return "should i remember" in lowered_conversation and _is_memory_approval_response(question)
-
-
-def _phrase_is_present(text: str, phrase: str) -> bool:
-    return re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text) is not None
 
 
 def _absence_search_complete(plan: list[dict]) -> bool:
