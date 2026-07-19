@@ -9,7 +9,7 @@ from app.api.agent import memory
 from app.api.agent import protocol
 from app.api.agent.prompts import render_prompt
 from app.core.config import get_settings
-from app.core.embeddings import get_llm_client
+from app.core.llm import get_llm_client
 
 MAX_HISTORY_MESSAGES = 12
 MAX_HISTORY_CHARS = 24000
