@@ -349,7 +349,7 @@ function hideAgentConversation() {
   agentChatToolbar.classList.remove("visible");
 }
 
-async function runQuery(mode, requestedOffset = 0) {
+async function runQuery(requestedOffset = 0) {
   const value = question.value.trim();
   if (!value) {
     status.textContent = "Type a question first.";
@@ -361,8 +361,8 @@ async function runQuery(mode, requestedOffset = 0) {
   debugButton.disabled = true;
   pipelineButton.disabled = true;
   const retrievalMode = document.querySelector('input[name="retrieval-mode"]:checked').value;
-  const offset = mode === "debug" ? requestedOffset : 0;
-  status.textContent = mode === "debug" ? "Retrieving chunks..." : "Searching and thinking...";
+  const offset = requestedOffset;
+  status.textContent = "Retrieving chunks...";
   result.classList.remove("visible");
   answer.classList.remove("error");
   pipelineSummary.innerHTML = "";
@@ -371,37 +371,33 @@ async function runQuery(mode, requestedOffset = 0) {
   citations.innerHTML = "";
 
   try {
-    const response = await fetch(mode === "debug" ? "/debug/retrieve" : "/query", {
+    const response = await fetch("/debug/retrieve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: value, mode: retrievalMode, limit: debugLimit, offset }),
     });
 
     if (!response.ok) {
-      throw new Error(`${mode === "debug" ? "Retrieval" : "Query"} failed with HTTP ${response.status}`);
+      throw new Error(`Retrieval failed with HTTP ${response.status}`);
     }
 
     const data = await response.json();
-    const items = mode === "debug" ? data.chunks || [] : data.citations || [];
-    answer.textContent = mode === "debug" ? "Retrieval debug results. No answer was generated." : data.answer || "No answer returned.";
+    const items = data.chunks || [];
+    answer.textContent = "Retrieval debug results. No answer was generated.";
     renderCitations(items);
-    if (mode === "debug") {
-      debugOffset = data.offset || 0;
-      debugLimit = data.limit || debugLimit;
-      lastDebugQuestion = value;
-      lastDebugMode = retrievalMode;
-      const totalChunks = data.total_chunks || 0;
-      const totalDocuments = data.total_documents || 0;
-      const start = totalChunks === 0 ? 0 : debugOffset + 1;
-      const end = Math.min(debugOffset + items.length, totalChunks);
-      pager.classList.add("visible");
-      previousButton.disabled = debugOffset <= 0;
-      nextButton.disabled = debugOffset + debugLimit >= totalChunks;
-      pageStatus.textContent = `${start}-${end} of ${totalChunks} chunks across ${totalDocuments} documents`;
-      status.textContent = `Found ${totalChunks} matching chunk(s) across ${totalDocuments} document(s) with ${retrievalMode} mode.`;
-    } else {
-      status.textContent = `Found ${items.length} chunk(s) with ${retrievalMode} mode.`;
-    }
+    debugOffset = data.offset || 0;
+    debugLimit = data.limit || debugLimit;
+    lastDebugQuestion = value;
+    lastDebugMode = retrievalMode;
+    const totalChunks = data.total_chunks || 0;
+    const totalDocuments = data.total_documents || 0;
+    const start = totalChunks === 0 ? 0 : debugOffset + 1;
+    const end = Math.min(debugOffset + items.length, totalChunks);
+    pager.classList.add("visible");
+    previousButton.disabled = debugOffset <= 0;
+    nextButton.disabled = debugOffset + debugLimit >= totalChunks;
+    pageStatus.textContent = `${start}-${end} of ${totalChunks} chunks across ${totalDocuments} documents`;
+    status.textContent = `Found ${totalChunks} matching chunk(s) across ${totalDocuments} document(s) with ${retrievalMode} mode.`;
   } catch (error) {
     answer.textContent = error.message;
     answer.classList.add("error");
@@ -531,9 +527,9 @@ async function loadPipelineStatus() {
   }
 }
 
-button.addEventListener("click", () => runQuery("query"));
+button.addEventListener("click", () => runQuery());
 agentButton.addEventListener("click", runAgent);
-debugButton.addEventListener("click", () => runQuery("debug", 0));
+debugButton.addEventListener("click", () => runQuery(0));
 pipelineButton.addEventListener("click", loadPipelineStatus);
 clearChatButton.addEventListener("click", () => {
   agentConversation = [];
@@ -542,8 +538,8 @@ clearChatButton.addEventListener("click", () => {
   result.classList.remove("visible");
   status.textContent = "Agent conversation cleared.";
 });
-previousButton.addEventListener("click", () => runQuery("debug", Math.max(debugOffset - debugLimit, 0)));
-nextButton.addEventListener("click", () => runQuery("debug", debugOffset + debugLimit));
+previousButton.addEventListener("click", () => runQuery(Math.max(debugOffset - debugLimit, 0)));
+nextButton.addEventListener("click", () => runQuery(debugOffset + debugLimit));
 question.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
     return;
@@ -553,7 +549,7 @@ question.addEventListener("keydown", (event) => {
   if (document.body.classList.contains("agent-only")) {
     runAgent();
   } else {
-    runQuery("query");
+    runQuery();
   }
 });
 renderAgentConversation();

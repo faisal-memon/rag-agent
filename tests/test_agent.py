@@ -4,37 +4,62 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.api.agent.protocol import (
+from app.agent.protocol import (
     extract_json_object as _extract_json_object,
     extract_native_tool_call as _extract_native_tool_call,
     sanitize_step as _sanitize_step,
 )
-from app.api.agent.memory import (
+from app.agent.memory import (
+    MemoryStore,
+    approved_from_history,
     is_approval_response as _is_memory_approval_response,
-    read_memory,
     remember,
 )
-from app.api.agent.service import (
+from app.agent.service import (
     _conversation_context,
     _complete_text,
     _execute_tool,
     answer_with_agent,
 )
-from app.api.agent.tools import (
+from app.agent.tools import (
     _bounded_limit,
     grep_documents,
     render_tool_descriptions,
     read_document,
 )
-from app.api.agent.prompts import render_prompt
-from app.api.web import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page
+from app.agent.prompts import render_prompt
+from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page
 
 
 def _settings_with_api(**api_values):
-    return SimpleNamespace(api=SimpleNamespace(**api_values))
+    return SimpleNamespace(**api_values)
 
 
 class AgentTest(unittest.TestCase):
+    def test_memory_store_refreshes_after_append(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory = MemoryStore(Path(temp_dir) / "MEMORY.md")
+            self.assertIsNone(memory.load())
+            memory.append("- Search vehicle questions in /documents/Chevy Bolt.", "Routing Hints")
+
+            result = memory.read()
+
+        self.assertTrue(result["exists"])
+        self.assertIn("# Personal RAG Memory", result["content"])
+        self.assertIn("Search vehicle questions", result["content"])
+
+    def test_memory_store_load_creates_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory_path = Path(temp_dir) / "memory" / "MEMORY.md"
+            memory = MemoryStore(memory_path)
+
+            self.assertIsNone(memory.load())
+            result = memory.read()
+
+            self.assertTrue(memory_path.exists())
+        self.assertTrue(result["exists"])
+        self.assertEqual("# Personal RAG Memory\n", result["content"])
+
     def test_extract_json_object_from_model_text(self) -> None:
         text = 'Here is the plan:\n{"tool":"semantic_search","arguments":{"query":"car"}}\nDone.'
 
@@ -164,7 +189,7 @@ class AgentTest(unittest.TestCase):
                 }
             ]
 
-            with patch("app.api.agent.tools._normalized_documents", return_value=documents):
+            with patch("app.agent.tools._normalized_documents", return_value=documents):
                 matches = grep_documents("acme hardware", context_chars=40)
 
         self.assertEqual(1, len(matches))
@@ -177,7 +202,7 @@ class AgentTest(unittest.TestCase):
             markdown_path = Path(temp_dir) / "vehicle.md"
             markdown_path.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
 
-            with patch("app.api.agent.tools._markdown_path_for_document", return_value=markdown_path):
+            with patch("app.agent.tools._markdown_path_for_document", return_value=markdown_path):
                 result = read_document("/documents/vehicle.pdf", start_line=2, max_lines=2)
 
         self.assertEqual("two\nthree", result["content"])
@@ -227,10 +252,10 @@ class AgentTest(unittest.TestCase):
         }
 
         with (
-            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.api.agent.service._complete_text", side_effect=complete_text),
-            patch("app.api.agent.service.tools.semantic_search", return_value=[chunk]),
-            patch("app.api.agent.service.tools.read_document", return_value=document),
+            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.service._complete_text", side_effect=complete_text),
+            patch("app.agent.service.tools.semantic_search", return_value=[chunk]),
+            patch("app.agent.service.tools.read_document", return_value=document),
         ):
             result = answer_with_agent("What car do I have?")
 
@@ -260,9 +285,9 @@ class AgentTest(unittest.TestCase):
         }
 
         with (
-            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.api.agent.service.tools.read_memory", return_value=memory),
-            patch("app.api.agent.service._complete_text", side_effect=complete_text),
+            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.memory.MemoryStore.read", return_value=memory),
+            patch("app.agent.service._complete_text", side_effect=complete_text),
         ):
             answer_with_agent("No, for vehicle questions look in the Vehicles folder.")
 
@@ -270,27 +295,24 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Available tools:", prompts[0][1])
         self.assertIn("source path, not a normalized Markdown path", prompts[0][1])
         self.assertIn("search /documents/Vehicles first", prompts[0][1])
-        self.assertIn("Watch for user corrections", prompts[0][1])
-        self.assertIn("Only call remember when the latest user message explicitly asks", prompts[0][1])
+        self.assertIn("durable personal memory system", prompts[0][0])
+        self.assertIn("Should I remember this?", prompts[0][0])
+        self.assertIn("immediately preceding proposal", prompts[0][0])
 
-    def test_read_memory_returns_missing_file_as_empty_memory(self) -> None:
+    def test_memory_store_creates_missing_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            settings = _settings_with_api(memory_path=Path(temp_dir) / "MEMORY.md")
-            with patch("app.api.agent.memory.get_settings", return_value=settings):
-                result = read_memory()
+            memory = MemoryStore(Path(temp_dir) / "MEMORY.md")
+            result = memory.read()
 
-        self.assertFalse(result["exists"])
-        self.assertEqual("", result["content"])
+        self.assertTrue(result["exists"])
+        self.assertEqual("# Personal RAG Memory\n", result["content"])
         self.assertIsNone(result["error"])
 
-    def test_read_memory_bounds_file_content(self) -> None:
+    def test_memory_store_bounds_file_content(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_path = Path(temp_dir) / "MEMORY.md"
             memory_path.write_text("x" * 13000, encoding="utf-8")
-            settings = _settings_with_api(memory_path=memory_path)
-
-            with patch("app.api.agent.memory.get_settings", return_value=settings):
-                result = read_memory()
+            result = MemoryStore(memory_path).read()
 
         self.assertTrue(result["exists"])
         self.assertTrue(result["truncated"])
@@ -299,13 +321,11 @@ class AgentTest(unittest.TestCase):
     def test_remember_creates_memory_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_path = Path(temp_dir) / "MEMORY.md"
-            settings = _settings_with_api(memory_path=memory_path)
-
-            with patch("app.api.agent.memory.get_settings", return_value=settings):
-                result = remember(
-                    "For vehicle questions, search /documents/Vehicles first.",
-                    section="Routing Hints",
-                )
+            result = remember(
+                MemoryStore(memory_path),
+                "For vehicle questions, search /documents/Vehicles first.",
+                section="Routing Hints",
+            )
 
             content = memory_path.read_text(encoding="utf-8")
 
@@ -317,7 +337,6 @@ class AgentTest(unittest.TestCase):
     def test_remember_tool_refuses_without_explicit_user_approval(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_path = Path(temp_dir) / "MEMORY.md"
-            settings = _settings_with_api(memory_path=memory_path)
             step = {
                 "tool": "remember",
                 "arguments": {
@@ -326,8 +345,7 @@ class AgentTest(unittest.TestCase):
                 },
             }
 
-            with patch("app.api.agent.tools.get_settings", return_value=settings):
-                result = _execute_tool(step, question="What car do I have?", conversation="")
+            result = _execute_tool(step, question="What car do I have?", history=[])
 
         self.assertFalse(result["result"]["remembered"])
         self.assertFalse(memory_path.exists())
@@ -347,11 +365,10 @@ class AgentTest(unittest.TestCase):
             ]
 
             with (
-                patch("app.api.agent.service.get_settings", return_value=settings),
-                patch("app.api.agent.memory.get_settings", return_value=settings),
-                patch("app.api.agent.service.get_llm_client") as get_llm_client,
-                patch("app.api.agent.service._complete_text") as complete_text,
-                patch("app.api.agent.service.tools.semantic_search") as semantic_search,
+                patch("app.agent.service.get_api_settings", return_value=settings),
+                patch("app.agent.service.get_llm_client") as get_llm_client,
+                patch("app.agent.service._complete_text") as complete_text,
+                patch("app.agent.service.tools.semantic_search") as semantic_search,
             ):
                 result = answer_with_agent("yes", history=history)
 
@@ -376,6 +393,18 @@ class AgentTest(unittest.TestCase):
         self.assertFalse(_is_memory_approval_response("no, do not remember it"))
         self.assertFalse(_is_memory_approval_response("not that one"))
 
+    def test_memory_approval_requires_the_immediately_previous_proposal(self) -> None:
+        history = [
+            {
+                "role": "assistant",
+                "content": "Should I remember this?\n- Search /documents/Vehicles first.",
+            },
+            {"role": "user", "content": "Thanks."},
+            {"role": "assistant", "content": "You're welcome."},
+        ]
+
+        self.assertIsNone(approved_from_history("yes", history))
+
     def test_agent_passes_personal_system_prompt_to_planner(self) -> None:
         prompts = []
 
@@ -384,8 +413,8 @@ class AgentTest(unittest.TestCase):
             return '{"action":"answer","evidence_status":"casual","answer":"Hi!"}'
 
         with (
-            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.api.agent.service._complete_text", side_effect=complete_text),
+            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.service._complete_text", side_effect=complete_text),
         ):
             answer_with_agent("Hi")
 
@@ -395,12 +424,12 @@ class AgentTest(unittest.TestCase):
 
     def test_agent_can_answer_casual_message_without_tools(self) -> None:
         with (
-            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
             patch(
-                "app.api.agent.service._complete_text",
+                "app.agent.service._complete_text",
                 return_value='{"action":"answer","answer":"Hi! How can I help?"}',
             ),
-            patch("app.api.agent.service._execute_tool") as execute_tool,
+            patch("app.agent.service._execute_tool") as execute_tool,
         ):
             result = answer_with_agent("Hi")
 
@@ -438,10 +467,10 @@ class AgentTest(unittest.TestCase):
             return next(responses)
 
         with (
-            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.api.agent.service._complete_text", side_effect=complete_text),
-            patch("app.api.agent.service.tools.semantic_search", return_value=[]),
-            patch("app.api.agent.service.tools.keyword_search", return_value=[]),
+            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.service._complete_text", side_effect=complete_text),
+            patch("app.agent.service.tools.semantic_search", return_value=[]),
+            patch("app.agent.service.tools.keyword_search", return_value=[]),
         ):
             result = answer_with_agent("What was my AGI in 2024?")
 
@@ -480,10 +509,10 @@ class AgentTest(unittest.TestCase):
         }
 
         with (
-            patch("app.api.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.api.agent.service._complete_text", side_effect=complete_text),
-            patch("app.api.agent.service.tools.search_documents", return_value=[]),
-            patch("app.api.agent.service.tools.semantic_search", return_value=[chunk]),
+            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.service._complete_text", side_effect=complete_text),
+            patch("app.agent.service.tools.search_documents", return_value=[]),
+            patch("app.agent.service.tools.semantic_search", return_value=[chunk]),
         ):
             result = answer_with_agent("What car do I have?")
 
@@ -504,7 +533,7 @@ class AgentTest(unittest.TestCase):
         reasoning = []
 
         with patch(
-            "app.api.agent.service.get_settings",
+            "app.agent.service.get_api_settings",
             return_value=_settings_with_api(llm_provider="llamacpp"),
         ):
             content = _complete_text(

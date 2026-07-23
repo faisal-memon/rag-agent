@@ -3,8 +3,6 @@
 import re
 from pathlib import Path
 
-from app.core.config import get_settings
-
 MAX_MEMORY_CHARS = 12000
 MAX_MEMORY_ENTRY_CHARS = 1000
 DIRECT_WRITE_TERMS = (
@@ -28,28 +26,70 @@ APPROVAL_RESPONSES = {
 APPROVAL_TERMS = {"yes", "y", "yep", "yeah", "sure", "ok", "okay"}
 SAVE_TERMS = {"remember", "save", "store", "keep"}
 NEGATION_TERMS = {"no", "nope", "nah", "not", "dont", "don't", "do not", "never"}
+PROPOSAL_QUESTION = "should i remember this?"
 
 
-def read_memory() -> dict:
-    """Read the bounded personal memory file used as agent routing guidance."""
-    memory_path = get_settings().api.memory_path
-    try:
-        content = memory_path.read_text(encoding="utf-8", errors="ignore")
-    except FileNotFoundError:
-        return _empty_memory(memory_path)
-    except OSError as exc:
-        return _empty_memory(memory_path, error=str(exc))
+class MemoryStore:
+    """Cached view of the durable Markdown memory file."""
 
-    return {
-        "path": str(memory_path),
-        "content": content[:MAX_MEMORY_CHARS],
-        "exists": True,
-        "truncated": len(content) > MAX_MEMORY_CHARS,
-        "error": None,
-    }
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.content = ""
+        self.exists = False
+        self.error: str | None = None
+        self.loaded = False
+
+    def load(self) -> str | None:
+        """Ensure the memory file exists, refresh cached contents, and return any error."""
+        try:
+            self.content = self.path.read_text(encoding="utf-8", errors="ignore")
+            self.exists = True
+            self.error = None
+        except FileNotFoundError:
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                self.content = "# Personal RAG Memory\n"
+                self.path.write_text(self.content, encoding="utf-8")
+                self.exists = True
+                self.error = None
+            except OSError as exc:
+                self.content = ""
+                self.exists = False
+                self.error = str(exc)
+        except OSError as exc:
+            self.content = ""
+            self.exists = False
+            self.error = str(exc)
+        self.loaded = True
+        return self.error
+
+    def read(self) -> dict:
+        """Return the cached memory in the shape supplied to the agent."""
+        if not self.loaded:
+            self.load()
+        return {
+            "path": str(self.path),
+            "content": self.content[:MAX_MEMORY_CHARS],
+            "exists": self.exists,
+            "truncated": len(self.content) > MAX_MEMORY_CHARS,
+            "error": self.error,
+        }
+
+    def append(self, entry: str, section: str) -> None:
+        if not self.loaded:
+            self.load()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        prefix = "" if self.content.endswith("\n") or not self.content else "\n"
+        if self.content.strip():
+            addition = f"{prefix}\n## {section}\n\n{entry}\n"
+        else:
+            addition = f"# Personal RAG Memory\n\n## {section}\n\n{entry}\n"
+        with self.path.open("a", encoding="utf-8") as file:
+            file.write(addition)
+        self.load()
 
 
-def remember(entry: str, section: str = "Inbox") -> dict:
+def remember(memory_store: MemoryStore, entry: str, section: str = "Inbox") -> dict:
     """Append a concise Markdown bullet to the personal RAG memory file.
 
     Args:
@@ -57,29 +97,16 @@ def remember(entry: str, section: str = "Inbox") -> dict:
             evidence rules, durable user preferences, or user-approved corrections.
         section: Memory section heading, such as Routing Hints, Vocabulary, or Evidence Rules.
     """
-    memory_path = get_settings().api.memory_path
     entry = normalize_entry(entry)
     section = normalize_section(section)
     if not entry:
-        return {"remembered": False, "path": str(memory_path), "error": "Memory entry was empty."}
+        return {"remembered": False, "path": str(memory_store.path), "error": "Memory entry was empty."}
 
-    memory_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        existing = memory_path.read_text(encoding="utf-8", errors="ignore")
-    except FileNotFoundError:
-        existing = ""
-
-    prefix = "" if existing.endswith("\n") or not existing else "\n"
-    if existing.strip():
-        addition = f"{prefix}\n## {section}\n\n{entry}\n"
-    else:
-        addition = f"# Personal RAG Memory\n\n## {section}\n\n{entry}\n"
-    with memory_path.open("a", encoding="utf-8") as file:
-        file.write(addition)
+    memory_store.append(entry, section)
 
     return {
         "remembered": True,
-        "path": str(memory_path),
+        "path": str(memory_store.path),
         "section": section,
         "entry": entry,
         "error": None,
@@ -99,20 +126,20 @@ def prompt_content(memory: dict) -> str:
 
 
 def approved_from_history(question: str, history: list[dict]) -> dict | None:
-    """Extract a prior memory proposal when the latest user reply approves it."""
+    """Extract the immediately preceding explicit memory proposal after approval."""
     if not is_approval_response(question):
         return None
 
-    for item in reversed(history[-12:]):
-        if not isinstance(item, dict) or item.get("role") != "assistant":
-            continue
-        content = str(item.get("content") or "")
-        if "remember" not in content.casefold():
-            continue
-        entry = entry_from_proposal(content)
-        if entry:
-            return {"entry": entry, "section": "Inbox"}
-    return None
+    if not history:
+        return None
+    previous_message = history[-1]
+    if not isinstance(previous_message, dict) or previous_message.get("role") != "assistant":
+        return None
+    content = str(previous_message.get("content") or "")
+    if PROPOSAL_QUESTION not in content.casefold():
+        return None
+    entry = entry_from_proposal(content)
+    return {"entry": entry, "section": "Inbox"} if entry else None
 
 
 def is_approval_response(question: str) -> bool:
@@ -125,12 +152,12 @@ def is_approval_response(question: str) -> bool:
     return _contains_any(normalized_response, APPROVAL_TERMS) and _contains_any(normalized_response, SAVE_TERMS)
 
 
-def write_is_allowed(question: str, conversation: str) -> bool:
+def write_is_allowed(question: str, history: list[dict]) -> bool:
     """Allow only direct save requests or clear approval of an agent proposal."""
     lowered_question = " ".join(question.casefold().split())
     if _contains_any(lowered_question, DIRECT_WRITE_TERMS):
         return True
-    return "should i remember" in conversation.casefold() and is_approval_response(question)
+    return approved_from_history(question, history) is not None
 
 
 def result_answer(tool_result: dict) -> str:
@@ -155,16 +182,6 @@ def normalize_section(section: str) -> str:
     """Convert model text into a safe, bounded Markdown heading."""
     cleaned = " ".join(str(section or "").replace("#", "").split())
     return (cleaned or "Inbox")[:80]
-
-
-def _empty_memory(memory_path: Path, error: str | None = None) -> dict:
-    return {
-        "path": str(memory_path),
-        "content": "",
-        "exists": False,
-        "truncated": False,
-        "error": error,
-    }
 
 
 def _normalized_response(question: str) -> str:

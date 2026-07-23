@@ -4,8 +4,6 @@ from typing import Protocol
 
 import tiktoken
 
-from app.core.config import get_settings
-
 KNOWN_TOKENIZER_MODEL_IDS = {
     "mxbai-embed-large-v1": "mixedbread-ai/mxbai-embed-large-v1",
 }
@@ -48,8 +46,11 @@ class HuggingFaceTokenizer:
         return self._tokenizer.decode(token_ids, skip_special_tokens=True)
 
 
-def chunk_text(filename: str, content: str, chunk_size: int, overlap: int) -> list[Chunk]:
-    tokenizer = _get_chunk_tokenizer()
+def chunk_text(
+    filename: str, content: str, chunk_size: int, overlap: int,
+    tokenizer_model_id: str, tokenizer_local_files_only: bool,
+) -> list[Chunk]:
+    tokenizer = _get_chunk_tokenizer(tokenizer_model_id, tokenizer_local_files_only)
     tokens = tokenizer.encode(content)
     chunks: list[Chunk] = []
     start = 0
@@ -84,12 +85,11 @@ def chunk_text(filename: str, content: str, chunk_size: int, overlap: int) -> li
     return chunks
 
 
-@lru_cache(maxsize=1)
-def _get_chunk_tokenizer() -> TokenizerLike:
-    embed = get_settings().embed
+@lru_cache(maxsize=None)
+def _get_chunk_tokenizer(tokenizer_model_id: str, tokenizer_local_files_only: bool) -> TokenizerLike:
     model_id = KNOWN_TOKENIZER_MODEL_IDS.get(
-        embed.tokenizer_model_id,
-        embed.tokenizer_model_id,
+        tokenizer_model_id,
+        tokenizer_model_id,
     )
 
     try:
@@ -97,7 +97,7 @@ def _get_chunk_tokenizer() -> TokenizerLike:
 
         tokenizer = AutoTokenizer.from_pretrained(
             model_id,
-            local_files_only=embed.tokenizer_local_files_only,
+            local_files_only=tokenizer_local_files_only,
         )
         print(f"[chunking] Using embedding tokenizer model_id={model_id}", flush=True)
         return HuggingFaceTokenizer(tokenizer)
