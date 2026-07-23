@@ -1,7 +1,4 @@
-from openai import OpenAI
-
 from app.api.config import get_api_settings
-from app.api.llm import get_llm_client
 from app.core.db import db_cursor
 from app.core.embeddings import embed_texts
 
@@ -9,20 +6,7 @@ RETRIEVAL_MODE_SEMANTIC = "semantic"
 RETRIEVAL_MODE_KEYWORD = "keyword"
 
 
-def answer_question(question: str, mode: str = RETRIEVAL_MODE_SEMANTIC) -> dict:
-    citations = retrieve_chunks(question, mode=mode)
-
-    settings = get_api_settings()
-    client, model = get_llm_client(settings)
-    answer = _generate_answer(question, citations, client, model)
-    return {"answer": answer, "citations": citations}
-
-
-def retrieve_chunks(question: str, mode: str = RETRIEVAL_MODE_SEMANTIC) -> list[dict]:
-    return retrieve_debug(question, mode=mode)["chunks"]
-
-
-def retrieve_debug(
+def search_debug(
     question: str,
     mode: str = RETRIEVAL_MODE_SEMANTIC,
     limit: int | None = None,
@@ -191,40 +175,3 @@ def _rows_to_chunks(rows: list[tuple], mode: str) -> list[dict]:
             }
         )
     return chunks
-
-
-def _generate_answer(question: str, citations: list[dict], client: OpenAI, model: str) -> str:
-    api = get_api_settings()
-    if not citations:
-        return "I could not find any relevant documents for that question."
-
-    context_blocks = []
-    for citation in citations:
-        header = f"{citation['filename']} | section={citation['section'] or 'n/a'} | page={citation['page'] or 'n/a'}"
-        context_blocks.append(f"{header}\n{citation['content']}")
-
-    prompt = (
-        "Answer using ONLY the provided context.\n\n"
-        f"Question:\n{question}\n\n"
-        "Context:\n"
-        + "\n\n---\n\n".join(context_blocks)
-        + "\n\nInclude document references in your answer."
-    )
-    if api.llm_provider == "llamacpp":
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Answer using only the provided context and include document references.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-        )
-        return response.choices[0].message.content or ""
-
-    response = client.responses.create(
-        model=model,
-        input=prompt,
-    )
-    return response.output_text

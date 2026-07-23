@@ -8,13 +8,12 @@ from app.api.agent import answer_with_agent
 from app.api.agent.memory import get_memory_store
 from app.api.agent.prompts import initialize_prompts
 from app.api.pipeline import pipeline_status
-from app.api.retrieval import answer_question, retrieve_debug
+from app.api.search import search_debug
 from app.api.schemas import (
     AgentQueryRequest,
     AgentQueryResponse,
     PipelineStatusResponse,
     QueryRequest,
-    QueryResponse,
     ReindexResponse,
     RetrievalDebugResponse,
 )
@@ -55,11 +54,6 @@ def reindex() -> ReindexResponse:
     return ReindexResponse(**reindex_source())
 
 
-@app.post("/query", response_model=QueryResponse)
-def query(request: QueryRequest) -> QueryResponse:
-    return QueryResponse(**answer_question(request.question, mode=request.mode))
-
-
 @app.post("/agent/query", response_model=AgentQueryResponse)
 def agent_query(request: AgentQueryRequest) -> AgentQueryResponse:
     history = [message.model_dump() for message in request.history]
@@ -68,7 +62,7 @@ def agent_query(request: AgentQueryRequest) -> AgentQueryResponse:
 
 @app.post("/debug/retrieve", response_model=RetrievalDebugResponse)
 def debug_retrieve(request: QueryRequest) -> RetrievalDebugResponse:
-    result = retrieve_debug(request.question, mode=request.mode, limit=request.limit, offset=request.offset)
+    result = search_debug(request.question, mode=request.mode, limit=request.limit, offset=request.offset)
     return RetrievalDebugResponse(
         question=request.question,
         mode=request.mode,

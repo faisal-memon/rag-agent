@@ -14,7 +14,7 @@ RAG Agent is a local-first MVP for a headless document agent that ingests files 
 - Optional Docling-backed normalization phase that writes Markdown plus JSON metadata sidecars before database indexing
 - Long-running normalization watcher for incremental raw-document changes
 - Long-running embed watcher for incremental normalized Markdown indexing
-- `POST /reindex`, `POST /query`, and experimental `POST /agent/query` endpoints
+- `POST /reindex`, `POST /agent/query`, and debug retrieval endpoints
 
 ## Not yet implemented
 
@@ -74,16 +74,8 @@ For a one-shot manual reindex, run:
 python -m app.embed.worker
 ```
 
-5. Ask a question:
-
-```bash
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"question":"What is the schedule?"}'
-```
-
-Or try the experimental agent path, which lets the model iteratively choose read-only tools, inspect each result, and
-decide whether to investigate further before answering:
+5. Ask a question through the agent. It iteratively chooses read-only tools, inspects each result, and decides whether
+to investigate further before answering:
 
 ```bash
 curl -X POST http://localhost:8000/agent/query \
@@ -106,7 +98,7 @@ Web routes:
 
 ## Layout
 
-- `app/api/`: FastAPI entrypoint, retrieval, page rendering, static web assets, templates, and API schemas
+- `app/api/`: FastAPI entrypoint, search tools, page rendering, static web assets, templates, and API schemas
 - `app/normalize/`: Phase 1 raw document normalization to Markdown and JSON metadata, using Docling by default
 - `app/embed/`: normalized Markdown watching/scanning, mismatch reconciliation, chunking, embedding, and DB upserts
 - `app/core/`: shared settings, DB, parser, tokenizer/chunking, and model client helpers

@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.api.retrieval import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, retrieve_debug
+from app.api.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
 from app.api.agent.memory import read_memory, remember
 from app.api.config import get_api_settings
 from app.core.db import db_cursor
@@ -111,7 +111,7 @@ def keyword_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
             expanded acronyms such as AGI plus adjusted gross income.
         limit: Maximum number of chunks to return.
     """
-    result = retrieve_debug(query, mode=RETRIEVAL_MODE_KEYWORD, limit=_bounded_limit(limit), offset=0)
+    result = search_debug(query, mode=RETRIEVAL_MODE_KEYWORD, limit=_bounded_limit(limit), offset=0)
     return result["chunks"]
 
 
@@ -123,7 +123,7 @@ def semantic_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
             similarity matters more than exact terms.
         limit: Maximum number of chunks to return.
     """
-    result = retrieve_debug(query, mode=RETRIEVAL_MODE_SEMANTIC, limit=_bounded_limit(limit), offset=0)
+    result = search_debug(query, mode=RETRIEVAL_MODE_SEMANTIC, limit=_bounded_limit(limit), offset=0)
     return result["chunks"]
 
 
