@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from app.api.config import get_api_settings
+from app.agent.config import get_api_settings
 from app.embed.config import get_embed_settings
 from app.normalize.config import get_normalize_settings
 

@@ -98,11 +98,11 @@ Web routes:
 
 ## Layout
 
-- `app/api/`: FastAPI entrypoint, search tools, page rendering, static web assets, templates, and API schemas
+- `app/agent/`: agent runtime, prompt and memory state, retrieval tools, and its FastAPI/web interface
 - `app/normalize/`: Phase 1 raw document normalization to Markdown and JSON metadata, using Docling by default
 - `app/embed/`: normalized Markdown watching/scanning, mismatch reconciliation, chunking, embedding, and DB upserts
 - `app/core/`: shared settings, DB, parser, tokenizer/chunking, and model client helpers
-- `app/api/config.py`, `app/embed/config.py`, `app/normalize/config.py`: runtime-specific settings grouped with
+- `app/agent/config.py`, `app/embed/config.py`, `app/normalize/config.py`: runtime-specific settings grouped with
   the code that uses them
 - `sql/init.sql`: schema and indexes
 - `Dockerfile`: multi-target runtime image for `api`, `embed`, and `normalize`

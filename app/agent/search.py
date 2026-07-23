@@ -1,4 +1,4 @@
-from app.api.config import get_api_settings
+from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 from app.core.embeddings import embed_texts
 

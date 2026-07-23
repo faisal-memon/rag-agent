@@ -3,9 +3,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.api.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
-from app.api.agent.memory import read_memory, remember
-from app.api.config import get_api_settings
+from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
+from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 
 DEFAULT_DOCUMENT_LIMIT = 8
@@ -29,6 +28,19 @@ RETRIEVAL_TOOL_NAMES = (
     "semantic_search",
     "grep_documents",
 )
+
+
+def remember(entry: str, section: str = "Inbox") -> None:
+    """Append a concise Markdown bullet to the personal RAG memory file.
+
+    Args:
+        entry: Durable memory bullet, usually starting with "- ". Use for routing hints, vocabulary,
+            evidence rules, durable user preferences, or user-approved corrections.
+        section: Memory section heading, such as Routing Hints, Vocabulary, or Evidence Rules.
+
+    The controller owns the actual MemoryStore, so this declaration only describes the model-visible tool.
+    """
+    raise RuntimeError("The remember tool must be executed by the agent controller.")
 
 
 def search_documents(

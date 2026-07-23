@@ -2,7 +2,7 @@
 
 from openai import OpenAI
 
-from app.api.config import ApiSettings
+from app.agent.config import ApiSettings
 from app.core.embeddings import get_openai_client
 
 

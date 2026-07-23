@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from app.api.pipeline import _document_row
+from app.agent.pipeline import _document_row
 
 
 class PipelineStatusTest(unittest.TestCase):

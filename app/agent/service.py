@@ -4,12 +4,13 @@ from typing import Any
 
 from openai import OpenAI
 
-import app.api.agent.tools as tools
-from app.api.agent import memory
-from app.api.agent import protocol
-from app.api.agent.prompts import render_prompt
-from app.api.config import get_api_settings
-from app.api.llm import get_llm_client
+import app.agent.tools as tools
+from app.agent import memory
+from app.agent import protocol
+from app.agent.prompts import render_prompt
+from app.agent.config import get_api_settings
+from app.agent.llm import get_llm_client
+from app.agent.runtime import AgentRuntime
 
 MAX_HISTORY_MESSAGES = 12
 MAX_HISTORY_CHARS = 24000
@@ -17,13 +18,22 @@ MAX_REASONING_STEP_CHARS = 12000
 MAX_REASONING_TOTAL_CHARS = 48000
 MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
-def render_system_prompt() -> str:
+def render_system_prompt(runtime: AgentRuntime | None = None) -> str:
+    if runtime is not None:
+        return runtime.prompts.render("system.md", {})
     return render_prompt("system.md", {})
 
 
-def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
+def answer_with_agent(
+    question: str,
+    history: list[dict] | None = None,
+    runtime: AgentRuntime | None = None,
+) -> dict:
     history = history or []
-    max_steps = get_api_settings().agent_max_steps
+    runtime = runtime or AgentRuntime(get_api_settings())
+    if not runtime.memory.loaded:
+        runtime.startup()
+    max_steps = runtime.settings.agent_max_steps
     conversation = _conversation_context(history)
     plan: list[dict] = []
     tool_results: list[dict] = []
@@ -36,7 +46,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
     approved_memory = memory.approved_from_history(question, history)
     if approved_memory:
         step = {"tool": "remember", "arguments": approved_memory}
-        tool_result = _execute_tool(step, question, history)
+        tool_result = _execute_tool(step, question, history, runtime)
         return {
             "answer": memory.result_answer(tool_result),
             "plan": [step],
@@ -55,8 +65,8 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             "citations": [],
         }
 
-    client, model = get_llm_client(get_api_settings())
-    memory_state = tools.read_memory()
+    client, model = get_llm_client(runtime.settings)
+    memory_state = runtime.memory.read()
 
     for _ in range(max_steps):
         decision = _decide_next_action(
@@ -70,6 +80,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             client,
             model,
             debug,
+            runtime,
         )
         decision_feedback = ""
         if decision["action"] == "synthesize":
@@ -132,7 +143,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             tool=step["tool"],
             arguments=step["arguments"],
         )
-        tool_result = _execute_tool(step, question, history)
+        tool_result = _execute_tool(step, question, history, runtime)
         tool_results.append(tool_result)
         _append_debug(
             debug,
@@ -154,6 +165,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             client,
             model,
             debug,
+            runtime,
         )
     citations = _citations_from_tool_results(tool_results)
 
@@ -177,8 +189,10 @@ def _decide_next_action(
     client: OpenAI,
     model: str,
     debug: list[dict],
+    runtime: AgentRuntime | None = None,
 ) -> dict:
-    prompt = render_prompt(
+    prompt = _render_prompt(
+        runtime,
         "planner.md",
         {
             "remaining_steps": remaining_steps,
@@ -194,7 +208,7 @@ def _decide_next_action(
     text = _complete_text(
         client,
         model,
-        system=f"{render_system_prompt()}\n\nChoose one safe bounded action at a time. Return JSON only.",
+        system=f"{render_system_prompt(runtime)}\n\nChoose one safe bounded action at a time. Return JSON only.",
         prompt=prompt,
         reasoning=reasoning,
         phase="planning",
@@ -273,7 +287,12 @@ def _decide_next_action(
     return {"action": "synthesize"}
 
 
-def _execute_tool(step: dict, question: str = "", history: list[dict] | None = None) -> dict:
+def _execute_tool(
+    step: dict,
+    question: str = "",
+    history: list[dict] | None = None,
+    runtime: AgentRuntime | None = None,
+) -> dict:
     tool = step["tool"]
     arguments = step.get("arguments", {})
     try:
@@ -318,7 +337,9 @@ def _execute_tool(step: dict, question: str = "", history: list[dict] | None = N
                     ),
                 }
             else:
-                result = tools.remember(
+                memory_store = runtime.memory if runtime is not None else memory.get_memory_store()
+                result = memory.remember(
+                    memory_store,
                     entry=str(arguments.get("entry") or ""),
                     section=str(arguments.get("section") or "Inbox"),
                 )
@@ -340,8 +361,10 @@ def _synthesize_answer(
     client: OpenAI,
     model: str,
     debug: list[dict],
+    runtime: AgentRuntime | None = None,
 ) -> str:
-    prompt = render_prompt(
+    prompt = _render_prompt(
+        runtime,
         "answer.md",
         {
             "memory_path": memory_state.get("path") or "not configured",
@@ -355,13 +378,19 @@ def _synthesize_answer(
     answer = _complete_text(
         client,
         model,
-        system=render_system_prompt(),
+        system=render_system_prompt(runtime),
         prompt=prompt,
         reasoning=reasoning,
         phase="answer",
     )
     _append_debug(debug, "model_response", phase="answer", raw_text=answer)
     return answer
+
+
+def _render_prompt(runtime: AgentRuntime | None, name: str, values: dict[str, object]) -> str:
+    if runtime is not None:
+        return runtime.prompts.render(name, values)
+    return render_prompt(name, values)
 
 
 def _complete_text(

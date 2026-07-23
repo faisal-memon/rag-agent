@@ -3,16 +3,16 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from app.api.config import get_api_settings
-from app.api.search import search_debug
-from app.api.schemas import QueryRequest
+from app.agent.config import get_api_settings
+from app.agent.search import search_debug
+from app.agent.api.schemas import QueryRequest
 
 
 class SearchTest(unittest.TestCase):
     def test_keyword_search_does_not_generate_an_embedding(self) -> None:
         with (
-            patch("app.api.search._keyword_rows", return_value=[]) as keyword_rows,
-            patch("app.api.search.embed_texts") as embed_texts,
+            patch("app.agent.search._keyword_rows", return_value=[]) as keyword_rows,
+            patch("app.agent.search.embed_texts") as embed_texts,
         ):
             result = search_debug("adjusted gross income", mode="keyword")
 
@@ -22,8 +22,8 @@ class SearchTest(unittest.TestCase):
 
     def test_semantic_search_generates_query_embedding(self) -> None:
         with (
-            patch("app.api.search._semantic_rows", return_value=[]) as semantic_rows,
-            patch("app.api.search.embed_texts", return_value=[[0.1, 0.2]]) as embed_texts,
+            patch("app.agent.search._semantic_rows", return_value=[]) as semantic_rows,
+            patch("app.agent.search.embed_texts", return_value=[[0.1, 0.2]]) as embed_texts,
         ):
             search_debug("taxable income concept", mode="semantic")
 

@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from app.api.config import get_api_settings
+from app.agent.config import get_api_settings
 
 MAX_MEMORY_CHARS = 12000
 MAX_MEMORY_ENTRY_CHARS = 1000
@@ -106,7 +106,7 @@ def read_memory() -> dict:
     return get_memory_store().read()
 
 
-def remember(entry: str, section: str = "Inbox") -> dict:
+def remember(memory_store: MemoryStore, entry: str, section: str = "Inbox") -> dict:
     """Append a concise Markdown bullet to the personal RAG memory file.
 
     Args:
@@ -114,7 +114,6 @@ def remember(entry: str, section: str = "Inbox") -> dict:
             evidence rules, durable user preferences, or user-approved corrections.
         section: Memory section heading, such as Routing Hints, Vocabulary, or Evidence Rules.
     """
-    memory_store = get_memory_store()
     entry = normalize_entry(entry)
     section = normalize_section(section)
     if not entry:
