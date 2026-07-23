@@ -3,8 +3,6 @@
 import re
 from pathlib import Path
 
-from app.agent.config import get_api_settings
-
 MAX_MEMORY_CHARS = 12000
 MAX_MEMORY_ENTRY_CHARS = 1000
 DIRECT_WRITE_TERMS = (
@@ -29,7 +27,6 @@ APPROVAL_TERMS = {"yes", "y", "yep", "yeah", "sure", "ok", "okay"}
 SAVE_TERMS = {"remember", "save", "store", "keep"}
 NEGATION_TERMS = {"no", "nope", "nah", "not", "dont", "don't", "do not", "never"}
 PROPOSAL_QUESTION = "should i remember this?"
-_memory_store: "MemoryStore | None" = None
 
 
 class MemoryStore:
@@ -90,20 +87,6 @@ class MemoryStore:
         with self.path.open("a", encoding="utf-8") as file:
             file.write(addition)
         self.load()
-
-
-def get_memory_store() -> MemoryStore:
-    """Return the process-local store for the configured memory file."""
-    global _memory_store
-    memory_path = get_api_settings().memory_path
-    if _memory_store is None or _memory_store.path != memory_path:
-        _memory_store = MemoryStore(memory_path)
-    return _memory_store
-
-
-def read_memory() -> dict:
-    """Read the bounded personal memory used as agent routing guidance."""
-    return get_memory_store().read()
 
 
 def remember(memory_store: MemoryStore, entry: str, section: str = "Inbox") -> dict:

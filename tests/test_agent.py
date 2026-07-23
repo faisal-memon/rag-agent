@@ -13,7 +13,6 @@ from app.agent.memory import (
     MemoryStore,
     approved_from_history,
     is_approval_response as _is_memory_approval_response,
-    read_memory,
     remember,
 )
 from app.agent.service import (
@@ -300,24 +299,20 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Should I remember this?", prompts[0][0])
         self.assertIn("immediately preceding proposal", prompts[0][0])
 
-    def test_read_memory_creates_missing_file(self) -> None:
+    def test_memory_store_creates_missing_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            settings = _settings_with_api(memory_path=Path(temp_dir) / "MEMORY.md")
-            with patch("app.agent.memory.get_api_settings", return_value=settings):
-                result = read_memory()
+            memory = MemoryStore(Path(temp_dir) / "MEMORY.md")
+            result = memory.read()
 
         self.assertTrue(result["exists"])
         self.assertEqual("# Personal RAG Memory\n", result["content"])
         self.assertIsNone(result["error"])
 
-    def test_read_memory_bounds_file_content(self) -> None:
+    def test_memory_store_bounds_file_content(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_path = Path(temp_dir) / "MEMORY.md"
             memory_path.write_text("x" * 13000, encoding="utf-8")
-            settings = _settings_with_api(memory_path=memory_path)
-
-            with patch("app.agent.memory.get_api_settings", return_value=settings):
-                result = read_memory()
+            result = MemoryStore(memory_path).read()
 
         self.assertTrue(result["exists"])
         self.assertTrue(result["truncated"])
@@ -326,14 +321,11 @@ class AgentTest(unittest.TestCase):
     def test_remember_creates_memory_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_path = Path(temp_dir) / "MEMORY.md"
-            settings = _settings_with_api(memory_path=memory_path)
-
-            with patch("app.agent.memory.get_api_settings", return_value=settings):
-                result = remember(
-                    MemoryStore(memory_path),
-                    "For vehicle questions, search /documents/Vehicles first.",
-                    section="Routing Hints",
-                )
+            result = remember(
+                MemoryStore(memory_path),
+                "For vehicle questions, search /documents/Vehicles first.",
+                section="Routing Hints",
+            )
 
             content = memory_path.read_text(encoding="utf-8")
 
@@ -345,7 +337,6 @@ class AgentTest(unittest.TestCase):
     def test_remember_tool_refuses_without_explicit_user_approval(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_path = Path(temp_dir) / "MEMORY.md"
-            settings = _settings_with_api(memory_path=memory_path)
             step = {
                 "tool": "remember",
                 "arguments": {
@@ -354,8 +345,7 @@ class AgentTest(unittest.TestCase):
                 },
             }
 
-            with patch("app.agent.memory.get_api_settings", return_value=settings):
-                result = _execute_tool(step, question="What car do I have?", history=[])
+            result = _execute_tool(step, question="What car do I have?", history=[])
 
         self.assertFalse(result["result"]["remembered"])
         self.assertFalse(memory_path.exists())
@@ -376,7 +366,6 @@ class AgentTest(unittest.TestCase):
 
             with (
                 patch("app.agent.service.get_api_settings", return_value=settings),
-                patch("app.agent.memory.get_api_settings", return_value=settings),
                 patch("app.agent.service.get_llm_client") as get_llm_client,
                 patch("app.agent.service._complete_text") as complete_text,
                 patch("app.agent.service.tools.semantic_search") as semantic_search,

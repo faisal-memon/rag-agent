@@ -337,9 +337,10 @@ def _execute_tool(
                     ),
                 }
             else:
-                memory_store = runtime.memory if runtime is not None else memory.get_memory_store()
+                if runtime is None:
+                    raise RuntimeError("AgentRuntime is required to write memory.")
                 result = memory.remember(
-                    memory_store,
+                    runtime.memory,
                     entry=str(arguments.get("entry") or ""),
                     section=str(arguments.get("section") or "Inbox"),
                 )
