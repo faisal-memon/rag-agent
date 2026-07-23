@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from queue import Empty, Queue
 
-from app.config import Settings
+from app.normalize.config import NormalizeSettings
 from app.core.files import SUPPORTED_SUFFIXES, file_checksum
 from app.normalize.service import NORMALIZATION_VERSION, normalize_file
 
@@ -12,7 +12,7 @@ logger = logging.getLogger("rag-normalize-reconcile")
 
 
 class Reconciler:
-    def __init__(self, settings: Settings, work_queue: Queue[Path]) -> None:
+    def __init__(self, settings: NormalizeSettings, work_queue: Queue[Path]) -> None:
         self.settings = settings
         self.work_queue = work_queue
         self.deferred: set[Path] = set()
@@ -25,7 +25,7 @@ class Reconciler:
         seen: set[Path] = set()
 
         try:
-            path = self.work_queue.get(timeout=self.settings.normalize.reconcile_interval_seconds)
+            path = self.work_queue.get(timeout=self.settings.reconcile_interval_seconds)
             self._reconcile_once(path, seen)
             self.work_queue.task_done()
         except Empty:
@@ -57,8 +57,8 @@ class Reconciler:
             _log("Reconcile error", path=str(path), error=str(exc))
 
 
-def reconcile_paths(paths: set[Path], settings: Settings) -> set[Path]:
-    enabled_suffixes = SUPPORTED_SUFFIXES & settings.normalize.enabled_suffixes
+def reconcile_paths(paths: set[Path], settings: NormalizeSettings) -> set[Path]:
+    enabled_suffixes = SUPPORTED_SUFFIXES & settings.enabled_suffixes
     deferred: set[Path] = set()
 
     for path in sorted(paths):
@@ -73,7 +73,7 @@ def reconcile_paths(paths: set[Path], settings: Settings) -> set[Path]:
     return deferred
 
 
-def reconcile_path(path: Path, settings: Settings) -> bool:
+def reconcile_path(path: Path, settings: NormalizeSettings) -> bool:
     if not path.exists():
         deleted_artifacts = delete_normalized_artifacts_for_source(path, settings)
         _log("Reconciled deleted source", path=str(path), deleted_artifacts=deleted_artifacts)
@@ -102,7 +102,7 @@ def reconcile_path(path: Path, settings: Settings) -> bool:
     return True
 
 
-def normalized_artifact_is_current(source_path: Path, checksum: str, settings: Settings) -> bool:
+def normalized_artifact_is_current(source_path: Path, checksum: str, settings: NormalizeSettings) -> bool:
     for metadata_path in _metadata_paths(settings):
         metadata = _read_metadata(metadata_path)
         if not metadata:
@@ -120,7 +120,7 @@ def normalized_artifact_is_current(source_path: Path, checksum: str, settings: S
     return False
 
 
-def delete_normalized_artifacts_for_source(source_path: Path, settings: Settings) -> int:
+def delete_normalized_artifacts_for_source(source_path: Path, settings: NormalizeSettings) -> int:
     deleted_count = 0
     for metadata_path in _metadata_paths(settings):
         metadata = _read_metadata(metadata_path)
@@ -146,12 +146,12 @@ def delete_normalized_artifacts_for_source(source_path: Path, settings: Settings
     return deleted_count
 
 
-def wait_for_stable_file(path: Path, settings: Settings) -> bool:
+def wait_for_stable_file(path: Path, settings: NormalizeSettings) -> bool:
     previous: tuple[int, int] | None = None
     stable_count = 0
-    required_checks = settings.normalize.stability_checks
-    interval_seconds = settings.normalize.stability_interval_seconds
-    deadline = time.monotonic() + settings.normalize.stability_max_wait_seconds
+    required_checks = settings.stability_checks
+    interval_seconds = settings.stability_interval_seconds
+    deadline = time.monotonic() + settings.stability_max_wait_seconds
     remaining_seconds = max(0.0, deadline - time.monotonic())
 
     while remaining_seconds > 0 or previous is None:
@@ -179,8 +179,8 @@ def wait_for_stable_file(path: Path, settings: Settings) -> bool:
     return False
 
 
-def _metadata_paths(settings: Settings):
-    metadata_dir = settings.common.normalized_output_dir / "metadata"
+def _metadata_paths(settings: NormalizeSettings):
+    metadata_dir = settings.normalized_output_dir / "metadata"
     if not metadata_dir.exists():
         return
     yield from metadata_dir.rglob("*.json")

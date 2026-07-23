@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
+from app.api.config import get_api_settings
 from app.api.retrieval import retrieve_debug
 from app.api.schemas import QueryRequest
 
@@ -15,7 +16,7 @@ class RetrievalTest(unittest.TestCase):
         ):
             result = retrieve_debug("adjusted gross income", mode="keyword")
 
-        keyword_rows.assert_called_once_with("adjusted gross income", 8, 0)
+        keyword_rows.assert_called_once_with("adjusted gross income", 8, 0, get_api_settings())
         embed_texts.assert_not_called()
         self.assertEqual([], result["chunks"])
 
@@ -26,8 +27,19 @@ class RetrievalTest(unittest.TestCase):
         ):
             retrieve_debug("taxable income concept", mode="semantic")
 
-        embed_texts.assert_called_once_with(["taxable income concept"], input_type="query")
-        semantic_rows.assert_called_once_with([0.1, 0.2], 8, 0)
+        settings = get_api_settings()
+        embed_texts.assert_called_once_with(
+            ["taxable income concept"], provider=settings.embedding_provider,
+            llamacpp_base_url=settings.embedding_llamacpp_base_url,
+            llamacpp_api_key=settings.embedding_llamacpp_api_key,
+            llamacpp_model=settings.embedding_llamacpp_model,
+            openai_api_key=settings.openai_api_key,
+            openai_embedding_model=settings.openai_embedding_model,
+            query_prefix=settings.embedding_query_prefix,
+            document_prefix=settings.embedding_document_prefix,
+            input_type="query",
+        )
+        semantic_rows.assert_called_once_with([0.1, 0.2], 8, 0, settings)
 
     def test_query_schema_rejects_removed_auto_mode(self) -> None:
         with self.assertRaises(ValidationError):

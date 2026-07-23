@@ -1,11 +1,18 @@
 """Configuration for normalized-document embedding and reconciliation."""
 
+from functools import lru_cache
+from pathlib import Path
+
 from pydantic import Field
 
-from app.core.config import ConfiguredSettings
+from app.core.config import ConfiguredSettings, DatabaseSettings
 
 
 class EmbedSettings(ConfiguredSettings):
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    normalized_output_dir: Path = Field(default=Path("/data/normalized"), alias="NORMALIZED_OUTPUT_DIR")
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    openai_embedding_model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
     provider: str = Field(default="openai", alias="EMBEDDING_PROVIDER")
     llamacpp_base_url: str = Field(default="http://localhost:8081/v1", alias="LLAMACPP_EMBEDDING_BASE_URL")
     llamacpp_api_key: str = Field(default="not-needed", alias="LLAMACPP_EMBEDDING_API_KEY")
@@ -23,3 +30,8 @@ class EmbedSettings(ConfiguredSettings):
     indexing_version: str = Field(default="tokenizer-aligned-v1", alias="RAG_INDEXING_VERSION")
     watch_debounce_seconds: float = Field(default=15.0, ge=0.0, alias="EMBED_WATCH_DEBOUNCE_SECONDS")
     reconcile_interval_seconds: float = Field(default=15.0, ge=0.0, alias="EMBED_RECONCILE_INTERVAL_SECONDS")
+
+
+@lru_cache
+def get_embed_settings() -> EmbedSettings:
+    return EmbedSettings()

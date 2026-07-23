@@ -8,8 +8,8 @@ import app.api.agent.tools as tools
 from app.api.agent import memory
 from app.api.agent import protocol
 from app.api.agent.prompts import render_prompt
-from app.config import get_settings
-from app.core.llm import get_llm_client
+from app.api.config import get_api_settings
+from app.api.llm import get_llm_client
 
 MAX_HISTORY_MESSAGES = 12
 MAX_HISTORY_CHARS = 24000
@@ -23,7 +23,7 @@ def render_system_prompt() -> str:
 
 def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
     history = history or []
-    max_steps = get_settings().api.agent_max_steps
+    max_steps = get_api_settings().agent_max_steps
     conversation = _conversation_context(history)
     plan: list[dict] = []
     tool_results: list[dict] = []
@@ -55,7 +55,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             "citations": [],
         }
 
-    client, model = get_llm_client()
+    client, model = get_llm_client(get_api_settings())
     memory_state = tools.read_memory()
 
     for _ in range(max_steps):
@@ -372,7 +372,7 @@ def _complete_text(
     reasoning: list[dict] | None = None,
     phase: str = "",
 ) -> str:
-    api = get_settings().api
+    api = get_api_settings()
     if api.llm_provider == "llamacpp":
         response = client.chat.completions.create(
             model=model,

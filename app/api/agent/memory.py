@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from app.config import get_settings
+from app.api.config import get_api_settings
 
 MAX_MEMORY_CHARS = 12000
 MAX_MEMORY_ENTRY_CHARS = 1000
@@ -88,7 +88,7 @@ class MemoryStore:
 def get_memory_store() -> MemoryStore:
     """Return the process-local store for the configured memory file."""
     global _memory_store
-    memory_path = get_settings().api.memory_path
+    memory_path = get_api_settings().memory_path
     if _memory_store is None or _memory_store.path != memory_path:
         _memory_store = MemoryStore(memory_path)
     return _memory_store

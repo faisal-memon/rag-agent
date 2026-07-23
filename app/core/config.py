@@ -1,7 +1,5 @@
 """Shared configuration primitives with no runtime-specific dependencies."""
 
-from pathlib import Path
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,19 +24,7 @@ class DatabaseSettings(ConfiguredSettings):
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
 
 
-class CommonSettings(ConfiguredSettings):
-    """Settings shared by the API, embedding, and normalization runtimes."""
-
-    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
-    nextcloud_source_dir: Path = Field(default=Path("/data/nextcloud"), alias="NEXTCLOUD_SOURCE_DIR")
-    normalized_output_dir: Path = Field(default=Path("/data/normalized"), alias="NORMALIZED_OUTPUT_DIR")
-    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
-    openai_embedding_model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
-    openai_chat_model: str = Field(default="gpt-4.1-mini", alias="OPENAI_CHAT_MODEL")
-
-
 __all__ = [
-    "CommonSettings",
     "ConfiguredSettings",
     "DatabaseSettings",
 ]

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
-from app.config import get_settings
+from app.normalize.config import get_normalize_settings
 from app.core.files import SUPPORTED_SUFFIXES, ParsedDocument, file_checksum, guess_mime_type
 
 NORMALIZATION_VERSION = "normalized-artifacts-v2"
@@ -23,15 +23,15 @@ class NormalizedArtifact:
 
 
 def normalize_source() -> dict:
-    settings = get_settings()
-    source_dir = settings.common.nextcloud_source_dir
-    output_dir = settings.common.normalized_output_dir
+    settings = get_normalize_settings()
+    source_dir = settings.nextcloud_source_dir
+    output_dir = settings.normalized_output_dir
     documents_dir = output_dir / "documents"
     metadata_dir = output_dir / "metadata"
     documents_dir.mkdir(parents=True, exist_ok=True)
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
-    enabled_suffixes = SUPPORTED_SUFFIXES & settings.normalize.enabled_suffixes
+    enabled_suffixes = SUPPORTED_SUFFIXES & settings.enabled_suffixes
     normalized = 0
     skipped = 0
     errors: list[dict] = []
@@ -81,7 +81,7 @@ def normalize_source() -> dict:
 
 
 def normalize_file(path: Path) -> NormalizedArtifact:
-    output_dir = get_settings().common.normalized_output_dir
+    output_dir = get_normalize_settings().normalized_output_dir
     documents_dir = output_dir / "documents"
     metadata_dir = output_dir / "metadata"
     documents_dir.mkdir(parents=True, exist_ok=True)
@@ -144,7 +144,7 @@ def _artifact_paths(path: Path, artifact_id: str, documents_dir: Path, metadata_
 
 
 def _relative_source_parent(path: Path) -> Path:
-    source_dir = get_settings().common.nextcloud_source_dir
+    source_dir = get_normalize_settings().nextcloud_source_dir
     try:
         relative_path = path.resolve().relative_to(source_dir.resolve())
     except ValueError:
@@ -167,7 +167,7 @@ def _write_artifact(path: Path, content: str) -> None:
 
 
 def _normalize_document(path: Path) -> ParsedDocument:
-    backend = get_settings().normalize.backend.lower().strip()
+    backend = get_normalize_settings().backend.lower().strip()
 
     if path.suffix.lower() in PASSTHROUGH_NORMALIZATION_SUFFIXES:
         return _normalize_passthrough(path)

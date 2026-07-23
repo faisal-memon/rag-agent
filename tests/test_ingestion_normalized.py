@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.config import get_settings
+from app.embed.config import get_embed_settings
 from app.embed.service import _current_indexing_strategy, _normalized_candidate_from_path, _normalized_metadata_path
 
 
@@ -14,7 +14,7 @@ class NormalizedIngestionTest(unittest.TestCase):
             "NEXTCLOUD_SOURCE_DIR": os.environ.get("NEXTCLOUD_SOURCE_DIR"),
             "NORMALIZED_OUTPUT_DIR": os.environ.get("NORMALIZED_OUTPUT_DIR"),
         }
-        get_settings.cache_clear()
+        get_embed_settings.cache_clear()
 
     def tearDown(self) -> None:
         for key, value in self._original_env.items():
@@ -22,13 +22,13 @@ class NormalizedIngestionTest(unittest.TestCase):
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        get_settings.cache_clear()
+        get_embed_settings.cache_clear()
 
     def test_normalized_metadata_path_mirrors_markdown_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             normalized_dir = Path(temp_dir) / "normalized"
             os.environ["NORMALIZED_OUTPUT_DIR"] = str(normalized_dir)
-            get_settings.cache_clear()
+            get_embed_settings.cache_clear()
 
             markdown_path = normalized_dir / "documents" / "Taxes" / "2017 Taxes" / "receipt-abc.md"
 
@@ -64,7 +64,7 @@ class NormalizedIngestionTest(unittest.TestCase):
             )
             os.environ["NEXTCLOUD_SOURCE_DIR"] = str(source_dir)
             os.environ["NORMALIZED_OUTPUT_DIR"] = str(normalized_dir)
-            get_settings.cache_clear()
+            get_embed_settings.cache_clear()
 
             candidate = _normalized_candidate_from_path(markdown_path)
 
@@ -77,7 +77,7 @@ class NormalizedIngestionTest(unittest.TestCase):
         self.assertEqual(candidate["chunk_metadata"]["extraction_backend"], "docling")
 
     def test_indexing_strategy_is_normalized(self) -> None:
-        get_settings.cache_clear()
+        get_embed_settings.cache_clear()
 
         strategy = _current_indexing_strategy()
 

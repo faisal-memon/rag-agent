@@ -4,7 +4,7 @@ from queue import Queue
 
 from watchfiles import Change, watch
 
-from app.config import Settings
+from app.normalize.config import NormalizeSettings
 from app.core.files import SUPPORTED_SUFFIXES
 
 
@@ -12,23 +12,23 @@ LOGGER_NAME = "rag-normalize-watch"
 logger = logging.getLogger(LOGGER_NAME)
 
 
-def watch_source(settings: Settings, work_queue: Queue[Path]) -> None:
-    source_dir = settings.common.nextcloud_source_dir
+def watch_source(settings: NormalizeSettings, work_queue: Queue[Path]) -> None:
+    source_dir = settings.nextcloud_source_dir
     source_dir.mkdir(parents=True, exist_ok=True)
-    enabled_suffixes = SUPPORTED_SUFFIXES & settings.normalize.enabled_suffixes
+    enabled_suffixes = SUPPORTED_SUFFIXES & settings.enabled_suffixes
 
     _log(
         "Starting normalization watcher",
         source_dir=str(source_dir),
         enabled_suffixes=",".join(sorted(enabled_suffixes)),
-        debounce_seconds=settings.normalize.watch_debounce_seconds,
-        stability_max_wait_seconds=settings.normalize.stability_max_wait_seconds,
+        debounce_seconds=settings.watch_debounce_seconds,
+        stability_max_wait_seconds=settings.stability_max_wait_seconds,
     )
 
     for changes in watch(
         str(source_dir),
         recursive=True,
-        debounce=int(settings.normalize.watch_debounce_seconds * 1000),
+        debounce=int(settings.watch_debounce_seconds * 1000),
     ):
         for change, raw_path in changes:
             path = Path(raw_path)

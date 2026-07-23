@@ -1,9 +1,9 @@
 from openai import OpenAI
 
-from app.config import get_settings
+from app.api.config import get_api_settings
+from app.api.llm import get_llm_client
 from app.core.db import db_cursor
 from app.core.embeddings import embed_texts
-from app.core.llm import get_llm_client
 
 RETRIEVAL_MODE_SEMANTIC = "semantic"
 RETRIEVAL_MODE_KEYWORD = "keyword"
@@ -12,7 +12,8 @@ RETRIEVAL_MODE_KEYWORD = "keyword"
 def answer_question(question: str, mode: str = RETRIEVAL_MODE_SEMANTIC) -> dict:
     citations = retrieve_chunks(question, mode=mode)
 
-    client, model = get_llm_client()
+    settings = get_api_settings()
+    client, model = get_llm_client(settings)
     answer = _generate_answer(question, citations, client, model)
     return {"answer": answer, "citations": citations}
 
@@ -27,12 +28,23 @@ def retrieve_debug(
     limit: int | None = None,
     offset: int = 0,
 ) -> dict:
-    result_limit = limit or get_settings().api.query_limit
+    settings = get_api_settings()
+    result_limit = limit or settings.query_limit
     if mode == RETRIEVAL_MODE_KEYWORD:
-        rows = _keyword_rows(question, result_limit, offset)
+        rows = _keyword_rows(question, result_limit, offset, settings)
     elif mode == RETRIEVAL_MODE_SEMANTIC:
-        question_embedding = embed_texts([question], input_type="query")[0]
-        rows = _semantic_rows(question_embedding, result_limit, offset)
+        question_embedding = embed_texts(
+            [question], provider=settings.embedding_provider,
+            llamacpp_base_url=settings.embedding_llamacpp_base_url,
+            llamacpp_api_key=settings.embedding_llamacpp_api_key,
+            llamacpp_model=settings.embedding_llamacpp_model,
+            openai_api_key=settings.openai_api_key,
+            openai_embedding_model=settings.openai_embedding_model,
+            query_prefix=settings.embedding_query_prefix,
+            document_prefix=settings.embedding_document_prefix,
+            input_type="query",
+        )[0]
+        rows = _semantic_rows(question_embedding, result_limit, offset, settings)
     else:
         raise ValueError(f"Unsupported retrieval mode: {mode}")
 
@@ -45,8 +57,8 @@ def retrieve_debug(
     }
 
 
-def _keyword_rows(question: str, limit: int, offset: int) -> list[tuple]:
-    with db_cursor() as (conn, cur):
+def _keyword_rows(question: str, limit: int, offset: int, settings) -> list[tuple]:
+    with db_cursor(settings.database) as (conn, cur):
         cur.execute(
             """
             WITH ranked AS (
@@ -101,8 +113,8 @@ def _keyword_rows(question: str, limit: int, offset: int) -> list[tuple]:
     return rows
 
 
-def _semantic_rows(question_embedding: list[float], limit: int, offset: int) -> list[tuple]:
-    with db_cursor() as (conn, cur):
+def _semantic_rows(question_embedding: list[float], limit: int, offset: int, settings) -> list[tuple]:
+    with db_cursor(settings.database) as (conn, cur):
         cur.execute(
             """
             WITH totals AS (
@@ -182,7 +194,7 @@ def _rows_to_chunks(rows: list[tuple], mode: str) -> list[dict]:
 
 
 def _generate_answer(question: str, citations: list[dict], client: OpenAI, model: str) -> str:
-    api = get_settings().api
+    api = get_api_settings()
     if not citations:
         return "I could not find any relevant documents for that question."
 

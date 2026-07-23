@@ -4,7 +4,7 @@ from queue import Queue
 
 from watchfiles import Change, watch
 
-from app.config import Settings
+from app.embed.config import EmbedSettings
 
 NORMALIZED_SUFFIXES = {".json", ".md"}
 
@@ -12,21 +12,21 @@ LOGGER_NAME = "rag-embed-watch"
 logger = logging.getLogger(LOGGER_NAME)
 
 
-def watch_normalized(settings: Settings, work_queue: Queue[Path]) -> None:
-    normalized_dir = settings.common.normalized_output_dir
+def watch_normalized(settings: EmbedSettings, work_queue: Queue[Path]) -> None:
+    normalized_dir = settings.normalized_output_dir
     normalized_dir.mkdir(parents=True, exist_ok=True)
 
     _log(
         "Starting embed watcher",
         normalized_dir=str(normalized_dir),
         enabled_suffixes=",".join(sorted(NORMALIZED_SUFFIXES)),
-        debounce_seconds=settings.embed.watch_debounce_seconds,
+        debounce_seconds=settings.watch_debounce_seconds,
     )
 
     for changes in watch(
         str(normalized_dir),
         recursive=True,
-        debounce=int(settings.embed.watch_debounce_seconds * 1000),
+        debounce=int(settings.watch_debounce_seconds * 1000),
     ):
         for change, raw_path in changes:
             path = Path(raw_path)

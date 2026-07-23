@@ -5,7 +5,7 @@ from typing import Any
 
 from app.api.retrieval import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, retrieve_debug
 from app.api.agent.memory import read_memory, remember
-from app.config import get_settings
+from app.api.config import get_api_settings
 from app.core.db import db_cursor
 
 DEFAULT_DOCUMENT_LIMIT = 8
@@ -64,7 +64,7 @@ def search_documents(
     params.append(limit)
     where_clause = " AND ".join(conditions)
 
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_api_settings().database) as (conn, cur):
         cur.execute(
             f"""
             SELECT
@@ -334,7 +334,7 @@ def _bounded_context_chars(value: Any) -> int:
 
 
 def _normalized_documents(path: str | None = None, path_prefix: str | None = None) -> list[dict]:
-    normalized_root = get_settings().common.normalized_output_dir.resolve()
+    normalized_root = get_api_settings().normalized_output_dir.resolve()
     conditions = [
         "d.missing_since IS NULL",
         "c.metadata ? 'markdown_path'",
@@ -348,7 +348,7 @@ def _normalized_documents(path: str | None = None, path_prefix: str | None = Non
         conditions.append("d.path ILIKE %s")
         params.append(f"{path_prefix.rstrip('/')}%")
 
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_api_settings().database) as (conn, cur):
         cur.execute(
             f"""
             SELECT path, filename, markdown_path
@@ -388,8 +388,8 @@ def _normalized_documents(path: str | None = None, path_prefix: str | None = Non
 
 
 def _markdown_path_for_document(path: str) -> Path | None:
-    normalized_root = get_settings().common.normalized_output_dir.resolve()
-    with db_cursor() as (conn, cur):
+    normalized_root = get_api_settings().normalized_output_dir.resolve()
+    with db_cursor(get_api_settings().database) as (conn, cur):
         cur.execute(
             """
             SELECT c.metadata->>'markdown_path'

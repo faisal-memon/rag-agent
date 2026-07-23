@@ -6,7 +6,7 @@ from time import monotonic
 from psycopg.types.json import Json
 
 from app.core.chunking import chunk_text
-from app.config import get_settings
+from app.embed.config import get_embed_settings
 from app.core.db import db_cursor
 from app.core.embeddings import embed_texts
 from app.core.files import file_checksum
@@ -141,7 +141,7 @@ def _artifact_result(
 
 
 def reindex_source() -> dict:
-    settings = get_settings()
+    settings = get_embed_settings()
     scan_dir = _scan_dir()
     scan_dir.mkdir(parents=True, exist_ok=True)
     started_at = monotonic()
@@ -169,7 +169,7 @@ def reindex_source() -> dict:
         chunk_overlap=indexing_strategy["chunk_overlap"],
     )
 
-    with db_cursor() as (conn, cur):
+    with db_cursor(settings.database) as (conn, cur):
         cur.execute(
             """
             SELECT
@@ -246,12 +246,12 @@ def reindex_source() -> dict:
             errors.append({"path": str(path), "error": str(exc)})
             _log("Indexing error", path=str(path), error=str(exc), errors=len(errors))
 
-    grace_cutoff = datetime.now(tz=timezone.utc) - timedelta(days=settings.embed.missing_grace_days)
+    grace_cutoff = datetime.now(tz=timezone.utc) - timedelta(days=settings.missing_grace_days)
     for existing in existing_documents.values():
         if existing["path"] in seen_paths:
             continue
         try:
-            with db_cursor() as (conn, cur):
+            with db_cursor(settings.database) as (conn, cur):
                 if existing["missing_since"] is None:
                     cur.execute(
                         """
@@ -375,7 +375,7 @@ def _index_result(
 
 
 def _load_existing_document(path: str) -> dict | None:
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_embed_settings().database) as (conn, cur):
         cur.execute(
             """
             SELECT
@@ -420,7 +420,7 @@ def _load_existing_document(path: str) -> dict | None:
 
 
 def _clear_missing(document_id: int) -> None:
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_embed_settings().database) as (conn, cur):
         cur.execute(
             """
             UPDATE documents
@@ -439,7 +439,7 @@ def _update_document_metadata(
     size_bytes: int,
     indexing_strategy: dict,
 ) -> None:
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_embed_settings().database) as (conn, cur):
         cur.execute(
             """
             UPDATE documents
@@ -494,11 +494,10 @@ def _has_matching_indexing_strategy(existing: dict, indexing_strategy: dict) -> 
 
 
 def _current_indexing_strategy() -> dict:
-    settings = get_settings()
-    embed = settings.embed
+    embed = get_embed_settings()
     return {
         "indexing_version": f"{embed.indexing_version}:normalized",
-        "embedding_model": embed.llamacpp_model if embed.provider == "llamacpp" else settings.common.openai_embedding_model,
+        "embedding_model": embed.llamacpp_model if embed.provider == "llamacpp" else embed.openai_embedding_model,
         "embedding_tokenizer": embed.tokenizer_model_id,
         "chunk_size": embed.chunk_size,
         "chunk_overlap": embed.chunk_overlap,
@@ -512,24 +511,36 @@ def _upsert_document(
     checksum: str,
     existing: dict | None,
 ) -> tuple[int, int]:
-    embed = get_settings().embed
+    embed = get_embed_settings()
     document_path = candidate["path"]
     filename = candidate["filename"]
     _log("Reading normalized document", path=document_path, markdown_path=str(candidate["read_path"]))
     content = candidate["content"]
     mime_type = candidate["mime_type"]
-    chunks = chunk_text(filename, content, embed.chunk_size, embed.chunk_overlap)
+    chunks = chunk_text(
+        filename, content, embed.chunk_size, embed.chunk_overlap,
+        embed.tokenizer_model_id, embed.tokenizer_local_files_only,
+    )
     for chunk in chunks:
         chunk.metadata.update(candidate.get("chunk_metadata", {}))
     _log("Chunked document", path=document_path, chunk_count=len(chunks))
     if chunks:
         _log("Requesting embeddings", path=document_path, chunk_count=len(chunks))
-    embeddings = embed_texts([chunk.content for chunk in chunks], input_type="document") if chunks else []
+    embeddings = (
+        embed_texts(
+            [chunk.content for chunk in chunks], provider=embed.provider,
+            llamacpp_base_url=embed.llamacpp_base_url, llamacpp_api_key=embed.llamacpp_api_key,
+            llamacpp_model=embed.llamacpp_model, openai_api_key=embed.openai_api_key,
+            openai_embedding_model=embed.openai_embedding_model,
+            query_prefix=embed.query_prefix, document_prefix=embed.document_prefix,
+            input_type="document",
+        ) if chunks else []
+    )
     if chunks:
         _log("Embeddings ready", path=document_path, embedding_count=len(embeddings))
     indexing_strategy = _current_indexing_strategy()
 
-    with db_cursor() as (conn, cur):
+    with db_cursor(embed.database) as (conn, cur):
         if existing:
             document_id = existing["id"]
             cur.execute(
@@ -624,11 +635,11 @@ def _upsert_document(
 
 
 def _scan_dir() -> Path:
-    return get_settings().common.normalized_output_dir / NORMALIZED_DOCUMENTS_DIR
+    return get_embed_settings().normalized_output_dir / NORMALIZED_DOCUMENTS_DIR
 
 
 def _markdown_path_from_normalized_artifact(path: Path) -> Path | None:
-    normalized_output_dir = get_settings().common.normalized_output_dir
+    normalized_output_dir = get_embed_settings().normalized_output_dir
     documents_dir = normalized_output_dir / NORMALIZED_DOCUMENTS_DIR
     metadata_dir = normalized_output_dir / NORMALIZED_METADATA_DIR
 
@@ -651,7 +662,7 @@ def _mark_missing_for_markdown(markdown_path: Path) -> bool:
     if not existing or existing["missing_since"] is not None:
         return False
 
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_embed_settings().database) as (conn, cur):
         cur.execute(
             """
             UPDATE documents
@@ -696,7 +707,7 @@ def _normalized_candidate_from_path(markdown_path: Path) -> dict:
 
 
 def _normalized_metadata_path(markdown_path: Path) -> Path:
-    normalized_output_dir = get_settings().common.normalized_output_dir
+    normalized_output_dir = get_embed_settings().normalized_output_dir
     documents_dir = normalized_output_dir / NORMALIZED_DOCUMENTS_DIR
     metadata_dir = normalized_output_dir / NORMALIZED_METADATA_DIR
     try:

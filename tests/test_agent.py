@@ -33,7 +33,7 @@ from app.api.web import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page
 
 
 def _settings_with_api(**api_values):
-    return SimpleNamespace(api=SimpleNamespace(**api_values))
+    return SimpleNamespace(**api_values)
 
 
 class AgentTest(unittest.TestCase):
@@ -291,7 +291,7 @@ class AgentTest(unittest.TestCase):
     def test_read_memory_returns_missing_file_as_empty_memory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             settings = _settings_with_api(memory_path=Path(temp_dir) / "MEMORY.md")
-            with patch("app.api.agent.memory.get_settings", return_value=settings):
+            with patch("app.api.agent.memory.get_api_settings", return_value=settings):
                 result = read_memory()
 
         self.assertFalse(result["exists"])
@@ -304,7 +304,7 @@ class AgentTest(unittest.TestCase):
             memory_path.write_text("x" * 13000, encoding="utf-8")
             settings = _settings_with_api(memory_path=memory_path)
 
-            with patch("app.api.agent.memory.get_settings", return_value=settings):
+            with patch("app.api.agent.memory.get_api_settings", return_value=settings):
                 result = read_memory()
 
         self.assertTrue(result["exists"])
@@ -316,7 +316,7 @@ class AgentTest(unittest.TestCase):
             memory_path = Path(temp_dir) / "MEMORY.md"
             settings = _settings_with_api(memory_path=memory_path)
 
-            with patch("app.api.agent.memory.get_settings", return_value=settings):
+            with patch("app.api.agent.memory.get_api_settings", return_value=settings):
                 result = remember(
                     "For vehicle questions, search /documents/Vehicles first.",
                     section="Routing Hints",
@@ -341,7 +341,7 @@ class AgentTest(unittest.TestCase):
                 },
             }
 
-            with patch("app.api.agent.tools.get_settings", return_value=settings):
+            with patch("app.api.agent.memory.get_api_settings", return_value=settings):
                 result = _execute_tool(step, question="What car do I have?", history=[])
 
         self.assertFalse(result["result"]["remembered"])
@@ -362,8 +362,8 @@ class AgentTest(unittest.TestCase):
             ]
 
             with (
-                patch("app.api.agent.service.get_settings", return_value=settings),
-                patch("app.api.agent.memory.get_settings", return_value=settings),
+                patch("app.api.agent.service.get_api_settings", return_value=settings),
+                patch("app.api.agent.memory.get_api_settings", return_value=settings),
                 patch("app.api.agent.service.get_llm_client") as get_llm_client,
                 patch("app.api.agent.service._complete_text") as complete_text,
                 patch("app.api.agent.service.tools.semantic_search") as semantic_search,
@@ -531,7 +531,7 @@ class AgentTest(unittest.TestCase):
         reasoning = []
 
         with patch(
-            "app.api.agent.service.get_settings",
+            "app.api.agent.service.get_api_settings",
             return_value=_settings_with_api(llm_provider="llamacpp"),
         ):
             content = _complete_text(

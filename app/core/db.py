@@ -3,11 +3,10 @@ from contextlib import contextmanager
 import psycopg
 from pgvector.psycopg import register_vector
 
-from app.config import get_settings
+from app.core.config import DatabaseSettings
 
 
-def get_connection() -> psycopg.Connection:
-    database = get_settings().common.database
+def get_connection(database: DatabaseSettings) -> psycopg.Connection:
     conn = psycopg.connect(
         dbname=database.db,
         user=database.user,
@@ -21,8 +20,8 @@ def get_connection() -> psycopg.Connection:
 
 
 @contextmanager
-def db_cursor():
-    conn = get_connection()
+def db_cursor(database: DatabaseSettings):
+    conn = get_connection(database)
     try:
         with conn.cursor() as cur:
             yield conn, cur

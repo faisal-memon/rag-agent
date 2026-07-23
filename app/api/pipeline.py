@@ -1,8 +1,9 @@
+from app.api.config import get_api_settings
 from app.core.db import db_cursor
 
 
 def pipeline_status(limit: int = 10) -> dict:
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_api_settings().database) as (conn, cur):
         cur.execute("SELECT COUNT(*) FROM documents")
         document_count = cur.fetchone()[0]
 

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.config import get_settings
+from app.normalize.config import get_normalize_settings
 from app.normalize.service import normalize_file
 
 
@@ -32,7 +32,7 @@ class NormalizeTest(unittest.TestCase):
             "NEXTCLOUD_SOURCE_DIR": os.environ.get("NEXTCLOUD_SOURCE_DIR"),
             "NORMALIZATION_BACKEND": os.environ.get("NORMALIZATION_BACKEND"),
         }
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
 
     def tearDown(self) -> None:
         for key, value in self._original_env.items():
@@ -40,7 +40,7 @@ class NormalizeTest(unittest.TestCase):
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
 
     def test_text_file_normalizes_to_markdown_with_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -98,7 +98,7 @@ class NormalizeTest(unittest.TestCase):
         if source_dir is not None:
             os.environ["NEXTCLOUD_SOURCE_DIR"] = source_dir
         os.environ["NORMALIZATION_BACKEND"] = "docling"
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
 
 
 if __name__ == "__main__":
