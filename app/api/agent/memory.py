@@ -43,15 +43,22 @@ class MemoryStore:
         self.loaded = False
 
     def load(self) -> str | None:
-        """Refresh cached contents and return a read error, if any."""
+        """Ensure the memory file exists, refresh cached contents, and return any error."""
         try:
             self.content = self.path.read_text(encoding="utf-8", errors="ignore")
             self.exists = True
             self.error = None
         except FileNotFoundError:
-            self.content = ""
-            self.exists = False
-            self.error = None
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                self.content = "# Personal RAG Memory\n"
+                self.path.write_text(self.content, encoding="utf-8")
+                self.exists = True
+                self.error = None
+            except OSError as exc:
+                self.content = ""
+                self.exists = False
+                self.error = str(exc)
         except OSError as exc:
             self.content = ""
             self.exists = False

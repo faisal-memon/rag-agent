@@ -49,6 +49,18 @@ class AgentTest(unittest.TestCase):
         self.assertIn("# Personal RAG Memory", result["content"])
         self.assertIn("Search vehicle questions", result["content"])
 
+    def test_memory_store_load_creates_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory_path = Path(temp_dir) / "memory" / "MEMORY.md"
+            memory = MemoryStore(memory_path)
+
+            self.assertIsNone(memory.load())
+            result = memory.read()
+
+            self.assertTrue(memory_path.exists())
+        self.assertTrue(result["exists"])
+        self.assertEqual("# Personal RAG Memory\n", result["content"])
+
     def test_extract_json_object_from_model_text(self) -> None:
         text = 'Here is the plan:\n{"tool":"semantic_search","arguments":{"query":"car"}}\nDone.'
 
@@ -288,14 +300,14 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Should I remember this?", prompts[0][0])
         self.assertIn("immediately preceding proposal", prompts[0][0])
 
-    def test_read_memory_returns_missing_file_as_empty_memory(self) -> None:
+    def test_read_memory_creates_missing_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             settings = _settings_with_api(memory_path=Path(temp_dir) / "MEMORY.md")
             with patch("app.api.agent.memory.get_api_settings", return_value=settings):
                 result = read_memory()
 
-        self.assertFalse(result["exists"])
-        self.assertEqual("", result["content"])
+        self.assertTrue(result["exists"])
+        self.assertEqual("# Personal RAG Memory\n", result["content"])
         self.assertIsNone(result["error"])
 
     def test_read_memory_bounds_file_content(self) -> None:
