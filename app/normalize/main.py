@@ -3,7 +3,7 @@ from pathlib import Path
 from queue import Queue
 from threading import Thread
 
-from app.core.config import get_settings
+from app.config import get_settings
 from app.normalize.reconcile import Reconciler
 from app.normalize.watch import watch_source
 

@@ -2,7 +2,7 @@
 
 from openai import OpenAI
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 
 def get_openai_client() -> OpenAI:

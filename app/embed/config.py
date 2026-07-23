@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from app.core.settings import ConfiguredSettings
+from app.core.config import ConfiguredSettings
 
 
 class EmbedSettings(ConfiguredSettings):

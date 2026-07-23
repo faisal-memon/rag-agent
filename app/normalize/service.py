@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
-from app.core.config import get_settings
+from app.config import get_settings
 from app.core.files import SUPPORTED_SUFFIXES, ParsedDocument, file_checksum, guess_mime_type
 
 NORMALIZATION_VERSION = "normalized-artifacts-v2"

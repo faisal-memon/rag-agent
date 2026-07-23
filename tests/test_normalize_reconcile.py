@@ -7,7 +7,7 @@ from pathlib import Path
 from queue import Queue
 from unittest.mock import patch
 
-from app.core.config import get_settings
+from app.config import get_settings
 from app.normalize import reconcile
 
 

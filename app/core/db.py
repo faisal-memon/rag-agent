@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import psycopg
 from pgvector.psycopg import register_vector
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 
 def get_connection() -> psycopg.Connection:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 
 class ConfigTest(unittest.TestCase):

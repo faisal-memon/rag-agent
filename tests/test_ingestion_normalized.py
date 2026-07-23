@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.core.config import get_settings
+from app.config import get_settings
 from app.embed.service import _current_indexing_strategy, _normalized_candidate_from_path, _normalized_metadata_path
 
 

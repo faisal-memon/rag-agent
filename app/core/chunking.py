@@ -4,7 +4,7 @@ from typing import Protocol
 
 import tiktoken
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 KNOWN_TOKENIZER_MODEL_IDS = {
     "mxbai-embed-large-v1": "mixedbread-ai/mxbai-embed-large-v1",

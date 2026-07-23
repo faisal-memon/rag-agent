@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from queue import Empty, Queue
 
-from app.core.config import Settings
+from app.config import Settings
 from app.core.files import SUPPORTED_SUFFIXES, file_checksum
 from app.normalize.service import NORMALIZATION_VERSION, normalize_file
 

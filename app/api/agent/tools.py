@@ -5,7 +5,7 @@ from typing import Any
 
 from app.api.retrieval import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, retrieve_debug
 from app.api.agent.memory import read_memory, remember
-from app.core.config import get_settings
+from app.config import get_settings
 from app.core.db import db_cursor
 
 DEFAULT_DOCUMENT_LIMIT = 8

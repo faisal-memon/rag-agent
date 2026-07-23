@@ -4,7 +4,7 @@ from queue import Queue
 
 from watchfiles import Change, watch
 
-from app.core.config import Settings
+from app.config import Settings
 from app.core.files import SUPPORTED_SUFFIXES
 
 

@@ -1,7 +1,12 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 
 from app.api.agent import answer_with_agent
+from app.api.agent.memory import get_memory_store
+from app.api.agent.prompts import initialize_prompts
 from app.api.pipeline import pipeline_status
 from app.api.retrieval import answer_question, retrieve_debug
 from app.api.schemas import (
@@ -15,7 +20,16 @@ from app.api.schemas import (
 )
 from app.api.web import STATIC_DIR, debug_page, index_page
 
-app = FastAPI(title="Nextcloud Personal RAG", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    initialize_prompts()
+    error = get_memory_store().load()
+    if error:
+        logging.getLogger("rag-api").warning("Could not load agent memory: %s", error)
+    yield
+
+
+app = FastAPI(title="Nextcloud Personal RAG", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from queue import Empty, Queue
 
-from app.core.config import Settings
+from app.config import Settings
 from app.embed.service import reindex_artifact
 
 LOGGER_NAME = "rag-embed-reconcile"

@@ -10,6 +10,8 @@ from app.api.agent.protocol import (
     sanitize_step as _sanitize_step,
 )
 from app.api.agent.memory import (
+    MemoryStore,
+    approved_from_history,
     is_approval_response as _is_memory_approval_response,
     read_memory,
     remember,
@@ -35,6 +37,18 @@ def _settings_with_api(**api_values):
 
 
 class AgentTest(unittest.TestCase):
+    def test_memory_store_refreshes_after_append(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory = MemoryStore(Path(temp_dir) / "MEMORY.md")
+            self.assertIsNone(memory.load())
+            memory.append("- Search vehicle questions in /documents/Chevy Bolt.", "Routing Hints")
+
+            result = memory.read()
+
+        self.assertTrue(result["exists"])
+        self.assertIn("# Personal RAG Memory", result["content"])
+        self.assertIn("Search vehicle questions", result["content"])
+
     def test_extract_json_object_from_model_text(self) -> None:
         text = 'Here is the plan:\n{"tool":"semantic_search","arguments":{"query":"car"}}\nDone.'
 
@@ -270,8 +284,9 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Available tools:", prompts[0][1])
         self.assertIn("source path, not a normalized Markdown path", prompts[0][1])
         self.assertIn("search /documents/Vehicles first", prompts[0][1])
-        self.assertIn("Watch for user corrections", prompts[0][1])
-        self.assertIn("Only call remember when the latest user message explicitly asks", prompts[0][1])
+        self.assertIn("durable personal memory system", prompts[0][0])
+        self.assertIn("Should I remember this?", prompts[0][0])
+        self.assertIn("immediately preceding proposal", prompts[0][0])
 
     def test_read_memory_returns_missing_file_as_empty_memory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -327,7 +342,7 @@ class AgentTest(unittest.TestCase):
             }
 
             with patch("app.api.agent.tools.get_settings", return_value=settings):
-                result = _execute_tool(step, question="What car do I have?", conversation="")
+                result = _execute_tool(step, question="What car do I have?", history=[])
 
         self.assertFalse(result["result"]["remembered"])
         self.assertFalse(memory_path.exists())
@@ -375,6 +390,18 @@ class AgentTest(unittest.TestCase):
         self.assertFalse(_is_memory_approval_response("yes, don't save that"))
         self.assertFalse(_is_memory_approval_response("no, do not remember it"))
         self.assertFalse(_is_memory_approval_response("not that one"))
+
+    def test_memory_approval_requires_the_immediately_previous_proposal(self) -> None:
+        history = [
+            {
+                "role": "assistant",
+                "content": "Should I remember this?\n- Search /documents/Vehicles first.",
+            },
+            {"role": "user", "content": "Thanks."},
+            {"role": "assistant", "content": "You're welcome."},
+        ]
+
+        self.assertIsNone(approved_from_history("yes", history))
 
     def test_agent_passes_personal_system_prompt_to_planner(self) -> None:
         prompts = []

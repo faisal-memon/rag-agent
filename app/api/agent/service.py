@@ -8,7 +8,7 @@ import app.api.agent.tools as tools
 from app.api.agent import memory
 from app.api.agent import protocol
 from app.api.agent.prompts import render_prompt
-from app.core.config import get_settings
+from app.config import get_settings
 from app.core.llm import get_llm_client
 
 MAX_HISTORY_MESSAGES = 12
@@ -36,7 +36,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
     approved_memory = memory.approved_from_history(question, history)
     if approved_memory:
         step = {"tool": "remember", "arguments": approved_memory}
-        tool_result = _execute_tool(step, question, conversation)
+        tool_result = _execute_tool(step, question, history)
         return {
             "answer": memory.result_answer(tool_result),
             "plan": [step],
@@ -132,7 +132,7 @@ def answer_with_agent(question: str, history: list[dict] | None = None) -> dict:
             tool=step["tool"],
             arguments=step["arguments"],
         )
-        tool_result = _execute_tool(step, question, conversation)
+        tool_result = _execute_tool(step, question, history)
         tool_results.append(tool_result)
         _append_debug(
             debug,
@@ -273,7 +273,7 @@ def _decide_next_action(
     return {"action": "synthesize"}
 
 
-def _execute_tool(step: dict, question: str = "", conversation: str = "") -> dict:
+def _execute_tool(step: dict, question: str = "", history: list[dict] | None = None) -> dict:
     tool = step["tool"]
     arguments = step.get("arguments", {})
     try:
@@ -309,7 +309,7 @@ def _execute_tool(step: dict, question: str = "", conversation: str = "") -> dic
                 max_chars=int(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
             )
         elif tool == "remember":
-            if not memory.write_is_allowed(question, conversation):
+            if not memory.write_is_allowed(question, history or []):
                 result = {
                     "remembered": False,
                     "error": (
