@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Query, Request
 
+from app.agent.agent import Agent
 from app.agent.api.schemas import (
     AgentQueryRequest,
     AgentQueryResponse,
@@ -11,16 +12,14 @@ from app.agent.api.schemas import (
     RetrievalDebugResponse,
 )
 from app.agent.pipeline import pipeline_status
-from app.agent.runtime import AgentRuntime
 from app.agent.search import search_debug
-from app.agent.service import answer_with_agent
 from app.agent.web.routes import debug_page, index_page
 
 router = APIRouter()
 
 
-def _runtime(request: Request) -> AgentRuntime:
-    return request.app.state.agent_runtime
+def _agent(request: Request) -> Agent:
+    return request.app.state.agent
 
 
 @router.get("/", include_in_schema=False)
@@ -48,7 +47,7 @@ def reindex() -> ReindexResponse:
 @router.post("/agent/query", response_model=AgentQueryResponse)
 def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryResponse:
     history = [message.model_dump() for message in payload.history]
-    result = answer_with_agent(payload.question, history=history, runtime=_runtime(request))
+    result = _agent(request).answer(payload.question, history=history)
     return AgentQueryResponse(**result)
 
 

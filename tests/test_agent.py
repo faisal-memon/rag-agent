@@ -15,12 +15,13 @@ from app.agent.memory import (
     is_approval_response as _is_memory_approval_response,
     remember,
 )
-from app.agent.service import (
+from app.agent.agent import (
+    Agent,
     _conversation_context,
     _complete_text,
     _execute_tool,
-    answer_with_agent,
 )
+from app.agent.config import get_api_settings
 from app.agent.tools import (
     _bounded_limit,
     grep_documents,
@@ -33,6 +34,10 @@ from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, ind
 
 def _settings_with_api(**api_values):
     return SimpleNamespace(**api_values)
+
+
+def _answer(question: str, history: list[dict] | None = None) -> dict:
+    return Agent(get_api_settings()).answer(question, history)
 
 
 class AgentTest(unittest.TestCase):
@@ -231,7 +236,7 @@ class AgentTest(unittest.TestCase):
             ]
         )
 
-        def complete_text(_client, _model, system, prompt, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
             prompts.append((system, prompt))
             return next(responses)
 
@@ -252,12 +257,12 @@ class AgentTest(unittest.TestCase):
         }
 
         with (
-            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.agent.service._complete_text", side_effect=complete_text),
-            patch("app.agent.service.tools.semantic_search", return_value=[chunk]),
-            patch("app.agent.service.tools.read_document", return_value=document),
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", side_effect=complete_text),
+            patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
+            patch("app.agent.agent.tools.read_document", return_value=document),
         ):
-            result = answer_with_agent("What car do I have?")
+            result = _answer("What car do I have?")
 
         self.assertEqual(["semantic_search", "read_document"], [step["tool"] for step in result["plan"]])
         self.assertEqual(2, len(result["tool_results"]))
@@ -272,7 +277,7 @@ class AgentTest(unittest.TestCase):
     def test_agent_includes_saved_memory_in_planning_prompt(self) -> None:
         prompts = []
 
-        def complete_text(_client, _model, system, prompt, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
             prompts.append((system, prompt))
             return '{"action":"answer","evidence_status":"casual","answer":"Should I remember that?"}'
 
@@ -285,11 +290,11 @@ class AgentTest(unittest.TestCase):
         }
 
         with (
-            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.memory.MemoryStore.read", return_value=memory),
-            patch("app.agent.service._complete_text", side_effect=complete_text),
+            patch("app.agent.agent._complete_text", side_effect=complete_text),
         ):
-            answer_with_agent("No, for vehicle questions look in the Vehicles folder.")
+            _answer("No, for vehicle questions look in the Vehicles folder.")
 
         self.assertIn("Saved memory (/memory/MEMORY.md)", prompts[0][1])
         self.assertIn("Available tools:", prompts[0][1])
@@ -365,12 +370,11 @@ class AgentTest(unittest.TestCase):
             ]
 
             with (
-                patch("app.agent.service.get_api_settings", return_value=settings),
-                patch("app.agent.service.get_llm_client") as get_llm_client,
-                patch("app.agent.service._complete_text") as complete_text,
-                patch("app.agent.service.tools.semantic_search") as semantic_search,
+                patch("app.agent.agent.get_llm_client") as get_llm_client,
+                patch("app.agent.agent._complete_text") as complete_text,
+                patch("app.agent.agent.tools.semantic_search") as semantic_search,
             ):
-                result = answer_with_agent("yes", history=history)
+                result = Agent(settings).answer("yes", history=history)
 
             content = memory_path.read_text(encoding="utf-8")
 
@@ -408,15 +412,15 @@ class AgentTest(unittest.TestCase):
     def test_agent_passes_personal_system_prompt_to_planner(self) -> None:
         prompts = []
 
-        def complete_text(_client, _model, system, prompt, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
             prompts.append((system, prompt))
             return '{"action":"answer","evidence_status":"casual","answer":"Hi!"}'
 
         with (
-            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.agent.service._complete_text", side_effect=complete_text),
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", side_effect=complete_text),
         ):
-            answer_with_agent("Hi")
+            _answer("Hi")
 
         self.assertIn("You are a personal document agent for the user.", prompts[0][0])
         self.assertIn("Do not use tools for greetings", prompts[0][0])
@@ -424,14 +428,14 @@ class AgentTest(unittest.TestCase):
 
     def test_agent_can_answer_casual_message_without_tools(self) -> None:
         with (
-            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch(
-                "app.agent.service._complete_text",
+                "app.agent.agent._complete_text",
                 return_value='{"action":"answer","answer":"Hi! How can I help?"}',
             ),
-            patch("app.agent.service._execute_tool") as execute_tool,
+            patch("app.agent.agent._execute_tool") as execute_tool,
         ):
-            result = answer_with_agent("Hi")
+            result = _answer("Hi")
 
         self.assertEqual("Hi! How can I help?", result["answer"])
         self.assertEqual([], result["plan"])
@@ -462,17 +466,17 @@ class AgentTest(unittest.TestCase):
         )
         prompts = []
 
-        def complete_text(_client, _model, system, prompt, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
             prompts.append((system, prompt))
             return next(responses)
 
         with (
-            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.agent.service._complete_text", side_effect=complete_text),
-            patch("app.agent.service.tools.semantic_search", return_value=[]),
-            patch("app.agent.service.tools.keyword_search", return_value=[]),
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", side_effect=complete_text),
+            patch("app.agent.agent.tools.semantic_search", return_value=[]),
+            patch("app.agent.agent.tools.keyword_search", return_value=[]),
         ):
-            result = answer_with_agent("What was my AGI in 2024?")
+            result = _answer("What was my AGI in 2024?")
 
         self.assertEqual(["semantic_search", "keyword_search"], [step["tool"] for step in result["plan"]])
         self.assertIn("not-found conclusion was rejected", prompts[2][1])
@@ -499,7 +503,7 @@ class AgentTest(unittest.TestCase):
             ]
         )
 
-        def complete_text(_client, _model, system, prompt, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
             return next(responses)
 
         chunk = {
@@ -509,12 +513,12 @@ class AgentTest(unittest.TestCase):
         }
 
         with (
-            patch("app.agent.service.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.agent.service._complete_text", side_effect=complete_text),
-            patch("app.agent.service.tools.search_documents", return_value=[]),
-            patch("app.agent.service.tools.semantic_search", return_value=[chunk]),
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", side_effect=complete_text),
+            patch("app.agent.agent.tools.search_documents", return_value=[]),
+            patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
         ):
-            result = answer_with_agent("What car do I have?")
+            result = _answer("What car do I have?")
 
         self.assertEqual(["search_documents", "semantic_search"], [step["tool"] for step in result["plan"]])
         self.assertNotIn("<|tool_call>", result["answer"])
@@ -532,18 +536,15 @@ class AgentTest(unittest.TestCase):
         )
         reasoning = []
 
-        with patch(
-            "app.agent.service.get_api_settings",
-            return_value=_settings_with_api(llm_provider="llamacpp"),
-        ):
-            content = _complete_text(
-                client,
-                "gemma",
-                system="system",
-                prompt="hello",
-                reasoning=reasoning,
-                phase="planning",
-            )
+        content = _complete_text(
+            client,
+            "gemma",
+            system="system",
+            prompt="hello",
+            settings=_settings_with_api(llm_provider="llamacpp"),
+            reasoning=reasoning,
+            phase="planning",
+        )
 
         self.assertEqual('{"action":"answer","answer":"hello"}', content)
         self.assertEqual(
