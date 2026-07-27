@@ -8,7 +8,7 @@ the resulting evidence back to the model for the next decision.
 browser request + recent chat history
               |
               v
-service.answer_with_agent
+Agent.answer
               |
               +--> read saved memory (routing guidance, not proof)
               |
@@ -26,15 +26,16 @@ service.answer_with_agent
 
 ## Responsibilities
 
-- `service.py` is the controller. It owns the loop limit, duplicate-call
-  protection, the absence-search rule, prompt rendering, model calls, and the
-  response trace.
+- `agent.py` owns the long-lived `Agent`: settings, memory, prompts, the
+  controller loop, duplicate-call protection, the absence-search rule, model
+  calls, and the response trace.
 - `protocol.py` treats model output as untrusted input. It supports the JSON
   planner format and the native llama.cpp tool-call format, then allowlists
   tool names and bounds their arguments.
 - `tools.py` owns the document capabilities: discovery, PostgreSQL keyword and
   semantic search, literal Markdown grep, and bounded document reads. It also
-  exposes memory read/write functions in the tool registry.
+  declares the model-visible `remember` tool; `Agent` performs its actual
+  memory write.
 - `memory.py` owns the memory file, Markdown normalization, approval detection,
   proposed-memory extraction, and prompt-safe memory rendering.
 - `prompts/` holds the human-readable instructions for the planner, final
@@ -51,5 +52,5 @@ that trace in chronological order.
 
 The model cannot directly read arbitrary files, query arbitrary SQL, or write
 memory. It can only request one of the declared tools, and `protocol.py`
-rejects unknown tools and clamps numeric limits before `service.py` executes
+rejects unknown tools and clamps numeric limits before `Agent` executes
 anything.

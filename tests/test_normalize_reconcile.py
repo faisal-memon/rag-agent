@@ -7,7 +7,7 @@ from pathlib import Path
 from queue import Queue
 from unittest.mock import patch
 
-from app.core.config import get_settings
+from app.normalize.config import get_normalize_settings
 from app.normalize import reconcile
 
 
@@ -17,31 +17,31 @@ class NormalizeReconcileTest(unittest.TestCase):
         os.environ.pop("NORMALIZE_WATCH_DEBOUNCE_SECONDS", None)
         os.environ.pop("NORMALIZE_RECONCILE_INTERVAL_SECONDS", None)
         os.environ.pop("NORMALIZE_WATCH_STABILITY_MAX_WAIT_SECONDS", None)
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
 
     def test_reconciler_waits_for_queue_item(self) -> None:
         work_queue: Queue[Path] = Queue()
         source = Path("/documents/receipt.pdf")
         work_queue.put(source)
-        reconciler = reconcile.Reconciler(get_settings(), work_queue)
+        settings = get_normalize_settings(); reconciler = reconcile.Reconciler(settings, work_queue)
 
         with patch("app.normalize.reconcile.reconcile_path", return_value=True) as reconcile_path:
             reconciler.process_batch()
 
-        reconcile_path.assert_called_once_with(source, get_settings())
+        reconcile_path.assert_called_once_with(source, settings)
         self.assertEqual(set(), reconciler.deferred)
 
     def test_reconciler_retries_deferred_on_timeout(self) -> None:
         os.environ["NORMALIZE_RECONCILE_INTERVAL_SECONDS"] = "0.001"
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
         source = Path("/documents/receipt.pdf")
-        reconciler = reconcile.Reconciler(get_settings(), Queue())
+        settings = get_normalize_settings(); reconciler = reconcile.Reconciler(settings, Queue())
         reconciler.deferred.add(source)
 
         with patch("app.normalize.reconcile.reconcile_path", return_value=True) as reconcile_path:
             reconciler.process_batch()
 
-        reconcile_path.assert_called_once_with(source, get_settings())
+        reconcile_path.assert_called_once_with(source, settings)
         self.assertEqual(set(), reconciler.deferred)
 
     def test_reconciler_skips_duplicate_queue_items_per_batch(self) -> None:
@@ -49,12 +49,12 @@ class NormalizeReconcileTest(unittest.TestCase):
         source = Path("/documents/receipt.pdf")
         work_queue.put(source)
         work_queue.put(source)
-        reconciler = reconcile.Reconciler(get_settings(), work_queue)
+        settings = get_normalize_settings(); reconciler = reconcile.Reconciler(settings, work_queue)
 
         with patch("app.normalize.reconcile.reconcile_path", return_value=True) as reconcile_path:
             reconciler.process_batch()
 
-        reconcile_path.assert_called_once_with(source, get_settings())
+        reconcile_path.assert_called_once_with(source, settings)
 
     def test_reconcile_paths_normalizes_supported_changed_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -71,7 +71,7 @@ class NormalizeReconcileTest(unittest.TestCase):
                 patch("app.normalize.reconcile.file_checksum", return_value="abc123"),
                 patch("app.normalize.reconcile.normalize_file", return_value=Artifact()) as normalize_file,
             ):
-                deferred = reconcile.reconcile_paths({source}, get_settings())
+                deferred = reconcile.reconcile_paths({source}, get_normalize_settings())
 
         normalize_file.assert_called_once_with(source)
         self.assertEqual(set(), deferred)
@@ -85,7 +85,7 @@ class NormalizeReconcileTest(unittest.TestCase):
                 patch("app.normalize.reconcile.wait_for_stable_file", return_value=False),
                 patch("app.normalize.reconcile.normalize_file") as normalize_file,
             ):
-                deferred = reconcile.reconcile_paths({source}, get_settings())
+                deferred = reconcile.reconcile_paths({source}, get_normalize_settings())
 
         normalize_file.assert_not_called()
         self.assertEqual({source}, deferred)
@@ -113,9 +113,9 @@ class NormalizeReconcileTest(unittest.TestCase):
             )
 
             os.environ["NORMALIZED_OUTPUT_DIR"] = str(normalized_dir)
-            get_settings.cache_clear()
+            get_normalize_settings.cache_clear()
 
-            deferred = reconcile.reconcile_paths({source}, get_settings())
+            deferred = reconcile.reconcile_paths({source}, get_normalize_settings())
 
             self.assertEqual(set(), deferred)
             self.assertFalse(markdown_path.exists())
@@ -148,14 +148,14 @@ class NormalizeReconcileTest(unittest.TestCase):
             )
 
             os.environ["NORMALIZED_OUTPUT_DIR"] = str(normalized_dir)
-            get_settings.cache_clear()
+            get_normalize_settings.cache_clear()
 
             with (
                 patch("app.normalize.reconcile.wait_for_stable_file", return_value=True),
                 patch("app.normalize.reconcile.file_checksum", return_value="abc123"),
                 patch("app.normalize.reconcile.normalize_file") as normalize_file,
             ):
-                deferred = reconcile.reconcile_paths({source}, get_settings())
+                deferred = reconcile.reconcile_paths({source}, get_normalize_settings())
 
             self.assertEqual(set(), deferred)
             normalize_file.assert_not_called()

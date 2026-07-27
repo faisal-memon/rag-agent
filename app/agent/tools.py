@@ -3,9 +3,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.api.retrieval import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, retrieve_debug
-from app.api.agent.memory import read_memory, remember
-from app.core.config import get_settings
+from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
+from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 
 DEFAULT_DOCUMENT_LIMIT = 8
@@ -29,6 +28,19 @@ RETRIEVAL_TOOL_NAMES = (
     "semantic_search",
     "grep_documents",
 )
+
+
+def remember(entry: str, section: str = "Inbox") -> None:
+    """Append a concise Markdown bullet to the personal RAG memory file.
+
+    Args:
+        entry: Durable memory bullet, usually starting with "- ". Use for routing hints, vocabulary,
+            evidence rules, durable user preferences, or user-approved corrections.
+        section: Memory section heading, such as Routing Hints, Vocabulary, or Evidence Rules.
+
+    The controller owns the actual MemoryStore, so this declaration only describes the model-visible tool.
+    """
+    raise RuntimeError("The remember tool must be executed by the agent controller.")
 
 
 def search_documents(
@@ -64,7 +76,7 @@ def search_documents(
     params.append(limit)
     where_clause = " AND ".join(conditions)
 
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_api_settings().database) as (conn, cur):
         cur.execute(
             f"""
             SELECT
@@ -111,7 +123,7 @@ def keyword_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
             expanded acronyms such as AGI plus adjusted gross income.
         limit: Maximum number of chunks to return.
     """
-    result = retrieve_debug(query, mode=RETRIEVAL_MODE_KEYWORD, limit=_bounded_limit(limit), offset=0)
+    result = search_debug(query, mode=RETRIEVAL_MODE_KEYWORD, limit=_bounded_limit(limit), offset=0)
     return result["chunks"]
 
 
@@ -123,7 +135,7 @@ def semantic_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
             similarity matters more than exact terms.
         limit: Maximum number of chunks to return.
     """
-    result = retrieve_debug(query, mode=RETRIEVAL_MODE_SEMANTIC, limit=_bounded_limit(limit), offset=0)
+    result = search_debug(query, mode=RETRIEVAL_MODE_SEMANTIC, limit=_bounded_limit(limit), offset=0)
     return result["chunks"]
 
 
@@ -334,7 +346,7 @@ def _bounded_context_chars(value: Any) -> int:
 
 
 def _normalized_documents(path: str | None = None, path_prefix: str | None = None) -> list[dict]:
-    normalized_root = get_settings().common.normalized_output_dir.resolve()
+    normalized_root = get_api_settings().normalized_output_dir.resolve()
     conditions = [
         "d.missing_since IS NULL",
         "c.metadata ? 'markdown_path'",
@@ -348,7 +360,7 @@ def _normalized_documents(path: str | None = None, path_prefix: str | None = Non
         conditions.append("d.path ILIKE %s")
         params.append(f"{path_prefix.rstrip('/')}%")
 
-    with db_cursor() as (conn, cur):
+    with db_cursor(get_api_settings().database) as (conn, cur):
         cur.execute(
             f"""
             SELECT path, filename, markdown_path
@@ -388,8 +400,8 @@ def _normalized_documents(path: str | None = None, path_prefix: str | None = Non
 
 
 def _markdown_path_for_document(path: str) -> Path | None:
-    normalized_root = get_settings().common.normalized_output_dir.resolve()
-    with db_cursor() as (conn, cur):
+    normalized_root = get_api_settings().normalized_output_dir.resolve()
+    with db_cursor(get_api_settings().database) as (conn, cur):
         cur.execute(
             """
             SELECT c.metadata->>'markdown_path'

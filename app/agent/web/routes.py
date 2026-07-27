@@ -3,9 +3,9 @@ from pathlib import Path
 
 from fastapi.responses import HTMLResponse
 
-API_DIR = Path(__file__).resolve().parent
-TEMPLATE_DIR = API_DIR / "templates"
-STATIC_DIR = API_DIR / "static"
+WEB_DIR = Path(__file__).resolve().parent
+TEMPLATE_DIR = WEB_DIR / "templates"
+STATIC_DIR = WEB_DIR / "static"
 
 INDEX_HTML = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 APP_JS = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

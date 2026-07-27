@@ -1,35 +1,30 @@
-"""Assemble the shared and runtime-specific configuration sections."""
+"""Shared configuration primitives with no runtime-specific dependencies."""
 
-from functools import lru_cache
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from pydantic import BaseModel, Field
-
-from app.api.config import ApiSettings
-from app.core.settings import CommonSettings, DatabaseSettings
-from app.embed.config import EmbedSettings
-from app.normalize.config import NormalizeSettings
+SETTINGS_CONFIG = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
-class Settings(BaseModel):
-    """One cached view of configuration, grouped by runtime ownership."""
+class ConfiguredSettings(BaseSettings):
+    """Base settings class with the project's shared environment behavior."""
 
-    common: CommonSettings = Field(default_factory=CommonSettings)
-    api: ApiSettings = Field(default_factory=ApiSettings)
-    embed: EmbedSettings = Field(default_factory=EmbedSettings)
-    normalize: NormalizeSettings = Field(default_factory=NormalizeSettings)
+    model_config = SETTINGS_CONFIG
 
 
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
+class DatabaseSettings(ConfiguredSettings):
+    db: str = Field(default="rag", alias="POSTGRES_DB")
+    user: str = Field(default="rag", alias="POSTGRES_USER")
+    password: str = Field(default="rag", alias="POSTGRES_PASSWORD")
+    host: str = Field(default="localhost", alias="POSTGRES_HOST")
+    port: int = Field(default=5432, alias="POSTGRES_PORT")
+
+    @property
+    def url(self) -> str:
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
 
 
 __all__ = [
-    "ApiSettings",
-    "CommonSettings",
+    "ConfiguredSettings",
     "DatabaseSettings",
-    "EmbedSettings",
-    "NormalizeSettings",
-    "Settings",
-    "get_settings",
 ]

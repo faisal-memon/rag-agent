@@ -4,7 +4,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from app.core.config import get_settings
+from app.agent.config import get_api_settings
+from app.embed.config import get_embed_settings
+from app.normalize.config import get_normalize_settings
 
 
 class ConfigTest(unittest.TestCase):
@@ -16,28 +18,27 @@ class ConfigTest(unittest.TestCase):
         os.environ.pop("RAG_AGENT_MAX_STEPS", None)
         os.environ.pop("RAG_ENABLED_SUFFIXES", None)
         os.environ.pop("RAG_MEMORY_PATH", None)
-        get_settings.cache_clear()
+        get_api_settings.cache_clear(); get_embed_settings.cache_clear(); get_normalize_settings.cache_clear()
 
     def test_stability_checks_must_be_positive(self) -> None:
         os.environ["NORMALIZE_WATCH_STABILITY_CHECKS"] = "0"
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
 
         with self.assertRaises(ValidationError):
-            get_settings()
+            get_normalize_settings()
 
-    def test_settings_exposes_grouped_views(self) -> None:
-        settings = get_settings()
-
-        self.assertEqual("rag", settings.common.database.db)
-        self.assertEqual(Path("/data/nextcloud"), settings.common.nextcloud_source_dir)
-        self.assertEqual(6, settings.api.agent_max_steps)
-        self.assertEqual(Path("/memory/MEMORY.md"), settings.api.memory_path)
-        self.assertEqual(500, settings.embed.chunk_size)
-        self.assertEqual("mixedbread-ai/mxbai-embed-large-v1", settings.embed.tokenizer_model_id)
-        self.assertEqual("docling", settings.normalize.backend)
+    def test_each_runtime_loads_its_own_settings(self) -> None:
+        api = get_api_settings(); embed = get_embed_settings(); normalize = get_normalize_settings()
+        self.assertEqual("rag", api.database.db)
+        self.assertEqual(Path("/data/nextcloud"), normalize.nextcloud_source_dir)
+        self.assertEqual(6, api.agent_max_steps)
+        self.assertEqual(Path("/memory/MEMORY.md"), api.memory_path)
+        self.assertEqual(500, embed.chunk_size)
+        self.assertEqual("mixedbread-ai/mxbai-embed-large-v1", embed.tokenizer_model_id)
+        self.assertEqual("docling", normalize.backend)
         self.assertEqual(
             {".pdf", ".docx", ".txt", ".md", ".jpg", ".jpeg", ".png"},
-            settings.normalize.enabled_suffixes,
+            normalize.enabled_suffixes,
         )
 
     def test_grouped_settings_follow_environment_overrides(self) -> None:
@@ -45,43 +46,41 @@ class ConfigTest(unittest.TestCase):
         os.environ["NORMALIZE_WATCH_STABILITY_CHECKS"] = "2"
         os.environ["POSTGRES_HOST"] = "postgres"
         os.environ["RAG_MEMORY_PATH"] = "/tmp/rag-memory.md"
-        get_settings.cache_clear()
-
-        settings = get_settings()
-
-        self.assertEqual(4, settings.api.agent_max_steps)
-        self.assertEqual(2, settings.normalize.stability_checks)
-        self.assertEqual("postgres", settings.common.database.host)
-        self.assertEqual(Path("/tmp/rag-memory.md"), settings.api.memory_path)
+        get_api_settings.cache_clear(); get_normalize_settings.cache_clear()
+        api = get_api_settings(); normalize = get_normalize_settings()
+        self.assertEqual(4, api.agent_max_steps)
+        self.assertEqual(2, normalize.stability_checks)
+        self.assertEqual("postgres", api.database.host)
+        self.assertEqual(Path("/tmp/rag-memory.md"), api.memory_path)
 
     def test_enabled_suffixes_accept_comma_separated_env_value(self) -> None:
         os.environ["RAG_ENABLED_SUFFIXES"] = ".pdf,docx, TXT , .jpg"
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
 
-        settings = get_settings()
+        settings = get_normalize_settings()
 
-        self.assertEqual({".pdf", ".docx", ".txt", ".jpg"}, settings.normalize.enabled_suffixes)
+        self.assertEqual({".pdf", ".docx", ".txt", ".jpg"}, settings.enabled_suffixes)
 
     def test_reconcile_interval_must_not_be_negative(self) -> None:
         os.environ["NORMALIZE_RECONCILE_INTERVAL_SECONDS"] = "-1"
-        get_settings.cache_clear()
+        get_normalize_settings.cache_clear()
 
         with self.assertRaises(ValidationError):
-            get_settings()
+            get_normalize_settings()
 
     def test_embed_reconcile_interval_must_not_be_negative(self) -> None:
         os.environ["EMBED_RECONCILE_INTERVAL_SECONDS"] = "-1"
-        get_settings.cache_clear()
+        get_embed_settings.cache_clear()
 
         with self.assertRaises(ValidationError):
-            get_settings()
+            get_embed_settings()
 
     def test_agent_max_steps_is_bounded(self) -> None:
         os.environ["RAG_AGENT_MAX_STEPS"] = "13"
-        get_settings.cache_clear()
+        get_api_settings.cache_clear()
 
         with self.assertRaises(ValidationError):
-            get_settings()
+            get_api_settings()
 
 
 if __name__ == "__main__":

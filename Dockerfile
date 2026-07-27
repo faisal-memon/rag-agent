@@ -10,11 +10,11 @@ FROM base AS api
 COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt
 COPY app/__init__.py ./app/__init__.py
-COPY app/api ./app/api
+COPY app/agent ./app/agent
 COPY app/core ./app/core
 COPY sql ./sql
 
-CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 
 FROM base AS embed

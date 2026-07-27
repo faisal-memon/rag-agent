@@ -26,11 +26,6 @@ class Citation(BaseModel):
     retrieval_mode: str | None = None
 
 
-class QueryResponse(BaseModel):
-    answer: str
-    citations: list[Citation]
-
-
 class AgentChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=20000)

@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from queue import Empty, Queue
 
-from app.core.config import Settings
+from app.embed.config import EmbedSettings
 from app.embed.service import reindex_artifact
 
 LOGGER_NAME = "rag-embed-reconcile"
@@ -10,7 +10,7 @@ logger = logging.getLogger(LOGGER_NAME)
 
 
 class Reconciler:
-    def __init__(self, settings: Settings, work_queue: Queue[Path]) -> None:
+    def __init__(self, settings: EmbedSettings, work_queue: Queue[Path]) -> None:
         self.settings = settings
         self.work_queue = work_queue
         self.pending_paths: set[Path] = set()
@@ -23,7 +23,7 @@ class Reconciler:
         event_count = 0
 
         try:
-            path = self.work_queue.get(timeout=self.settings.embed.reconcile_interval_seconds)
+            path = self.work_queue.get(timeout=self.settings.reconcile_interval_seconds)
             event_count += 1
             self.pending_paths.add(path)
             self._mark_event_done(path)

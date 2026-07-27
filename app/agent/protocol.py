@@ -9,8 +9,8 @@ import json
 import re
 from typing import Any
 
-import app.api.agent.tools as tools
-from app.api.agent import memory
+import app.agent.tools as tools
+from app.agent import memory
 
 
 def extract_json_object(text: str) -> str:
