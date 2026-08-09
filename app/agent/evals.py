@@ -38,6 +38,30 @@ class EvalResult:
         return not self.failures
 
 
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("cases", type=Path, help="path to a JSON list of evaluation cases")
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("RAG_EVAL_BASE_URL", "http://localhost:8000"),
+        help="agent base URL (default: RAG_EVAL_BASE_URL or http://localhost:8000)",
+    )
+    args = parser.parse_args(argv)
+    try:
+        results = run_cases(load_cases(args.cases), args.base_url)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    for result in results:
+        print(f"{'PASS' if result.passed else 'FAIL'} {result.case.name}")
+        for failure in result.failures:
+            print(f"  - {failure}")
+    passed = sum(result.passed for result in results)
+    print(f"{passed}/{len(results)} passed")
+    return 0 if passed == len(results) else 1
+
+
 def load_cases(path: Path) -> list[EvalCase]:
     """Load evaluation cases from a JSON list."""
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -132,30 +156,6 @@ def run_cases(cases: list[EvalCase], base_url: str) -> list[EvalResult]:
         except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
             results.append(EvalResult(case=case, failures=[f"request failed: {exc}"]))
     return results
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cases", type=Path, help="path to a JSON list of evaluation cases")
-    parser.add_argument(
-        "--base-url",
-        default=os.environ.get("RAG_EVAL_BASE_URL", "http://localhost:8000"),
-        help="agent base URL (default: RAG_EVAL_BASE_URL or http://localhost:8000)",
-    )
-    args = parser.parse_args(argv)
-    try:
-        results = run_cases(load_cases(args.cases), args.base_url)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-
-    for result in results:
-        print(f"{'PASS' if result.passed else 'FAIL'} {result.case.name}")
-        for failure in result.failures:
-            print(f"  - {failure}")
-    passed = sum(result.passed for result in results)
-    print(f"{passed}/{len(results)} passed")
-    return 0 if passed == len(results) else 1
 
 
 if __name__ == "__main__":
