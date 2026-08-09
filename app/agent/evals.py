@@ -56,21 +56,7 @@ def load_cases(path: Path) -> list[EvalCase]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("evaluation cases must be a JSON list")
-
-    cases = []
-    for index, item in enumerate(data, start=1):
-        if not isinstance(item, dict):
-            raise ValueError(f"case {index} must be an object")
-        try:
-            case = EvalCase(**item)
-        except TypeError as exc:
-            raise ValueError(f"case {index} is invalid: {exc}") from exc
-        if not isinstance(case.question, str) or not isinstance(case.expected_answer_substring, str):
-            raise ValueError(f"case {index} question and expected_answer_substring must be strings")
-        if not case.question or not case.expected_answer_substring:
-            raise ValueError(f"case {index} question and expected_answer_substring must not be empty")
-        cases.append(case)
-    return cases
+    return [EvalCase(**case) for case in data]
 
 
 def query_agent(base_url: str, question: str) -> dict[str, Any]:
