@@ -9,7 +9,7 @@ NORMALIZE_IMAGE ?= ghcr.io/$(GHCR_OWNER)/rag-normalize
 TAG ?= latest
 DOCKER_TARGET ?= api
 
-.PHONY: deps deps-test lint test build docker-build docker-build-api docker-build-embed docker-build-normalize docker-build-all docker-push docker-push-api docker-push-embed docker-push-normalize docker-push-all docker-run-worker docker-run-normalize docker-run-normalize-watch
+.PHONY: deps deps-test lint test build eval eval-init docker-build docker-build-api docker-build-embed docker-build-normalize docker-build-all docker-push docker-push-api docker-push-embed docker-push-normalize docker-push-all docker-run-worker docker-run-normalize docker-run-normalize-watch
 
 $(VENV_PYTHON):
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -31,6 +31,13 @@ test: $(VENV_PYTHON) deps-test
 
 build: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m compileall app
+
+eval: $(VENV_PYTHON)
+	$(VENV_PYTHON) -m app.agent.evals evals/cases.local.json
+
+eval-init:
+	@test ! -e evals/cases.local.json || (echo "evals/cases.local.json already exists" >&2; exit 1)
+	cp evals/cases.example.json evals/cases.local.json
 
 docker-build:
 	docker build --target $(DOCKER_TARGET) -t $(IMAGE):$(TAG) .

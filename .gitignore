@@ -5,4 +5,4 @@ __pycache__/
 .env
 data/
 postgres-data/
-
+evals/cases.local.json
