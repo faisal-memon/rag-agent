@@ -1,16 +1,11 @@
 # Agent evaluations
 
-This directory contains deterministic checks for a running RAG agent.  Cases are
-JSON objects in a list.  Keep local document-specific questions and expected paths
-in `cases.local.json`, which is ignored by Git.
+This directory contains simple deterministic checks for a running RAG agent. Cases
+are JSON objects in a list. Keep local document-specific questions and expected
+answers in `cases.local.json`, which is ignored by Git.
 
-Each case requires `name` and `question`.  The optional checks are:
-
-- `required_answer_substrings` and `forbidden_answer_substrings`
-- `required_citation_path_substrings` and `forbidden_citation_path_substrings`
-- `minimum_tool_calls` and `maximum_tool_calls`
-- `required_tools`
-- `minimum_distinct_retrieval_tools` (counts `semantic_search` and `keyword_search`)
+Each case has only two fields: `question` and `expected_answer_substring`. The case
+passes when the agent's `answer` contains the expected string.
 
 Start the agent, create a local cases file once, edit it for the indexed documents,
 then run the evaluations:

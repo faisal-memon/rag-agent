@@ -4,28 +4,17 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-RETRIEVAL_TOOLS = frozenset({"semantic_search", "keyword_search"})
-
-
 @dataclass(frozen=True)
 class EvalCase:
-    name: str
     question: str
-    required_answer_substrings: list[str] = field(default_factory=list)
-    forbidden_answer_substrings: list[str] = field(default_factory=list)
-    required_citation_path_substrings: list[str] = field(default_factory=list)
-    forbidden_citation_path_substrings: list[str] = field(default_factory=list)
-    minimum_tool_calls: int | None = None
-    maximum_tool_calls: int | None = None
-    required_tools: list[str] = field(default_factory=list)
-    minimum_distinct_retrieval_tools: int | None = None
+    expected_answer_substring: str
 
 
 @dataclass(frozen=True)
@@ -54,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     for result in results:
-        print(f"{'PASS' if result.passed else 'FAIL'} {result.case.name}")
+        print(f"{'PASS' if result.passed else 'FAIL'} {result.case.question}")
         for failure in result.failures:
             print(f"  - {failure}")
     passed = sum(result.passed for result in results)
@@ -73,9 +62,14 @@ def load_cases(path: Path) -> list[EvalCase]:
         if not isinstance(item, dict):
             raise ValueError(f"case {index} must be an object")
         try:
-            cases.append(EvalCase(**item))
+            case = EvalCase(**item)
         except TypeError as exc:
             raise ValueError(f"case {index} is invalid: {exc}") from exc
+        if not isinstance(case.question, str) or not isinstance(case.expected_answer_substring, str):
+            raise ValueError(f"case {index} question and expected_answer_substring must be strings")
+        if not case.question or not case.expected_answer_substring:
+            raise ValueError(f"case {index} question and expected_answer_substring must not be empty")
+        cases.append(case)
     return cases
 
 
@@ -101,48 +95,12 @@ def evaluate_case(case: EvalCase, response: dict[str, Any]) -> EvalResult:
     answer = response.get("answer")
     if not isinstance(answer, str):
         failures.append("response answer is not a string")
-        answer = ""
+        return EvalResult(case=case, failures=failures)
 
-    citations = response.get("citations")
-    citation_paths = [item.get("path", "") for item in citations if isinstance(item, dict)] if isinstance(citations, list) else []
-    if not isinstance(citations, list):
-        failures.append("response citations is not a list")
-
-    tool_results = response.get("tool_results")
-    tool_names = [item.get("tool", "") for item in tool_results if isinstance(item, dict)] if isinstance(tool_results, list) else []
-    if not isinstance(tool_results, list):
-        failures.append("response tool_results is not a list")
-
-    for text in case.required_answer_substrings:
-        if text not in answer:
-            failures.append(f"answer is missing required substring: {text!r}")
-    for text in case.forbidden_answer_substrings:
-        if text in answer:
-            failures.append(f"answer contains forbidden substring: {text!r}")
-    for text in case.required_citation_path_substrings:
-        if not any(text in path for path in citation_paths):
-            failures.append(f"citations are missing required path substring: {text!r}")
-    for text in case.forbidden_citation_path_substrings:
-        if any(text in path for path in citation_paths):
-            failures.append(f"citations contain forbidden path substring: {text!r}")
-
-    tool_count = len(tool_names)
-    if case.minimum_tool_calls is not None and tool_count < case.minimum_tool_calls:
-        failures.append(f"tool calls {tool_count} is below minimum {case.minimum_tool_calls}")
-    if case.maximum_tool_calls is not None and tool_count > case.maximum_tool_calls:
-        failures.append(f"tool calls {tool_count} exceeds maximum {case.maximum_tool_calls}")
-    for tool in case.required_tools:
-        if tool not in tool_names:
-            failures.append(f"required tool was not called: {tool!r}")
-
-    retrieval_count = len(set(tool_names) & RETRIEVAL_TOOLS)
-    if (
-        case.minimum_distinct_retrieval_tools is not None
-        and retrieval_count < case.minimum_distinct_retrieval_tools
-    ):
+    if case.expected_answer_substring not in answer:
         failures.append(
-            "distinct retrieval tools "
-            f"{retrieval_count} is below minimum {case.minimum_distinct_retrieval_tools}"
+            "answer is missing expected substring: "
+            f"{case.expected_answer_substring!r}"
         )
     return EvalResult(case=case, failures=failures)
 

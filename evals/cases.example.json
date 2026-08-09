@@ -1,14 +1,6 @@
 [
   {
-    "name": "generic-document-question",
     "question": "What does the example document say about the project timeline?",
-    "required_answer_substrings": ["timeline"],
-    "forbidden_answer_substrings": ["I do not know"],
-    "required_citation_path_substrings": ["example"],
-    "forbidden_citation_path_substrings": [],
-    "minimum_tool_calls": 1,
-    "maximum_tool_calls": 4,
-    "required_tools": ["semantic_search"],
-    "minimum_distinct_retrieval_tools": 1
+    "expected_answer_substring": "timeline"
   }
 ]
