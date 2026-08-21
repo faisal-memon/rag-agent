@@ -8,7 +8,7 @@ from app.agent.evals import EvalCase, EvalResult, evaluate_case, main
 
 class EvalCaseTest(unittest.TestCase):
     def test_main_prints_agent_answer(self) -> None:
-        case = EvalCase(question="Example question", expected_answer_substring="answer")
+        case = EvalCase(question="Example question", expected_answer_substrings=["answer"])
         result = EvalResult(case=case, answer="This is the answer.", failures=[])
         output = io.StringIO()
 
@@ -22,10 +22,10 @@ class EvalCaseTest(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertIn("This is the answer.", output.getvalue())
 
-    def test_accepts_response_with_expected_answer_substring(self) -> None:
+    def test_accepts_response_with_any_expected_answer_substring(self) -> None:
         case = EvalCase(
             question="Example question",
-            expected_answer_substring="ANSWER",
+            expected_answer_substrings=["unmatched", "ANSWER"],
         )
         response = {"answer": "This is the answer."}
 
@@ -34,17 +34,20 @@ class EvalCaseTest(unittest.TestCase):
     def test_reports_missing_expected_answer_substring(self) -> None:
         case = EvalCase(
             question="Example question",
-            expected_answer_substring="required",
+            expected_answer_substrings=["required", "also missing"],
         )
         response = {"answer": "A different answer"}
 
         failures = evaluate_case(case, response).failures
 
-        self.assertEqual(["answer is missing expected substring: 'required'"], failures)
+        self.assertEqual(
+            ["answer is missing an expected substring: ['required', 'also missing']"],
+            failures,
+        )
 
     def test_reports_malformed_response_fields(self) -> None:
         result = evaluate_case(
-            EvalCase(question="Example question", expected_answer_substring="answer"),
+            EvalCase(question="Example question", expected_answer_substrings=["answer"]),
             {},
         )
 

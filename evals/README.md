@@ -4,8 +4,9 @@ This directory contains simple deterministic checks for a running RAG agent. Cas
 are JSON objects in a list. Keep local document-specific questions and expected
 answers in `cases.local.json`, which is ignored by Git.
 
-Each case has only two fields: `question` and `expected_answer_substring`. The case
-passes when the agent's `answer` contains the expected string.
+Each case has `question` and `expected_answer_substrings`. The latter is an array
+of acceptable answer variants. The case passes when the agent's `answer` contains
+at least one expected string, without regard to letter case.
 
 Start the agent, create a local cases file once, edit it for the indexed documents,
 then run the evaluations:

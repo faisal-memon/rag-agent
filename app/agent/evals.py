@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 @dataclass(frozen=True)
 class EvalCase:
     question: str
-    expected_answer_substring: str
+    expected_answer_substrings: list[str]
 
 
 @dataclass(frozen=True)
@@ -86,10 +86,11 @@ def evaluate_case(case: EvalCase, response: dict[str, Any]) -> EvalResult:
         failures.append("response answer is not a string")
         return EvalResult(case=case, answer=None, failures=failures)
 
-    if case.expected_answer_substring.lower() not in answer.lower():
+    answer_lower = answer.lower()
+    if not any(expected.lower() in answer_lower for expected in case.expected_answer_substrings):
         failures.append(
-            "answer is missing expected substring: "
-            f"{case.expected_answer_substring!r}"
+            "answer is missing an expected substring: "
+            f"{case.expected_answer_substrings!r}"
         )
     return EvalResult(case=case, answer=answer, failures=failures)
 
