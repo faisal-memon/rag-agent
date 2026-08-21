@@ -62,6 +62,17 @@ def load_cases(path: Path) -> list[EvalCase]:
     return [EvalCase(**case) for case in data]
 
 
+def run_cases(cases: list[EvalCase], base_url: str) -> list[EvalResult]:
+    """Query and evaluate every case, retaining request failures as results."""
+    results = []
+    for case in cases:
+        try:
+            results.append(evaluate_case(case, query_agent(base_url, case.question)))
+        except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+            results.append(EvalResult(case=case, answer=None, failures=[f"request failed: {exc}"]))
+    return results
+
+
 def query_agent(base_url: str, question: str) -> dict[str, Any]:
     """Send one question to the running agent endpoint."""
     url = f"{base_url.rstrip('/')}/agent/query"
@@ -94,16 +105,6 @@ def evaluate_case(case: EvalCase, response: dict[str, Any]) -> EvalResult:
         )
     return EvalResult(case=case, answer=answer, failures=failures)
 
-
-def run_cases(cases: list[EvalCase], base_url: str) -> list[EvalResult]:
-    """Query and evaluate every case, retaining request failures as results."""
-    results = []
-    for case in cases:
-        try:
-            results.append(evaluate_case(case, query_agent(base_url, case.question)))
-        except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
-            results.append(EvalResult(case=case, answer=None, failures=[f"request failed: {exc}"]))
-    return results
 
 
 if __name__ == "__main__":
