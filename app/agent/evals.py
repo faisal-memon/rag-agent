@@ -86,7 +86,7 @@ def evaluate_case(case: EvalCase, response: dict[str, Any]) -> EvalResult:
         failures.append("response answer is not a string")
         return EvalResult(case=case, answer=None, failures=failures)
 
-    if case.expected_answer_substring not in answer:
+    if case.expected_answer_substring.lower() not in answer.lower():
         failures.append(
             "answer is missing expected substring: "
             f"{case.expected_answer_substring!r}"

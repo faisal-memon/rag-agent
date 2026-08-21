@@ -25,7 +25,7 @@ class EvalCaseTest(unittest.TestCase):
     def test_accepts_response_with_expected_answer_substring(self) -> None:
         case = EvalCase(
             question="Example question",
-            expected_answer_substring="answer",
+            expected_answer_substring="ANSWER",
         )
         response = {"answer": "This is the answer."}
 
