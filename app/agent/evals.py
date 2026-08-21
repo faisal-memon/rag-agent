@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ class EvalResult:
     case: EvalCase
     answer: str | None
     failures: list[str]
+    elapsed_seconds: float = 0.0
 
     @property
     def passed(self) -> bool:
@@ -44,13 +46,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     for result in results:
-        print(f"{'PASS' if result.passed else 'FAIL'} {result.case.question}")
+        print(
+            f"{'PASS' if result.passed else 'FAIL'} "
+            f"({result.elapsed_seconds:.2f}s) {result.case.question}"
+        )
         if result.answer is not None:
             print(f"  {result.answer}")
         for failure in result.failures:
             print(f"  - {failure}")
     passed = sum(result.passed for result in results)
-    print(f"{passed}/{len(results)} passed")
+    total = len(results)
+    percentage = passed / total * 100 if total else 0
+    elapsed_seconds = sum(result.elapsed_seconds for result in results)
+    print(f"{passed}/{total} passed ({percentage:.1f}%) in {elapsed_seconds:.2f}s")
     return 0 if passed == len(results) else 1
 
 
@@ -66,10 +74,19 @@ def run_cases(cases: list[EvalCase], base_url: str) -> list[EvalResult]:
     """Query and evaluate every case, retaining request failures as results."""
     results = []
     for case in cases:
+        started = time.perf_counter()
         try:
-            results.append(evaluate_case(case, query_agent(base_url, case.question)))
+            result = evaluate_case(case, query_agent(base_url, case.question))
         except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
-            results.append(EvalResult(case=case, answer=None, failures=[f"request failed: {exc}"]))
+            result = EvalResult(case=case, answer=None, failures=[f"request failed: {exc}"])
+        results.append(
+            EvalResult(
+                case=result.case,
+                answer=result.answer,
+                failures=result.failures,
+                elapsed_seconds=time.perf_counter() - started,
+            )
+        )
     return results
 
 

@@ -9,7 +9,12 @@ from app.agent.evals import EvalCase, EvalResult, evaluate_case, main
 class EvalCaseTest(unittest.TestCase):
     def test_main_prints_agent_answer(self) -> None:
         case = EvalCase(question="Example question", expected_answer_substrings=["answer"])
-        result = EvalResult(case=case, answer="This is the answer.", failures=[])
+        result = EvalResult(
+            case=case,
+            answer="This is the answer.",
+            failures=[],
+            elapsed_seconds=1.5,
+        )
         output = io.StringIO()
 
         with (
@@ -21,6 +26,8 @@ class EvalCaseTest(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertIn("This is the answer.", output.getvalue())
+        self.assertIn("PASS (1.50s)", output.getvalue())
+        self.assertIn("1/1 passed (100.0%) in 1.50s", output.getvalue())
 
     def test_accepts_response_with_any_expected_answer_substring(self) -> None:
         case = EvalCase(
