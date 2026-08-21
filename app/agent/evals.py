@@ -20,6 +20,7 @@ class EvalCase:
 @dataclass(frozen=True)
 class EvalResult:
     case: EvalCase
+    answer: str | None
     failures: list[str]
 
     @property
@@ -44,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
 
     for result in results:
         print(f"{'PASS' if result.passed else 'FAIL'} {result.case.question}")
+        if result.answer is not None:
+            print(f"  {result.answer}")
         for failure in result.failures:
             print(f"  - {failure}")
     passed = sum(result.passed for result in results)
@@ -81,14 +84,14 @@ def evaluate_case(case: EvalCase, response: dict[str, Any]) -> EvalResult:
     answer = response.get("answer")
     if not isinstance(answer, str):
         failures.append("response answer is not a string")
-        return EvalResult(case=case, failures=failures)
+        return EvalResult(case=case, answer=None, failures=failures)
 
     if case.expected_answer_substring not in answer:
         failures.append(
             "answer is missing expected substring: "
             f"{case.expected_answer_substring!r}"
         )
-    return EvalResult(case=case, failures=failures)
+    return EvalResult(case=case, answer=answer, failures=failures)
 
 
 def run_cases(cases: list[EvalCase], base_url: str) -> list[EvalResult]:
@@ -98,7 +101,7 @@ def run_cases(cases: list[EvalCase], base_url: str) -> list[EvalResult]:
         try:
             results.append(evaluate_case(case, query_agent(base_url, case.question)))
         except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
-            results.append(EvalResult(case=case, failures=[f"request failed: {exc}"]))
+            results.append(EvalResult(case=case, answer=None, failures=[f"request failed: {exc}"]))
     return results
 
 
