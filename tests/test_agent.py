@@ -163,6 +163,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Do not use tools for greetings", prompt)
         self.assertIn("Never invent facts about the user", prompt)
         self.assertIn("Answer from tool evidence only and cite document filenames or paths", prompt)
+        self.assertIn("do not stop at its filename or path", prompt)
+        self.assertIn("Inspect its contents with grep_documents, semantic_search, or read_document", prompt)
 
     def test_tool_descriptions_are_generated_from_docstrings(self) -> None:
         descriptions = render_tool_descriptions()
