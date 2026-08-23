@@ -6,3 +6,4 @@ __pycache__/
 data/
 postgres-data/
 config/runtime-settings.json
+evals/cases.local.json
