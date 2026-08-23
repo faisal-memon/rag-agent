@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import Field
 
-from app.core.config import ConfiguredSettings, DatabaseSettings
+from app.core.config import ConfiguredSettings, DatabaseSettings, runtime_settings
 
 
 class ApiSettings(ConfiguredSettings):
@@ -31,4 +31,14 @@ class ApiSettings(ConfiguredSettings):
 
 @lru_cache
 def get_api_settings() -> ApiSettings:
-    return ApiSettings()
+    return ApiSettings(
+        **runtime_settings(
+            "api",
+            excluded={
+                "database",
+                "openai_api_key",
+                "llamacpp_api_key",
+                "embedding_llamacpp_api_key",
+            },
+        )
+    )

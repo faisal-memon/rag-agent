@@ -23,13 +23,16 @@ RAG Agent is a local-first MVP for a headless document agent that ingests files 
 
 ## Quick start
 
-1. Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY`.
+1. Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY` when using OpenAI.
    If you want local answer generation, set `LLM_PROVIDER=llamacpp` and point `LLAMACPP_BASE_URL` at your `llama.cpp` server.
    If you want local embeddings, set `EMBEDDING_PROVIDER=llamacpp` and point `LLAMACPP_EMBEDDING_BASE_URL` at your embedding server.
    Use `EMBEDDING_QUERY_PREFIX` and `EMBEDDING_DOCUMENT_PREFIX` to match your embedding model's expected prompt format.
    The container image prefetches the embedding tokenizer at build time and defaults `EMBEDDING_TOKENIZER_LOCAL_FILES_ONLY=true` so runtime chunking does not depend on network access.
    Use `RAG_ENABLED_SUFFIXES` to control which raw file types the normalizer watches.
    Docling handles OCR for image files and scanned PDFs in the normalizer image.
+   Copy `config/runtime-settings.example.json` to `config/runtime-settings.json` to
+   customize non-secret API, embedding, and normalization settings. Docker mounts
+   this file's directory at `/config`, so it persists across container recreation.
 2. Put source files under `./data/nextcloud` or mount your Nextcloud storage there.
 3. Start the stack:
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import Field
 
-from app.core.config import ConfiguredSettings
+from app.core.config import ConfiguredSettings, runtime_settings
 
 
 class NormalizeSettings(ConfiguredSettings):
@@ -30,4 +30,4 @@ class NormalizeSettings(ConfiguredSettings):
 
 @lru_cache
 def get_normalize_settings() -> NormalizeSettings:
-    return NormalizeSettings()
+    return NormalizeSettings(**runtime_settings("normalize"))
