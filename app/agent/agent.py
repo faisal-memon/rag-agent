@@ -273,6 +273,19 @@ def _decide_next_action(
                 parsed=parsed,
             )
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        if not tool_results and _is_agent_configuration_question(question) and text.strip():
+            _append_debug(
+                debug,
+                "controller_decision",
+                phase="planning",
+                decision="fallback_prose_answer",
+                reason="planner_prose_for_agent_configuration_question",
+            )
+            return {
+                "action": "answer",
+                "evidence_status": "casual",
+                "answer": text.strip(),
+            }
         _append_debug(
             debug,
             "parse_error",
@@ -304,6 +317,22 @@ def _decide_next_action(
         reason="planner_output_unusable_with_existing_tool_results",
     )
     return {"action": "synthesize"}
+
+
+def _is_agent_configuration_question(question: str) -> bool:
+    question_lower = question.lower()
+    return any(
+        phrase in question_lower
+        for phrase in (
+            "system prompt",
+            "prompt",
+            "your instructions",
+            "agent behavior",
+            "your behavior",
+            "your tools",
+            "your configuration",
+        )
+    )
 
 
 def _execute_tool(
