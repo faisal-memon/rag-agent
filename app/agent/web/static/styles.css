@@ -85,7 +85,8 @@ h1 {
 
 .page-nav a:hover,
 body.agent-only .page-nav .agent-nav,
-body.debug-console .page-nav .debug-nav {
+body.debug-console .page-nav .debug-nav,
+body.settings-console .page-nav .settings-nav {
   color: var(--accent);
 }
 
@@ -125,6 +126,43 @@ textarea {
 textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(78, 232, 138, 0.12);
+}
+
+.settings-form {
+  display: grid;
+  gap: 20px;
+}
+
+.settings-form fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.settings-form legend {
+  padding: 0 6px;
+  color: var(--accent-2);
+  font-size: 13px;
+}
+
+.settings-form input,
+.settings-form select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: #080c0a;
+  font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.settings-form input:focus,
+.settings-form select:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .actions {

@@ -97,6 +97,7 @@ Web routes:
 
 - `/` is the agent-only conversation.
 - `/debug` contains retrieval modes, raw retrieval debugging, pipeline status, and agent inspection.
+- `/settings` manages non-secret chat and retrieval settings for this installation.
 - `/docs` contains the generated FastAPI API documentation.
 
 ## Layout
