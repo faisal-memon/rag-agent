@@ -22,8 +22,10 @@ services:
       - .env
     environment:
       NEXTCLOUD_SOURCE_DIR: ${NEXTCLOUD_SOURCE_DIR:-/data/nextcloud}
+      RAG_SETTINGS_PATH: /config/runtime-settings.json
     ports:
       - "8000:8000"
     volumes:
       - ./app:/app/app
       - ./data:/data
+      - ./config:/config
