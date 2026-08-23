@@ -67,7 +67,7 @@ jobs:
 
       - name: Bump version tag
         id: bump
-        uses: faisal-memon/pr-label-semver@v0
+        uses: faisal-memon/pr-label-semver@v0.1.0
         with:
           version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
           github-token: ${{ github.token }}
