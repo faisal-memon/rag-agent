@@ -29,7 +29,7 @@ from app.agent.tools import (
     read_document,
 )
 from app.agent.prompts import render_prompt
-from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page
+from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page, settings_page
 
 
 def _settings_with_api(**api_values):
@@ -443,6 +443,25 @@ class AgentTest(unittest.TestCase):
         self.assertEqual("return_answer", result["debug"][-1]["decision"])
         execute_tool.assert_not_called()
 
+    def test_agent_accepts_plain_prose_for_agent_configuration_question(self) -> None:
+        prose_answer = "Add the rule to the planner prompt so candidate files are inspected."
+
+        with (
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", return_value=prose_answer),
+            patch("app.agent.agent._execute_tool") as execute_tool,
+        ):
+            result = _answer("What change can I make to your system prompt?")
+
+        self.assertEqual(prose_answer, result["answer"])
+        self.assertEqual([], result["tool_results"])
+        self.assertIn(
+            "fallback_prose_answer",
+            [event.get("decision") for event in result["debug"]],
+        )
+        self.assertNotIn("parse_error", [event["event"] for event in result["debug"]])
+        execute_tool.assert_not_called()
+
     def test_agent_rejects_not_found_after_only_one_search_method(self) -> None:
         responses = iter(
             [
@@ -604,6 +623,13 @@ class AgentTest(unittest.TestCase):
         self.assertIn('<body class="debug-console">', page)
         self.assertIn("<h1>document query console</h1>", page)
         self.assertIn("Semantic search, keyword search, retrieval debug", page)
+
+    def test_settings_page_exposes_runtime_settings_form(self) -> None:
+        page = settings_page().body.decode()
+
+        self.assertIn('<body class="settings-console">', page)
+        self.assertIn('id="settings-form"', page)
+        self.assertIn('src="/static/settings.js"', page)
 
 
 if __name__ == "__main__":

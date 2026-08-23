@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RAG Settings</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body class="settings-console">
+    <main>
+      <section class="hero">
+        <div class="eyebrow">nextcloud-rag</div>
+        <h1>runtime settings</h1>
+        <p class="subtitle">Changes are saved on this installation and apply to the next chat request. API keys remain outside this page.</p>
+        <nav class="page-nav" aria-label="Application">
+          <a class="agent-nav" href="/">Chat</a>
+          <a class="debug-nav" href="/debug">Debug</a>
+          <a class="settings-nav" href="/settings">Settings</a>
+          <a href="/docs">API</a>
+        </nav>
+      </section>
+
+      <form class="query-card settings-form" id="settings-form">
+        <fieldset>
+          <legend>chat model</legend>
+          <label for="llm-provider">Provider</label>
+          <select id="llm-provider" name="llm_provider">
+            <option value="llamacpp">Local llama.cpp-compatible server</option>
+            <option value="openai">OpenAI</option>
+          </select>
+
+          <label for="llamacpp-base-url">Local model URL</label>
+          <input id="llamacpp-base-url" name="llamacpp_base_url" type="url" required />
+
+          <label for="llamacpp-chat-model">Local model name</label>
+          <input id="llamacpp-chat-model" name="llamacpp_chat_model" type="text" required />
+
+          <label for="openai-chat-model">OpenAI model name</label>
+          <input id="openai-chat-model" name="openai_chat_model" type="text" required />
+        </fieldset>
+
+        <fieldset>
+          <legend>agent behavior</legend>
+          <label for="query-limit">Retrieval results per search</label>
+          <input id="query-limit" name="query_limit" type="number" min="1" max="100" required />
+
+          <label for="agent-max-steps">Maximum tool steps per chat</label>
+          <input id="agent-max-steps" name="agent_max_steps" type="number" min="1" max="12" required />
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit" id="save-settings">Save settings</button>
+          <span class="status" id="settings-status">Loading…</span>
+        </div>
+      </form>
+    </main>
+
+    <script src="/static/settings.js" defer></script>
+  </body>
+</html>
