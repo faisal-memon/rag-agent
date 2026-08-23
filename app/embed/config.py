@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import Field
 
-from app.core.config import ConfiguredSettings, DatabaseSettings
+from app.core.config import ConfiguredSettings, DatabaseSettings, runtime_settings
 
 
 class EmbedSettings(ConfiguredSettings):
@@ -34,4 +34,9 @@ class EmbedSettings(ConfiguredSettings):
 
 @lru_cache
 def get_embed_settings() -> EmbedSettings:
-    return EmbedSettings()
+    return EmbedSettings(
+        **runtime_settings(
+            "embed",
+            excluded={"database", "openai_api_key", "llamacpp_api_key"},
+        )
+    )

@@ -1,0 +1,6 @@
+[
+  {
+    "question": "What does the example document say about the project timeline?",
+    "expected_answer_substrings": ["timeline", "schedule"]
+  }
+]

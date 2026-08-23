@@ -1,0 +1,19 @@
+{
+  "api": {
+    "llm_provider": "openai",
+    "openai_chat_model": "gpt-4.1-mini",
+    "llamacpp_base_url": "http://localhost:8080/v1",
+    "llamacpp_chat_model": "local-model",
+    "query_limit": 8,
+    "agent_max_steps": 6
+  },
+  "embed": {
+    "provider": "openai",
+    "chunk_size": 500,
+    "chunk_overlap": 75
+  },
+  "normalize": {
+    "nextcloud_source_dir": "/data/nextcloud",
+    "backend": "docling"
+  }
+}

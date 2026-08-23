@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -18,6 +19,7 @@ class ConfigTest(unittest.TestCase):
         os.environ.pop("RAG_AGENT_MAX_STEPS", None)
         os.environ.pop("RAG_ENABLED_SUFFIXES", None)
         os.environ.pop("RAG_MEMORY_PATH", None)
+        os.environ.pop("RAG_SETTINGS_PATH", None)
         get_api_settings.cache_clear(); get_embed_settings.cache_clear(); get_normalize_settings.cache_clear()
 
     def test_stability_checks_must_be_positive(self) -> None:
@@ -60,6 +62,40 @@ class ConfigTest(unittest.TestCase):
         settings = get_normalize_settings()
 
         self.assertEqual({".pdf", ".docx", ".txt", ".jpg"}, settings.enabled_suffixes)
+
+    def test_runtime_settings_file_overrides_non_secret_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "runtime-settings.json"
+            path.write_text(
+                """{
+  "api": {"agent_max_steps": 4},
+  "embed": {"chunk_size": 256},
+  "normalize": {"backend": "text"}
+}
+""",
+                encoding="utf-8",
+            )
+            os.environ["RAG_SETTINGS_PATH"] = str(path)
+            get_api_settings.cache_clear(); get_embed_settings.cache_clear(); get_normalize_settings.cache_clear()
+
+            api = get_api_settings()
+            embed = get_embed_settings()
+            normalize = get_normalize_settings()
+
+        self.assertEqual(4, api.agent_max_steps)
+        self.assertEqual(256, embed.chunk_size)
+        self.assertEqual("text", normalize.backend)
+
+    def test_runtime_settings_file_cannot_supply_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "runtime-settings.json"
+            path.write_text('{"api": {"openai_api_key": "from-file"}}', encoding="utf-8")
+            os.environ["RAG_SETTINGS_PATH"] = str(path)
+            get_api_settings.cache_clear()
+
+            settings = get_api_settings()
+
+        self.assertEqual("", settings.openai_api_key)
 
     def test_reconcile_interval_must_not_be_negative(self) -> None:
         os.environ["NORMALIZE_RECONCILE_INTERVAL_SECONDS"] = "-1"
