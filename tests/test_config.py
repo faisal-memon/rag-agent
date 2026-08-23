@@ -6,6 +6,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.agent.config import get_api_settings
+from app.core.config import read_runtime_settings, write_runtime_settings
 from app.embed.config import get_embed_settings
 from app.normalize.config import get_normalize_settings
 
@@ -96,6 +97,16 @@ class ConfigTest(unittest.TestCase):
             settings = get_api_settings()
 
         self.assertEqual("", settings.openai_api_key)
+
+    def test_runtime_settings_are_written_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "settings" / "runtime-settings.json"
+            os.environ["RAG_SETTINGS_PATH"] = str(path)
+
+            write_runtime_settings({"api": {"query_limit": 12}})
+
+            self.assertEqual({"api": {"query_limit": 12}}, read_runtime_settings())
+            self.assertEqual([], list(path.parent.glob(f".{path.name}.*")))
 
     def test_reconcile_interval_must_not_be_negative(self) -> None:
         os.environ["NORMALIZE_RECONCILE_INTERVAL_SECONDS"] = "-1"

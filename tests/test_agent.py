@@ -29,7 +29,7 @@ from app.agent.tools import (
     read_document,
 )
 from app.agent.prompts import render_prompt
-from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page
+from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, index_page, settings_page
 
 
 def _settings_with_api(**api_values):
@@ -623,6 +623,13 @@ class AgentTest(unittest.TestCase):
         self.assertIn('<body class="debug-console">', page)
         self.assertIn("<h1>document query console</h1>", page)
         self.assertIn("Semantic search, keyword search, retrieval debug", page)
+
+    def test_settings_page_exposes_runtime_settings_form(self) -> None:
+        page = settings_page().body.decode()
+
+        self.assertIn('<body class="settings-console">', page)
+        self.assertIn('id="settings-form"', page)
+        self.assertIn('src="/static/settings.js"', page)
 
 
 if __name__ == "__main__":
