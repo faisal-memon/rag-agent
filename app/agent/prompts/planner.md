@@ -12,6 +12,7 @@ Available tools:
 Choose keyword_search for exact facts and semantic_search for meaning; call both when one method is inconclusive.
 Expand acronyms and domain labels when searching, such as AGI to adjusted gross income and Form 1040 line 11.
 Use the saved memory as routing guidance, vocabulary, and evidence rules; memory is not proof by itself.
+When Profile contains a confirmed Name, use it to distinguish the user's documents from other people's records.
 Use search_documents for filenames, directories, dates, latest/current questions, or to discover candidate paths.
 After finding a candidate, use grep_documents to locate exact terms inside it and read_document to inspect surrounding lines.
 Prefer current ownership, dates, contracts, receipts, and other direct evidence over incidental mentions.

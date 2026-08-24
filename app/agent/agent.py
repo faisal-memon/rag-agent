@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ MAX_REASONING_STEP_CHARS = 12000
 MAX_REASONING_TOTAL_CHARS = 48000
 MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
+IDENTITY_ONBOARDING_QUESTION = "Before I search your documents, what name should I use to identify your records?"
 
 
 class Agent:
@@ -62,6 +64,28 @@ def _answer_with_agent(
     seen_calls: set[str] = set()
     decision_feedback = ""
 
+    memory_state = agent.memory.read()
+    original_question = _identity_question_from_history(history)
+    if not memory.profile_name(memory_state):
+        if original_question:
+            name = memory.profile_name_from_reply(question)
+            if not name:
+                return _identity_onboarding_response("Please reply with the name you would like me to use for your records.")
+            remembered = memory.remember(agent.memory, f"{memory.PROFILE_NAME_PREFIX} {name}", "Profile")
+            if remembered.get("error"):
+                return _identity_onboarding_response(f"I could not save your name: {remembered['error']}")
+            question = original_question
+            memory_state = agent.memory.read()
+            _append_debug(
+                debug,
+                "controller_decision",
+                phase="identity",
+                decision="save_profile_name",
+                profile_name=name,
+            )
+        elif _needs_profile_name(question):
+            return _identity_onboarding_response()
+
     approved_memory = memory.approved_from_history(question, history)
     if approved_memory:
         step = {"tool": "remember", "arguments": approved_memory}
@@ -85,7 +109,6 @@ def _answer_with_agent(
         }
 
     client, model = get_llm_client(agent.settings)
-    memory_state = agent.memory.read()
 
     for _ in range(max_steps):
         decision = _decide_next_action(
@@ -333,6 +356,46 @@ def _is_agent_configuration_question(question: str) -> bool:
             "your configuration",
         )
     )
+
+
+def _needs_profile_name(question: str) -> bool:
+    """Recognize questions where first-person identity affects document retrieval."""
+    normalized = " ".join(question.casefold().split())
+    return bool(
+        re.search(r"\bmy\b|\bmine\b", normalized)
+        or any(phrase in normalized for phrase in ("do i own", "do i have", "i own", "i have", "am i"))
+    )
+
+
+def _identity_question_from_history(history: list[dict]) -> str | None:
+    """Return the retrieval question immediately before the identity onboarding prompt."""
+    if not history:
+        return None
+    previous = history[-1]
+    if previous.get("role") != "assistant" or previous.get("content") != IDENTITY_ONBOARDING_QUESTION:
+        return None
+    for message in reversed(history[:-1]):
+        if message.get("role") == "user":
+            return str(message.get("content") or "").strip() or None
+    return None
+
+
+def _identity_onboarding_response(detail: str | None = None) -> dict:
+    """Return a deterministic identity question before an ownership-related search."""
+    return {
+        "answer": detail or IDENTITY_ONBOARDING_QUESTION,
+        "plan": [],
+        "tool_results": [],
+        "reasoning": [],
+        "debug": [
+            {
+                "event": "controller_decision",
+                "phase": "identity",
+                "decision": "request_profile_name",
+            }
+        ],
+        "citations": [],
+    }
 
 
 def _execute_tool(

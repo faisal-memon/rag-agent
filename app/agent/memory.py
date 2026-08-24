@@ -27,6 +27,7 @@ APPROVAL_TERMS = {"yes", "y", "yep", "yeah", "sure", "ok", "okay"}
 SAVE_TERMS = {"remember", "save", "store", "keep"}
 NEGATION_TERMS = {"no", "nope", "nah", "not", "dont", "don't", "do not", "never"}
 PROPOSAL_QUESTION = "should i remember this?"
+PROFILE_NAME_PREFIX = "Name:"
 
 
 class MemoryStore:
@@ -123,6 +124,32 @@ def prompt_content(memory: dict) -> str:
         return "(no saved memory)"
     suffix = "\n\n(memory truncated)" if memory.get("truncated") else ""
     return f"{content}{suffix}"
+
+
+def profile_name(memory: dict) -> str | None:
+    """Return the confirmed profile name, if one has been saved."""
+    for line in str(memory.get("content") or "").splitlines():
+        match = re.fullmatch(rf"\s*-\s*{PROFILE_NAME_PREFIX}\s*(.+?)\s*", line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def profile_name_from_reply(reply: str) -> str | None:
+    """Extract a name from a direct reply to the identity onboarding question."""
+    cleaned = " ".join(reply.strip().split()).strip(".!")
+    match = re.fullmatch(
+        r"(?:my name is|i am|i'm|call me|use)\s+(.+)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    name = match.group(1) if match else cleaned
+    name = name.strip(" .!")
+    if not name or len(name) > 80 or not any(character.isalpha() for character in name):
+        return None
+    if not all(character.isalpha() or character in " .'-" for character in name):
+        return None
+    return name
 
 
 def approved_from_history(question: str, history: list[dict]) -> dict | None:
