@@ -39,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         help="agent base URL (default: RAG_EVAL_BASE_URL or http://localhost:8000)",
     )
     args = parser.parse_args(argv)
+    print(f"Connecting to {args.base_url.rstrip('/')}")
     try:
         results = run_cases(load_cases(args.cases), args.base_url)
     except (OSError, ValueError, json.JSONDecodeError) as exc:

@@ -25,6 +25,7 @@ class EvalCaseTest(unittest.TestCase):
             exit_code = main(["cases.json"])
 
         self.assertEqual(0, exit_code)
+        self.assertIn("Connecting to http://localhost:8000", output.getvalue())
         self.assertIn("This is the answer.", output.getvalue())
         self.assertIn("PASS (1.50s)", output.getvalue())
         self.assertIn("1/1 passed (100.0%) in 1.50s", output.getvalue())
