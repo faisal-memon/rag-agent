@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 class EvalCase:
     question: str
     expected_answer_substrings: list[str]
+    expected_tools: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -116,11 +117,21 @@ def evaluate_case(case: EvalCase, response: dict[str, Any]) -> EvalResult:
         return EvalResult(case=case, answer=None, failures=failures)
 
     answer_lower = answer.lower()
-    if not any(expected.lower() in answer_lower for expected in case.expected_answer_substrings):
+    if case.expected_answer_substrings and not any(
+        expected.lower() in answer_lower for expected in case.expected_answer_substrings
+    ):
         failures.append(
             "answer is missing an expected substring: "
             f"{case.expected_answer_substrings!r}"
         )
+    if case.expected_tools is not None:
+        plan = response.get("plan", [])
+        actual_tools = [step.get("tool") for step in plan if isinstance(step, dict)]
+        if actual_tools != case.expected_tools:
+            failures.append(
+                "tool plan does not match expected tools: "
+                f"expected {case.expected_tools!r}, got {actual_tools!r}"
+            )
     return EvalResult(case=case, answer=answer, failures=failures)
 
 
