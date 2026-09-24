@@ -264,7 +264,7 @@ class AgentTest(unittest.TestCase):
             patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
             patch("app.agent.agent.tools.read_document", return_value=document),
         ):
-            result = _answer("What car do I have?")
+            result = _answer("What vehicle is recorded?")
 
         self.assertEqual(["semantic_search", "read_document"], [step["tool"] for step in result["plan"]])
         self.assertEqual(2, len(result["tool_results"]))
@@ -388,6 +388,52 @@ class AgentTest(unittest.TestCase):
         complete_text.assert_not_called()
         semantic_search.assert_not_called()
 
+    def test_agent_requests_profile_name_before_identity_dependent_retrieval(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = _settings_with_api(agent_max_steps=3, memory_path=Path(temp_dir) / "MEMORY.md")
+
+            with patch("app.agent.agent.get_llm_client") as get_llm_client:
+                result = Agent(settings).answer("What car do I have?")
+
+        self.assertEqual(
+            "Before I search your documents, what name should I use to identify your records?",
+            result["answer"],
+        )
+        self.assertEqual([], result["plan"])
+        self.assertEqual("request_profile_name", result["debug"][0]["decision"])
+        get_llm_client.assert_not_called()
+
+    def test_agent_saves_profile_name_and_resumes_identity_question(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory_path = Path(temp_dir) / "MEMORY.md"
+            settings = _settings_with_api(agent_max_steps=3, memory_path=memory_path)
+            history = [
+                {"role": "user", "content": "What car do I have?"},
+                {
+                    "role": "assistant",
+                    "content": "Before I search your documents, what name should I use to identify your records?",
+                },
+            ]
+            prompts = []
+
+            def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
+                prompts.append(prompt)
+                return '{"action":"answer","evidence_status":"supported","answer":"I need document evidence."}'
+
+            with (
+                patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+                patch("app.agent.agent._complete_text", side_effect=complete_text),
+            ):
+                result = Agent(settings).answer("My name is Example User", history=history)
+
+            content = memory_path.read_text(encoding="utf-8")
+
+        self.assertIn("## Profile", content)
+        self.assertIn("- Name: Example User", content)
+        self.assertIn("What car do I have?", prompts[0])
+        self.assertIn("- Name: Example User", prompts[0])
+        self.assertEqual("I need document evidence.", result["answer"])
+
     def test_memory_approval_accepts_freeform_save_phrases(self) -> None:
         self.assertTrue(_is_memory_approval_response("yeah, save that"))
         self.assertTrue(_is_memory_approval_response("yep remember it"))
@@ -497,7 +543,7 @@ class AgentTest(unittest.TestCase):
             patch("app.agent.agent.tools.semantic_search", return_value=[]),
             patch("app.agent.agent.tools.keyword_search", return_value=[]),
         ):
-            result = _answer("What was my AGI in 2024?")
+            result = _answer("What was the 2024 AGI?")
 
         self.assertEqual(["semantic_search", "keyword_search"], [step["tool"] for step in result["plan"]])
         self.assertIn("not-found conclusion was rejected", prompts[2][1])
@@ -539,7 +585,7 @@ class AgentTest(unittest.TestCase):
             patch("app.agent.agent.tools.search_documents", return_value=[]),
             patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
         ):
-            result = _answer("What car do I have?")
+            result = _answer("Which vehicle is recorded?")
 
         self.assertEqual(["search_documents", "semantic_search"], [step["tool"] for step in result["plan"]])
         self.assertNotIn("<|tool_call>", result["answer"])
