@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
+from app.agent.external_tools import get_ocean_schedule
 from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 
@@ -21,6 +22,7 @@ AGENT_TOOL_NAMES = (
     "grep_documents",
     "read_document",
     "remember",
+    "get_ocean_schedule",
 )
 RETRIEVAL_TOOL_NAMES = (
     "search_documents",
@@ -269,6 +271,7 @@ AGENT_TOOL_FUNCTIONS = {
     "grep_documents": grep_documents,
     "read_document": read_document,
     "remember": remember,
+    "get_ocean_schedule": get_ocean_schedule,
 }
 
 

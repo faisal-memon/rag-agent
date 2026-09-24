@@ -682,3 +682,17 @@ class AgentTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ExternalToolTest(unittest.TestCase):
+    def test_ocean_schedule_is_registered(self) -> None:
+        self.assertIn("get_ocean_schedule", render_tool_descriptions())
+
+    def test_ocean_schedule_normalizes_provider_payload(self) -> None:
+        from app.agent.external_tools import parse_ocean_schedule
+
+        result = parse_ocean_schedule(
+            {"classes": [{"name": "Flow", "start_time": "09:00", "teacher": "Ava"}]},
+            "2026-09-23",
+        )
+        self.assertEqual(result["studio"], "Ocean")
+        self.assertEqual(result["classes"][0]["teacher"], "Ava")
