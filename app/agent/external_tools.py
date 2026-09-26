@@ -109,7 +109,11 @@ def _decode_json_object(payload: str, start: int) -> tuple[dict, int]:
 
 
 def get_ocean_schedule(day: str | None = None) -> dict:
-    """Get publicly listed Yoga Flow SF Ocean Avenue classes for a date."""
+    """Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.
+
+    Args:
+        day: Optional local calendar date in YYYY-MM-DD format. Defaults to today at the Ocean studio.
+    """
     requested_date = day or datetime.now(PACIFIC_TIME).date().isoformat()
     body, boundary = _mindbody_request_body(requested_date)
     request = Request(
