@@ -14,6 +14,33 @@ MINDBODY_ACTION_STATE = "\"2Qcwl9cD9ypBAJY6FiRwnGNOnzlIGx8AOcwmdUePkuK4EWp31o4JF
 PACIFIC_TIME = ZoneInfo("America/Los_Angeles")
 
 
+def get_ocean_schedule(day: str | None = None) -> dict:
+    """Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.
+
+    Args:
+        day: Optional local calendar date in YYYY-MM-DD format. Defaults to today at the Ocean studio.
+    """
+    requested_date = day or datetime.now(PACIFIC_TIME).date().isoformat()
+    body, boundary = _mindbody_request_body(requested_date)
+    request = Request(
+        MINDBODY_SCHEDULE_URL,
+        data=body,
+        method="POST",
+        headers={
+            "Accept": "text/x-component",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Next-Action": MINDBODY_NEXT_ACTION,
+            "Origin": "https://go.mindbodyonline.com",
+            "Referer": MINDBODY_SCHEDULE_URL,
+            "User-Agent": "rag-agent/0.1",
+        },
+    )
+    with urlopen(request, timeout=15) as response:
+        payload = response.read().decode("utf-8")
+    return parse_mindbody_schedule(payload, requested_date)
+
+
+
 def _mindbody_date_range(requested_date: str) -> tuple[str, str]:
     """Return the UTC range representing one calendar day at the Ocean studio."""
     try:
@@ -107,28 +134,3 @@ def _decode_json_object(payload: str, start: int) -> tuple[dict, int]:
                 return value, index + 1
     raise ValueError("Mindbody schedule response contained an incomplete class record")
 
-
-def get_ocean_schedule(day: str | None = None) -> dict:
-    """Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.
-
-    Args:
-        day: Optional local calendar date in YYYY-MM-DD format. Defaults to today at the Ocean studio.
-    """
-    requested_date = day or datetime.now(PACIFIC_TIME).date().isoformat()
-    body, boundary = _mindbody_request_body(requested_date)
-    request = Request(
-        MINDBODY_SCHEDULE_URL,
-        data=body,
-        method="POST",
-        headers={
-            "Accept": "text/x-component",
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-            "Next-Action": MINDBODY_NEXT_ACTION,
-            "Origin": "https://go.mindbodyonline.com",
-            "Referer": MINDBODY_SCHEDULE_URL,
-            "User-Agent": "rag-agent/0.1",
-        },
-    )
-    with urlopen(request, timeout=15) as response:
-        payload = response.read().decode("utf-8")
-    return parse_mindbody_schedule(payload, requested_date)

@@ -2,7 +2,7 @@ import json
 import unittest
 from datetime import date
 
-from app.agent.external_tools import _mindbody_date_range, _mindbody_request_body, parse_mindbody_schedule
+from app.agent.external_tools.yoga_flow import _mindbody_date_range, _mindbody_request_body, parse_mindbody_schedule
 
 
 class OceanScheduleTest(unittest.TestCase):
