@@ -160,6 +160,7 @@ class AgentTest(unittest.TestCase):
 
         self.assertIn("personal document agent", prompt)
         self.assertIn("private document archive", prompt)
+        self.assertIn("read-only public-information tools", prompt)
         self.assertIn("Do not use tools for greetings", prompt)
         self.assertIn("Never invent facts about the user", prompt)
         self.assertIn("Answer from tool evidence only and cite document filenames or paths", prompt)
@@ -180,6 +181,8 @@ class AgentTest(unittest.TestCase):
             descriptions,
         )
         self.assertIn("- entry: Durable memory bullet", descriptions)
+        self.assertIn("- get_ocean_schedule: Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.", descriptions)
+        self.assertIn("- day: Optional local calendar date in YYYY-MM-DD format.", descriptions)
 
     def test_grep_documents_returns_bounded_context_and_line(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -682,3 +685,7 @@ class AgentTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ExternalToolTest(unittest.TestCase):
+    def test_ocean_schedule_is_registered(self) -> None:
+        self.assertIn("get_ocean_schedule", render_tool_descriptions())

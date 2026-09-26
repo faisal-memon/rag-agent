@@ -64,3 +64,42 @@ class EvalCaseTest(unittest.TestCase):
             ["response answer is not a string"],
             result.failures,
         )
+
+    def test_accepts_expected_no_tool_plan(self) -> None:
+        case = EvalCase(
+            question="Hello",
+            expected_answer_substrings=["hello"],
+            expected_tools=[],
+        )
+        response = {"answer": "Hello!", "plan": []}
+
+        self.assertTrue(evaluate_case(case, response).passed)
+
+    def test_requires_schedule_tool_for_schedule_case(self) -> None:
+        case = EvalCase(
+            question="What Yoga Flow Ocean classes are left today?",
+            expected_answer_substrings=["flow"],
+            expected_tools=["get_ocean_schedule"],
+        )
+        response = {
+            "answer": "There is a Flow class at 6 PM.",
+            "plan": [{"tool": "get_ocean_schedule", "arguments": {}}],
+        }
+
+        self.assertTrue(evaluate_case(case, response).passed)
+
+    def test_rejects_unexpected_tool_for_greeting(self) -> None:
+        case = EvalCase(
+            question="Hello",
+            expected_answer_substrings=["hello"],
+            expected_tools=[],
+        )
+        response = {
+            "answer": "Hello!",
+            "plan": [{"tool": "get_ocean_schedule", "arguments": {}}],
+        }
+
+        result = evaluate_case(case, response)
+
+        self.assertFalse(result.passed)
+        self.assertIn("tool plan does not match", result.failures[0])

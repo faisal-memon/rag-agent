@@ -438,6 +438,8 @@ def _execute_tool(
                 max_lines=int(arguments.get("max_lines") or tools.DEFAULT_DOCUMENT_LINES),
                 max_chars=int(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
             )
+        elif tool == "get_ocean_schedule":
+            result = tools.get_ocean_schedule(day=arguments.get("day"))
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
