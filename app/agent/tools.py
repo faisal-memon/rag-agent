@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
+from app.agent.external_tools.school_lunch import get_school_lunch
 from app.agent.external_tools.yoga_flow import get_noe_schedule, get_ocean_schedule, get_upcoming_yoga_classes
 from app.agent.config import get_api_settings
 from app.core.db import db_cursor
@@ -25,6 +26,7 @@ AGENT_TOOL_NAMES = (
     "get_ocean_schedule",
     "get_noe_schedule",
     "get_upcoming_yoga_classes",
+    "get_school_lunch",
 )
 RETRIEVAL_TOOL_NAMES = (
     "search_documents",
@@ -276,6 +278,7 @@ AGENT_TOOL_FUNCTIONS = {
     "get_ocean_schedule": get_ocean_schedule,
     "get_noe_schedule": get_noe_schedule,
     "get_upcoming_yoga_classes": get_upcoming_yoga_classes,
+    "get_school_lunch": get_school_lunch,
 }
 
 

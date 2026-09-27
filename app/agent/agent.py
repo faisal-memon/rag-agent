@@ -451,6 +451,8 @@ def _execute_tool(
             result = tools.get_noe_schedule(day=arguments.get("day"))
         elif tool == "get_upcoming_yoga_classes":
             result = tools.get_upcoming_yoga_classes()
+        elif tool == "get_school_lunch":
+            result = tools.get_school_lunch(day=arguments.get("day"))
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
