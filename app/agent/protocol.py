@@ -125,6 +125,9 @@ def sanitize_step(step: Any) -> dict | None:
                 requested_day = None
         return {"tool": tool, "arguments": {"day": requested_day}}
 
+    if tool == "get_upcoming_yoga_classes":
+        return {"tool": tool, "arguments": {}}
+
     return {
         "tool": tool,
         "arguments": {

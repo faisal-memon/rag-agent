@@ -93,6 +93,12 @@ class AgentTest(unittest.TestCase):
             _sanitize_step({"tool": "get_ocean_schedule", "arguments": {"day": "2026-09-27"}}),
         )
 
+    def test_sanitize_step_accepts_upcoming_yoga_classes(self) -> None:
+        self.assertEqual(
+            {"tool": "get_upcoming_yoga_classes", "arguments": {}},
+            _sanitize_step({"tool": "get_upcoming_yoga_classes", "arguments": {"ignored": "value"}}),
+        )
+
     def test_sanitize_step_bounds_search_limit(self) -> None:
         self.assertEqual(
             {
@@ -189,6 +195,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("- entry: Durable memory bullet", descriptions)
         self.assertIn("- get_ocean_schedule: Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.", descriptions)
         self.assertIn("- get_noe_schedule: Get publicly listed Yoga Flow SF Noe Valley classes for a date.", descriptions)
+        self.assertIn("- get_upcoming_yoga_classes: Get the next upcoming Yoga Flow SF classes", descriptions)
         self.assertIn("- day: Optional local calendar date in YYYY-MM-DD format.", descriptions)
 
     def test_grep_documents_returns_bounded_context_and_line(self) -> None:
@@ -701,3 +708,6 @@ class ExternalToolTest(unittest.TestCase):
 
     def test_noe_schedule_is_registered(self) -> None:
         self.assertIn("get_noe_schedule", render_tool_descriptions())
+
+    def test_upcoming_yoga_classes_is_registered(self) -> None:
+        self.assertIn("get_upcoming_yoga_classes", render_tool_descriptions())

@@ -1,11 +1,13 @@
 import json
 import unittest
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from app.agent.external_tools.yoga_flow import (
     _extract_action_state,
     _mindbody_date_range,
     _mindbody_request_body,
+    _select_upcoming_classes,
     parse_mindbody_schedule,
 )
 
@@ -60,3 +62,15 @@ class OceanScheduleTest(unittest.TestCase):
         page = f'<script>self.__next_f.push([1,"3a:T3e8,{state}"])</script>'
 
         self.assertEqual(json.dumps(state), _extract_action_state(page))
+
+    def test_select_upcoming_classes_combines_and_sorts_studios(self) -> None:
+        schedules = [
+            {"studio": "Yoga Flow SF - Ocean", "classes": [{"name": "Earlier", "start_time": "2026-09-28T08:00-07:00"}]},
+            {"studio": "Yoga Flow SF - Noe", "classes": [{"name": "Later", "start_time": "2026-09-28T10:00-07:00"}]},
+            {"studio": "Yoga Flow SF - Ocean", "classes": [{"name": "Next", "start_time": "2026-09-28T09:00-07:00"}]},
+        ]
+
+        classes = _select_upcoming_classes(schedules, datetime(2026, 9, 28, 8, 30, tzinfo=ZoneInfo("America/Los_Angeles")))
+
+        self.assertEqual(["Next", "Later"], [class_["name"] for class_ in classes])
+        self.assertEqual(["Ocean", "Noe"], [class_["studio"] for class_ in classes])

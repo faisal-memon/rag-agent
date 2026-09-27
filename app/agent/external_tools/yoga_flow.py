@@ -13,6 +13,7 @@ NOE_MINDBODY_SCHEDULE_URL = "https://go.mindbodyonline.com/book/widgets/schedule
 MINDBODY_NEXT_ACTION = "4f5d69414e1b758541ec223c15d6e1f87de21681"
 PACIFIC_TIME = ZoneInfo("America/Los_Angeles")
 PUBLIC_USER_AGENT = "Mozilla/5.0 (compatible; rag-agent/0.1)"
+UPCOMING_CLASS_LIMIT = 6
 
 
 def get_ocean_schedule(day: str | None = None) -> dict:
@@ -31,6 +32,26 @@ def get_noe_schedule(day: str | None = None) -> dict:
         day: Optional local calendar date in YYYY-MM-DD format. Defaults to today at the Noe studio.
     """
     return _get_schedule("Noe", NOE_MINDBODY_SCHEDULE_URL, day)
+
+
+def get_upcoming_yoga_classes() -> dict:
+    """Get the next upcoming Yoga Flow SF classes at both Ocean and Noe Valley.
+
+    Use when the user asks for upcoming Yoga Flow classes without naming a studio.
+    Returns the next few classes in time order, with the studio named on every class.
+    """
+    now = datetime.now(PACIFIC_TIME)
+    schedules = [get_ocean_schedule(now.date().isoformat()), get_noe_schedule(now.date().isoformat())]
+    classes = _select_upcoming_classes(schedules, now)
+    if len(classes) < UPCOMING_CLASS_LIMIT:
+        tomorrow = (now + timedelta(days=1)).date().isoformat()
+        schedules.extend((get_ocean_schedule(tomorrow), get_noe_schedule(tomorrow)))
+        classes = _select_upcoming_classes(schedules, now)
+    return {
+        "studios": ["Ocean", "Noe"],
+        "as_of": now.isoformat(timespec="minutes"),
+        "classes": classes[:UPCOMING_CLASS_LIMIT],
+    }
 
 
 def _get_schedule(studio: str, schedule_url: str, day: str | None) -> dict:
@@ -53,6 +74,17 @@ def _get_schedule(studio: str, schedule_url: str, day: str | None) -> dict:
     with urlopen(request, timeout=15) as response:
         payload = response.read().decode("utf-8")
     return parse_mindbody_schedule(payload, requested_date, studio)
+
+
+def _select_upcoming_classes(schedules: list[dict], now: datetime) -> list[dict]:
+    """Combine studio schedules, remove elapsed classes, and sort by start time."""
+    upcoming = []
+    for schedule in schedules:
+        studio = str(schedule["studio"]).removeprefix("Yoga Flow SF - ")
+        for class_ in schedule["classes"]:
+            if datetime.fromisoformat(class_["start_time"]) > now:
+                upcoming.append({"studio": studio, **class_})
+    return sorted(upcoming, key=lambda class_: class_["start_time"])
 
 
 def _mindbody_action_state(schedule_url: str) -> str:
