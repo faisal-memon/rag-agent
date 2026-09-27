@@ -188,6 +188,7 @@ class AgentTest(unittest.TestCase):
         )
         self.assertIn("- entry: Durable memory bullet", descriptions)
         self.assertIn("- get_ocean_schedule: Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.", descriptions)
+        self.assertIn("- get_noe_schedule: Get publicly listed Yoga Flow SF Noe Valley classes for a date.", descriptions)
         self.assertIn("- day: Optional local calendar date in YYYY-MM-DD format.", descriptions)
 
     def test_grep_documents_returns_bounded_context_and_line(self) -> None:
@@ -697,3 +698,6 @@ if __name__ == "__main__":
 class ExternalToolTest(unittest.TestCase):
     def test_ocean_schedule_is_registered(self) -> None:
         self.assertIn("get_ocean_schedule", render_tool_descriptions())
+
+    def test_noe_schedule_is_registered(self) -> None:
+        self.assertIn("get_noe_schedule", render_tool_descriptions())

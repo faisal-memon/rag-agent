@@ -2,7 +2,12 @@ import json
 import unittest
 from datetime import date
 
-from app.agent.external_tools.yoga_flow import _mindbody_date_range, _mindbody_request_body, parse_mindbody_schedule
+from app.agent.external_tools.yoga_flow import (
+    _extract_action_state,
+    _mindbody_date_range,
+    _mindbody_request_body,
+    parse_mindbody_schedule,
+)
 
 
 class OceanScheduleTest(unittest.TestCase):
@@ -49,3 +54,9 @@ class OceanScheduleTest(unittest.TestCase):
     def test_parse_schedule_rejects_payload_without_classes(self) -> None:
         with self.assertRaisesRegex(ValueError, "did not include"):
             parse_mindbody_schedule('0:["$@1"]', date.today().isoformat())
+
+    def test_extract_action_state_from_public_next_page(self) -> None:
+        state = "a" * 1_000
+        page = f'<script>self.__next_f.push([1,"3a:T3e8,{state}"])</script>'
+
+        self.assertEqual(json.dumps(state), _extract_action_state(page))

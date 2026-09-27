@@ -447,6 +447,8 @@ def _execute_tool(
             )
         elif tool == "get_ocean_schedule":
             result = tools.get_ocean_schedule(day=arguments.get("day"))
+        elif tool == "get_noe_schedule":
+            result = tools.get_noe_schedule(day=arguments.get("day"))
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
