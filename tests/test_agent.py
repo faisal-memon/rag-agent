@@ -87,6 +87,12 @@ class AgentTest(unittest.TestCase):
     def test_sanitize_step_rejects_unknown_tool(self) -> None:
         self.assertIsNone(_sanitize_step({"tool": "sql_write", "arguments": {}}))
 
+    def test_sanitize_step_preserves_ocean_schedule_day(self) -> None:
+        self.assertEqual(
+            {"tool": "get_ocean_schedule", "arguments": {"day": "2026-09-27"}},
+            _sanitize_step({"tool": "get_ocean_schedule", "arguments": {"day": "2026-09-27"}}),
+        )
+
     def test_sanitize_step_bounds_search_limit(self) -> None:
         self.assertEqual(
             {

@@ -37,8 +37,8 @@ class OceanScheduleTest(unittest.TestCase):
         self.assertEqual(
             [{
                 "name": "Slow Flow - Non-Heated",
-                "start_time": "2026-09-28T16:00:00.0000000Z",
-                "end_time": "2026-09-28T17:00:00.0000000Z",
+                "start_time": "2026-09-28T09:00-07:00",
+                "end_time": "2026-09-28T10:00-07:00",
                 "teacher": "Avery",
                 "bookable": True,
                 "waitlistable": False,

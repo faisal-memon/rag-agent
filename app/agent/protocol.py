@@ -7,6 +7,7 @@ small action dictionary that the controller is willing to execute.
 
 import json
 import re
+from datetime import date
 from typing import Any
 
 import app.agent.tools as tools
@@ -114,6 +115,15 @@ def sanitize_step(step: Any) -> dict | None:
                 "section": memory.normalize_section(str(arguments.get("section") or "Inbox")),
             },
         }
+
+    if tool == "get_ocean_schedule":
+        requested_day = arguments.get("day")
+        if requested_day is not None:
+            try:
+                requested_day = date.fromisoformat(str(requested_day)).isoformat()
+            except ValueError:
+                requested_day = None
+        return {"tool": tool, "arguments": {"day": requested_day}}
 
     return {
         "tool": tool,

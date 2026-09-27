@@ -94,8 +94,8 @@ def parse_mindbody_schedule(payload: str, requested_date: str) -> dict:
         classes.append(
             {
                 "name": str(item["name"]),
-                "start_time": str(item["startDateTime"]),
-                "end_time": str(item["endDateTime"]) if item.get("endDateTime") else None,
+                "start_time": _pacific_timestamp(str(item["startDateTime"])),
+                "end_time": _pacific_timestamp(str(item["endDateTime"])) if item.get("endDateTime") else None,
                 "teacher": str(teacher) if teacher else None,
                 "bookable": bool(item.get("bookable")),
                 "waitlistable": bool(item.get("waitlistable")),
@@ -104,6 +104,13 @@ def parse_mindbody_schedule(payload: str, requested_date: str) -> dict:
     if not classes:
         raise ValueError("Mindbody schedule response did not include class records")
     return {"studio": "Yoga Flow SF - Ocean", "date": requested_date, "classes": classes}
+
+
+def _pacific_timestamp(timestamp: str) -> str:
+    """Convert Mindbody's UTC timestamp to the studio's local time."""
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone(PACIFIC_TIME).isoformat(
+        timespec="minutes"
+    )
 
 
 def _decode_json_object(payload: str, start: int) -> tuple[dict, int]:
@@ -133,4 +140,3 @@ def _decode_json_object(payload: str, start: int) -> tuple[dict, int]:
                     raise ValueError("Mindbody class record was not an object")
                 return value, index + 1
     raise ValueError("Mindbody schedule response contained an incomplete class record")
-
