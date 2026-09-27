@@ -170,14 +170,31 @@ class AgentTest(unittest.TestCase):
     def test_system_prompt_defines_personal_document_agent(self) -> None:
         prompt = render_prompt("system.md", {})
 
-        self.assertIn("personal document agent", prompt)
-        self.assertIn("private document archive", prompt)
-        self.assertIn("read-only public-information tools", prompt)
-        self.assertIn("Do not use tools for greetings", prompt)
+        self.assertIn("personal home and document assistant", prompt)
         self.assertIn("Never invent facts about the user", prompt)
-        self.assertIn("Answer from tool evidence only and cite document filenames or paths", prompt)
-        self.assertIn("do not stop at its filename or path", prompt)
-        self.assertIn("Inspect its contents with grep_documents, semantic_search, or read_document", prompt)
+        self.assertIn("cite the document filename or path", prompt)
+        self.assertNotIn("get_ocean_schedule", prompt)
+        self.assertNotIn("semantic_search", prompt)
+
+    def test_planner_owns_tool_routing_rules(self) -> None:
+        prompt = render_prompt(
+            "planner.md",
+            {
+                "tool_descriptions": "(tools)",
+                "remaining_steps": 1,
+                "decision_feedback": "(none)",
+                "memory_path": "(none)",
+                "memory": "(none)",
+                "conversation": "(none)",
+                "question": "Hello",
+                "current_local_time": "2026-09-27T12:00-07:00",
+                "tool_results": "[]",
+            },
+        )
+
+        self.assertIn("Do not call these tools for greetings", prompt)
+        self.assertIn("get_ocean_schedule", prompt)
+        self.assertIn("grep_documents", prompt)
 
     def test_tool_descriptions_are_generated_from_docstrings(self) -> None:
         descriptions = render_tool_descriptions()
@@ -319,9 +336,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Available tools:", prompts[0][1])
         self.assertIn("source path, not a normalized Markdown path", prompts[0][1])
         self.assertIn("search /documents/Vehicles first", prompts[0][1])
-        self.assertIn("durable personal memory system", prompts[0][0])
-        self.assertIn("Should I remember this?", prompts[0][0])
-        self.assertIn("immediately preceding proposal", prompts[0][0])
+        self.assertIn("Use the saved memory as routing guidance", prompts[0][1])
+        self.assertIn("memory is not proof by itself", prompts[0][1])
 
     def test_memory_store_creates_missing_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -488,8 +504,8 @@ class AgentTest(unittest.TestCase):
         ):
             _answer("Hi")
 
-        self.assertIn("You are a personal document agent for the user.", prompts[0][0])
-        self.assertIn("Do not use tools for greetings", prompts[0][0])
+        self.assertIn("You are the user's personal home and document assistant.", prompts[0][0])
+        self.assertNotIn("get_ocean_schedule", prompts[0][0])
         self.assertIn("Return JSON only", prompts[0][0])
         self.assertIn("2026-09-26T10:15-07:00", prompts[0][1])
 
