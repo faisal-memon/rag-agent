@@ -99,6 +99,12 @@ class AgentTest(unittest.TestCase):
             _sanitize_step({"tool": "get_upcoming_yoga_classes", "arguments": {"ignored": "value"}}),
         )
 
+    def test_sanitize_step_preserves_school_lunch_day(self) -> None:
+        self.assertEqual(
+            {"tool": "get_school_lunch", "arguments": {"day": "2026-09-28"}},
+            _sanitize_step({"tool": "get_school_lunch", "arguments": {"day": "2026-09-28"}}),
+        )
+
     def test_sanitize_step_bounds_search_limit(self) -> None:
         self.assertEqual(
             {
@@ -727,3 +733,6 @@ class ExternalToolTest(unittest.TestCase):
 
     def test_upcoming_yoga_classes_is_registered(self) -> None:
         self.assertIn("get_upcoming_yoga_classes", render_tool_descriptions())
+
+    def test_school_lunch_is_registered(self) -> None:
+        self.assertIn("get_school_lunch", render_tool_descriptions())

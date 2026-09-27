@@ -10,6 +10,7 @@ from app.agent.external_tools.yoga_flow import (
     _select_upcoming_classes,
     parse_mindbody_schedule,
 )
+from app.agent.external_tools.school_lunch import _TextItem, parse_school_lunch
 
 
 class OceanScheduleTest(unittest.TestCase):
@@ -74,3 +75,52 @@ class OceanScheduleTest(unittest.TestCase):
 
         self.assertEqual(["Next", "Later"], [class_["name"] for class_ in classes])
         self.assertEqual(["Ocean", "Noe"], [class_["studio"] for class_ in classes])
+
+
+class SchoolLunchTest(unittest.TestCase):
+    def test_parses_lunch_choices_for_a_school_day(self) -> None:
+        lunch = parse_school_lunch(_school_lunch_items(), "K-12 LUNCH (HOT/COLD) SEPTEMBER", date(2026, 9, 28))
+
+        self.assertEqual(
+            {
+                "date": "2026-09-28",
+                "school_lunch_available": True,
+                "choices": ["BBQ Cheeseburger (Beef)", "Veggie Burger", "Turkey & Cheese Sandwich"],
+                "source": "SFUSD K-12 lunch menu",
+            },
+            lunch,
+        )
+
+    def test_reports_holiday_without_lunch(self) -> None:
+        lunch = parse_school_lunch(_school_lunch_items(), "K-12 LUNCH (HOT/COLD) SEPTEMBER", date(2026, 9, 7))
+
+        self.assertFalse(lunch["school_lunch_available"])
+        self.assertEqual([], lunch["choices"])
+        self.assertIn("No school lunch", lunch["reason"])
+
+    def test_reports_when_the_menu_does_not_cover_requested_month(self) -> None:
+        lunch = parse_school_lunch(_school_lunch_items(), "K-12 LUNCH (HOT/COLD) SEPTEMBER", date(2026, 10, 1))
+
+        self.assertFalse(lunch["school_lunch_available"])
+        self.assertIn("covers September", lunch["reason"])
+
+
+def _school_lunch_items() -> list[_TextItem]:
+    """Captured LiteParse geometry for representative public menu cells."""
+    return [
+        _TextItem("SEPTEMBER", 407, 41),
+        _TextItem("Monday", 70, 71),
+        _TextItem("Tuesday", 245, 71),
+        _TextItem("Wednesday", 418, 71),
+        _TextItem("Thursday", 600, 71),
+        _TextItem("Friday", 769, 71),
+        _TextItem("7", 38, 151),
+        _TextItem("HOLIDAY", 69, 151),
+        _TextItem("28", 38, 347),
+        _TextItem("BBQ Cheeseburger (Beef)", 69, 347),
+        _TextItem("Veggie Burger", 69, 364),
+        _TextItem("x2", 140, 366),
+        _TextItem("Turkey & Cheese Sandwich", 69, 380),
+        _TextItem("29", 216, 347),
+        _TextItem("Pesto Chicken Hoagie", 244, 347),
+    ]

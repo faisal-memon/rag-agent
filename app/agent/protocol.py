@@ -125,6 +125,15 @@ def sanitize_step(step: Any) -> dict | None:
                 requested_day = None
         return {"tool": tool, "arguments": {"day": requested_day}}
 
+    if tool == "get_school_lunch":
+        requested_day = arguments.get("day")
+        if requested_day is not None:
+            try:
+                requested_day = date.fromisoformat(str(requested_day)).isoformat()
+            except ValueError:
+                requested_day = None
+        return {"tool": tool, "arguments": {"day": requested_day}}
+
     if tool == "get_upcoming_yoga_classes":
         return {"tool": tool, "arguments": {}}
 
