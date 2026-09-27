@@ -476,12 +476,14 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
+            patch("app.agent.agent._current_ocean_time", return_value="2026-09-26T10:15-07:00"),
         ):
             _answer("Hi")
 
         self.assertIn("You are a personal document agent for the user.", prompts[0][0])
         self.assertIn("Do not use tools for greetings", prompts[0][0])
         self.assertIn("Return JSON only", prompts[0][0])
+        self.assertIn("2026-09-26T10:15-07:00", prompts[0][1])
 
     def test_agent_can_answer_casual_message_without_tools(self) -> None:
         with (
