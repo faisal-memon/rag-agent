@@ -116,7 +116,7 @@ def sanitize_step(step: Any) -> dict | None:
             },
         }
 
-    if tool == "get_ocean_schedule":
+    if tool in {"get_ocean_schedule", "get_noe_schedule"}:
         requested_day = arguments.get("day")
         if requested_day is not None:
             try:
@@ -124,6 +124,9 @@ def sanitize_step(step: Any) -> dict | None:
             except ValueError:
                 requested_day = None
         return {"tool": tool, "arguments": {"day": requested_day}}
+
+    if tool == "get_upcoming_yoga_classes":
+        return {"tool": tool, "arguments": {}}
 
     return {
         "tool": tool,

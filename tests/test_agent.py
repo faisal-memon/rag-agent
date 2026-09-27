@@ -93,6 +93,12 @@ class AgentTest(unittest.TestCase):
             _sanitize_step({"tool": "get_ocean_schedule", "arguments": {"day": "2026-09-27"}}),
         )
 
+    def test_sanitize_step_accepts_upcoming_yoga_classes(self) -> None:
+        self.assertEqual(
+            {"tool": "get_upcoming_yoga_classes", "arguments": {}},
+            _sanitize_step({"tool": "get_upcoming_yoga_classes", "arguments": {"ignored": "value"}}),
+        )
+
     def test_sanitize_step_bounds_search_limit(self) -> None:
         self.assertEqual(
             {
@@ -164,14 +170,31 @@ class AgentTest(unittest.TestCase):
     def test_system_prompt_defines_personal_document_agent(self) -> None:
         prompt = render_prompt("system.md", {})
 
-        self.assertIn("personal document agent", prompt)
-        self.assertIn("private document archive", prompt)
-        self.assertIn("read-only public-information tools", prompt)
-        self.assertIn("Do not use tools for greetings", prompt)
+        self.assertIn("personal home and document assistant", prompt)
         self.assertIn("Never invent facts about the user", prompt)
-        self.assertIn("Answer from tool evidence only and cite document filenames or paths", prompt)
-        self.assertIn("do not stop at its filename or path", prompt)
-        self.assertIn("Inspect its contents with grep_documents, semantic_search, or read_document", prompt)
+        self.assertIn("cite the document filename or path", prompt)
+        self.assertNotIn("get_ocean_schedule", prompt)
+        self.assertNotIn("semantic_search", prompt)
+
+    def test_planner_owns_tool_routing_rules(self) -> None:
+        prompt = render_prompt(
+            "planner.md",
+            {
+                "tool_descriptions": "(tools)",
+                "remaining_steps": 1,
+                "decision_feedback": "(none)",
+                "memory_path": "(none)",
+                "memory": "(none)",
+                "conversation": "(none)",
+                "question": "Hello",
+                "current_local_time": "2026-09-27T12:00-07:00",
+                "tool_results": "[]",
+            },
+        )
+
+        self.assertIn("Do not call these tools for greetings", prompt)
+        self.assertIn("get_ocean_schedule", prompt)
+        self.assertIn("grep_documents", prompt)
 
     def test_tool_descriptions_are_generated_from_docstrings(self) -> None:
         descriptions = render_tool_descriptions()
@@ -188,6 +211,8 @@ class AgentTest(unittest.TestCase):
         )
         self.assertIn("- entry: Durable memory bullet", descriptions)
         self.assertIn("- get_ocean_schedule: Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.", descriptions)
+        self.assertIn("- get_noe_schedule: Get publicly listed Yoga Flow SF Noe Valley classes for a date.", descriptions)
+        self.assertIn("- get_upcoming_yoga_classes: Get the next upcoming Yoga Flow SF classes", descriptions)
         self.assertIn("- day: Optional local calendar date in YYYY-MM-DD format.", descriptions)
 
     def test_grep_documents_returns_bounded_context_and_line(self) -> None:
@@ -311,9 +336,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Available tools:", prompts[0][1])
         self.assertIn("source path, not a normalized Markdown path", prompts[0][1])
         self.assertIn("search /documents/Vehicles first", prompts[0][1])
-        self.assertIn("durable personal memory system", prompts[0][0])
-        self.assertIn("Should I remember this?", prompts[0][0])
-        self.assertIn("immediately preceding proposal", prompts[0][0])
+        self.assertIn("Use the saved memory as routing guidance", prompts[0][1])
+        self.assertIn("memory is not proof by itself", prompts[0][1])
 
     def test_memory_store_creates_missing_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -480,8 +504,8 @@ class AgentTest(unittest.TestCase):
         ):
             _answer("Hi")
 
-        self.assertIn("You are a personal document agent for the user.", prompts[0][0])
-        self.assertIn("Do not use tools for greetings", prompts[0][0])
+        self.assertIn("You are the user's personal home and document assistant.", prompts[0][0])
+        self.assertNotIn("get_ocean_schedule", prompts[0][0])
         self.assertIn("Return JSON only", prompts[0][0])
         self.assertIn("2026-09-26T10:15-07:00", prompts[0][1])
 
@@ -697,3 +721,9 @@ if __name__ == "__main__":
 class ExternalToolTest(unittest.TestCase):
     def test_ocean_schedule_is_registered(self) -> None:
         self.assertIn("get_ocean_schedule", render_tool_descriptions())
+
+    def test_noe_schedule_is_registered(self) -> None:
+        self.assertIn("get_noe_schedule", render_tool_descriptions())
+
+    def test_upcoming_yoga_classes_is_registered(self) -> None:
+        self.assertIn("get_upcoming_yoga_classes", render_tool_descriptions())
