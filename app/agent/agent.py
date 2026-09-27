@@ -3,7 +3,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from openai import OpenAI
 
@@ -22,7 +21,6 @@ MAX_REASONING_TOTAL_CHARS = 48000
 MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
 IDENTITY_ONBOARDING_QUESTION = "Before I search your documents, what name should I use to identify your records?"
-OCEAN_TIME_ZONE = ZoneInfo("America/Los_Angeles")
 
 
 class Agent:
@@ -223,9 +221,9 @@ def _answer_with_agent(
         "citations": citations,
     }
 
-def _current_ocean_time() -> str:
-    """Return the current time at Yoga Flow SF Ocean Avenue."""
-    return datetime.now(OCEAN_TIME_ZONE).isoformat(timespec="minutes")
+def _current_local_time() -> str:
+    """Return the current time in the host's local time zone."""
+    return datetime.now().astimezone().isoformat(timespec="minutes")
 
 
 def _decide_next_action(
@@ -251,7 +249,7 @@ def _decide_next_action(
             "tool_descriptions": tools.render_tool_descriptions(),
             "conversation": conversation or "(none)",
             "question": question,
-            "current_ocean_time": _current_ocean_time(),
+            "current_local_time": _current_local_time(),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
         },
     )

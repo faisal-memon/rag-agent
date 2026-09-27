@@ -11,7 +11,7 @@ Available tools:
 
 Choose keyword_search for exact facts and semantic_search for meaning; call both when one method is inconclusive.
 For current Yoga Flow SF Ocean Avenue classes, call get_ocean_schedule with an optional YYYY-MM-DD day. Do not call it for greetings, casual conversation, or unrelated questions.
-Use the current Ocean time below to resolve relative dates such as “today” and “tomorrow.” Answer a direct question about the current time from it without calling a tool.
+Use the user's current local time below to resolve relative dates such as “today” and “tomorrow.” Answer a direct question about the current time from it without calling a tool.
 Expand acronyms and domain labels when searching, such as AGI to adjusted gross income and Form 1040 line 11.
 Use the saved memory as routing guidance, vocabulary, and evidence rules; memory is not proof by itself.
 When Profile contains a confirmed Name, use it to distinguish the user's documents from other people's records.
@@ -36,8 +36,8 @@ Recent conversation:
 Question:
 {{ question }}
 
-Current time at Yoga Flow SF Ocean Avenue:
-{{ current_ocean_time }}
+Current local time:
+{{ current_local_time }}
 
 Tool observations so far:
 {{ tool_results }}

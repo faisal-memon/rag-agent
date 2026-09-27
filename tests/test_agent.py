@@ -476,7 +476,7 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
-            patch("app.agent.agent._current_ocean_time", return_value="2026-09-26T10:15-07:00"),
+            patch("app.agent.agent._current_local_time", return_value="2026-09-26T10:15-07:00"),
         ):
             _answer("Hi")
 
