@@ -18,7 +18,7 @@ class OceanScheduleTest(unittest.TestCase):
         )
 
     def test_request_body_contains_date_arguments(self) -> None:
-        body, boundary = _mindbody_request_body("2026-09-28")
+        body, boundary = _mindbody_request_body("2026-09-28", '"public-action-state"')
 
         self.assertIn(boundary.encode(), body)
         self.assertIn(b'"fromDate":"2026-09-28T07:00:00.000Z"', body)
