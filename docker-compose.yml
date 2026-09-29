@@ -23,6 +23,7 @@ services:
     environment:
       NEXTCLOUD_SOURCE_DIR: ${NEXTCLOUD_SOURCE_DIR:-/data/nextcloud}
       RAG_SETTINGS_PATH: /config/runtime-settings.json
+      TZ: ${TZ:-America/Los_Angeles}
     ports:
       - "8000:8000"
     volumes:
