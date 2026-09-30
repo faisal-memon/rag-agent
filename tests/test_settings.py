@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 import unittest
@@ -6,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.agent.api import routes
-from app.agent.api.schemas import AgentRuntimeSettings
+from app.agent.api.schemas import AgentQueryRequest, AgentRuntimeSettings
 from app.agent.config import get_api_settings
 from app.core.config import read_runtime_settings, write_runtime_settings
 
@@ -41,3 +42,31 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
         agent_class.return_value.startup.assert_called_once()
+
+    def test_agent_stream_emits_progress_before_the_final_response(self) -> None:
+        class StreamingAgent:
+            def answer(self, _question, history=None, on_progress=None):
+                self.history = history
+                on_progress({"type": "thinking", "message": "Thinking"})
+                on_progress({"type": "tool_call", "tool": "get_school_lunch", "arguments": {}})
+                return {
+                    "answer": "Lunch is pasta.",
+                    "plan": [],
+                    "tool_results": [],
+                    "reasoning": [],
+                    "debug": [],
+                    "citations": [],
+                }
+
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(agent=StreamingAgent())))
+        response = routes.stream_agent_query(request, AgentQueryRequest(question="What is lunch?"))
+
+        async def read_stream():
+            return [chunk async for chunk in response.body_iterator]
+
+        chunks = asyncio.run(read_stream())
+        body = b"".join(chunk if isinstance(chunk, bytes) else chunk.encode() for chunk in chunks).decode()
+
+        self.assertIn('"type":"thinking"', body)
+        self.assertIn('"type":"tool_call"', body)
+        self.assertIn('"type":"complete"', body)

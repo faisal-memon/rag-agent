@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from openai import OpenAI
 
@@ -21,6 +21,7 @@ MAX_REASONING_TOTAL_CHARS = 48000
 MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
 IDENTITY_ONBOARDING_QUESTION = "Before I search your documents, what name should I use to identify your records?"
+ProgressCallback = Callable[[dict], None]
 
 
 class Agent:
@@ -36,11 +37,16 @@ class Agent:
         self.prompts.load()
         return self.memory.load()
 
-    def answer(self, question: str, history: list[dict] | None = None) -> dict:
+    def answer(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> dict:
         """Answer one user question using bounded model-selected tools."""
         if not self.memory.loaded:
             self.startup()
-        return _answer_with_agent(self, question, history)
+        return _answer_with_agent(self, question, history, on_progress)
 
     def render_prompt(self, name: str, values: dict[str, object]) -> str:
         return self.prompts.render(name, values)
@@ -53,6 +59,7 @@ def _answer_with_agent(
     agent: Agent,
     question: str,
     history: list[dict] | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> dict:
     history = history or []
     max_steps = agent.settings.agent_max_steps
@@ -90,7 +97,9 @@ def _answer_with_agent(
     approved_memory = memory.approved_from_history(question, history)
     if approved_memory:
         step = {"tool": "remember", "arguments": approved_memory}
+        _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
         tool_result = _execute_tool(step, question, history, agent)
+        _emit_progress(on_progress, "tool_result", tool=step["tool"], result=_summarize_tool_result(tool_result.get("result")))
         return {
             "answer": memory.result_answer(tool_result),
             "plan": [step],
@@ -112,6 +121,11 @@ def _answer_with_agent(
     client, model = get_llm_client(agent.settings)
 
     for _ in range(max_steps):
+        _emit_progress(
+            on_progress,
+            "thinking",
+            message="Reviewing available information" if tool_results else "Thinking",
+        )
         decision = _decide_next_action(
             question,
             conversation,
@@ -174,10 +188,17 @@ def _answer_with_agent(
                 tool=step["tool"],
                 arguments=step["arguments"],
             )
+            _emit_progress(
+                on_progress,
+                "tool_result",
+                tool=step["tool"],
+                result=_summarize_tool_result(tool_results[-1].get("result")),
+            )
             continue
 
         seen_calls.add(signature)
         plan.append(step)
+        _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
         _append_debug(
             debug,
             "controller_decision",
@@ -188,6 +209,12 @@ def _answer_with_agent(
         )
         tool_result = _execute_tool(step, question, history, agent)
         tool_results.append(tool_result)
+        _emit_progress(
+            on_progress,
+            "tool_result",
+            tool=step["tool"],
+            result=_summarize_tool_result(tool_result.get("result")),
+        )
         _append_debug(
             debug,
             "tool_result",
@@ -198,6 +225,7 @@ def _answer_with_agent(
         )
 
     if not answer:
+        _emit_progress(on_progress, "thinking", message="Preparing answer")
         answer = _synthesize_answer(
             question,
             conversation,
@@ -574,6 +602,13 @@ def _append_debug(debug: list[dict] | None, event: str, **fields: Any) -> None:
     for key, value in fields.items():
         item[key] = _debug_safe_value(value)
     debug.append(item)
+
+
+def _emit_progress(callback: ProgressCallback | None, event: str, **fields: Any) -> None:
+    """Report a concise, user-facing lifecycle event to an optional listener."""
+    if callback is None:
+        return
+    callback({"type": event, **fields})
 
 
 def _debug_safe_value(value: Any) -> Any:

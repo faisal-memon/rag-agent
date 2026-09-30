@@ -22,7 +22,6 @@ let lastDebugMode = "semantic";
 const agentHistoryKey = "nextcloud-rag-agent-history-v1";
 const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
-let agentIsThinking = false;
 
 function citationPreview(text) {
   if (!text) return "";
@@ -144,6 +143,50 @@ function summarizeArguments(argumentsValue) {
   return Object.entries(argumentsValue || {})
     .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
     .join(" ");
+}
+
+function progressToolTitle(tool, argumentsValue) {
+  const day = argumentsValue?.day;
+  const labels = {
+    get_school_lunch: "Checking school lunch",
+    get_ocean_schedule: "Checking Yoga Flow Ocean classes",
+    get_noe_schedule: "Checking Yoga Flow Noe classes",
+    get_upcoming_yoga_classes: "Checking upcoming Yoga Flow classes",
+    search_documents: "Searching your documents",
+    keyword_search: "Searching your documents",
+    semantic_search: "Searching your documents",
+    grep_documents: "Looking through matching documents",
+    read_document: "Reading a document",
+    remember: "Saving a memory",
+  };
+  const title = labels[tool] || `Running ${String(tool || "tool").replaceAll("_", " ")}`;
+  return day ? `${title} for ${day}` : title;
+}
+
+function progressResultTitle(event) {
+  const summary = event.result || {};
+  if (summary.type === "error") return "Tool could not complete";
+  if (summary.type === "list") return `${summary.count} result${summary.count === 1 ? "" : "s"} found`;
+  return "Tool completed";
+}
+
+function agentProgressTimelineHtml(events) {
+  const rows = (events || []).map((event) => {
+    const type = event.type || "thinking";
+    const title = type === "thinking"
+      ? event.message || "Thinking"
+      : type === "tool_call"
+        ? progressToolTitle(event.tool, event.arguments)
+        : type === "tool_result"
+          ? progressResultTitle(event)
+          : event.message || "Agent update";
+    const icon = type === "thinking" ? "…" : type === "tool_call" ? "↗" : type === "tool_result" ? "✓" : "!";
+    return `<div class="agent-progress-event agent-progress-${escapeHtml(type)}">
+      <span class="agent-progress-icon" aria-hidden="true">${icon}</span>
+      <span>${escapeHtml(title)}</span>
+    </div>`;
+  }).join("");
+  return rows ? `<div class="agent-progress" aria-live="polite">${rows}</div>` : "";
 }
 
 function buildAgentTraceEvents(message) {
@@ -310,32 +353,18 @@ function renderAgentConversation() {
       `
       : "";
     return `
-      <article class="chat-message assistant">
+      <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
         <div class="chat-role">rag agent</div>
-        ${agentTraceTimelineHtml(message)}
-        <div class="chat-content">${escapeHtml(message.content)}</div>
+        ${agentProgressTimelineHtml(message.progress)}
+        ${message.streaming ? "" : `<div class="chat-content">${escapeHtml(message.content)}</div>`}
+        ${message.streaming ? "" : agentTraceTimelineHtml(message)}
         ${sourceFold}
       </article>
     `;
   }).join("");
 
-  const thinkingHtml = agentIsThinking
-    ? `
-      <article class="chat-message assistant thinking-message" role="status" aria-label="RAG agent is thinking">
-        <div class="chat-role">rag agent</div>
-        <div class="thinking-indicator">
-          <span>thinking</span>
-          <span class="thinking-dots" aria-hidden="true">
-            <span class="thinking-dot"></span>
-            <span class="thinking-dot"></span>
-            <span class="thinking-dot"></span>
-          </span>
-        </div>
-      </article>
-    `
-    : "";
-  const hasVisibleConversation = agentConversation.length > 0 || agentIsThinking;
-  agentChat.innerHTML = messagesHtml + thinkingHtml;
+  const hasVisibleConversation = agentConversation.length > 0;
+  agentChat.innerHTML = messagesHtml;
   agentChat.classList.toggle("visible", hasVisibleConversation);
   agentChatToolbar.classList.toggle("visible", hasVisibleConversation);
   if (hasVisibleConversation) {
@@ -347,6 +376,40 @@ function renderAgentConversation() {
 function hideAgentConversation() {
   agentChat.classList.remove("visible");
   agentChatToolbar.classList.remove("visible");
+}
+
+async function readAgentProgress(response, onEvent) {
+  if (!response.body) {
+    throw new Error("This browser does not support streamed agent updates.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const consume = (chunk) => {
+    buffer += chunk;
+    const records = buffer.split(/\r?\n\r?\n/);
+    buffer = records.pop() || "";
+    records.forEach((record) => {
+      const data = record
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice(6))
+        .join("\n");
+      if (data) onEvent(JSON.parse(data));
+    });
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    consume(decoder.decode(value, { stream: true }));
+  }
+  consume(decoder.decode());
+  if (buffer.trim()) {
+    const data = buffer.split(/\r?\n/).find((line) => line.startsWith("data: "))?.slice(6);
+    if (data) onEvent(JSON.parse(data));
+  }
 }
 
 async function runQuery(requestedOffset = 0) {
@@ -424,7 +487,14 @@ async function runAgent() {
     content: value,
     createdAt: new Date().toISOString(),
   });
-  agentIsThinking = true;
+  const progressMessage = {
+    role: "assistant",
+    content: "",
+    progress: [{ type: "thinking", message: "Thinking" }],
+    streaming: true,
+    createdAt: new Date().toISOString(),
+  };
+  agentConversation.push(progressMessage);
   saveAgentConversation();
   renderAgentConversation();
   question.value = "";
@@ -442,7 +512,7 @@ async function runAgent() {
   citations.innerHTML = "";
 
   try {
-    const response = await fetch("/agent/query", {
+    const response = await fetch("/agent/query/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: value, history: requestHistory }),
@@ -452,38 +522,38 @@ async function runAgent() {
       throw new Error(`Agent query failed with HTTP ${response.status}`);
     }
 
-    const data = await response.json();
-    agentIsThinking = false;
-    agentConversation.push({
-      role: "assistant",
-      content: data.answer || "No answer returned.",
-      plan: data.plan || [],
-      toolResults: data.tool_results || [],
-      reasoning: data.reasoning || [],
-      debug: data.debug || [],
-      citations: data.citations || [],
-      createdAt: new Date().toISOString(),
+    await readAgentProgress(response, (event) => {
+      if (event.type === "complete") {
+        const data = event.result || {};
+        Object.assign(progressMessage, {
+          content: data.answer || "No answer returned.",
+          plan: data.plan || [],
+          toolResults: data.tool_results || [],
+          reasoning: data.reasoning || [],
+          debug: data.debug || [],
+          citations: data.citations || [],
+          streaming: false,
+        });
+        status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
+      } else if (event.type === "error") {
+        throw new Error(event.message || "Agent request failed.");
+      } else {
+        progressMessage.progress.push(event);
+        status.textContent = event.type === "tool_call" ? progressToolTitle(event.tool, event.arguments) : "Agent is working...";
+      }
+      renderAgentConversation();
     });
     saveAgentConversation();
     renderAgentConversation();
-    status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
   } catch (error) {
-    agentIsThinking = false;
-    agentConversation.push({
-      role: "assistant",
+    Object.assign(progressMessage, {
       content: `Agent request failed: ${error.message}`,
-      plan: [],
-      toolResults: [],
-      reasoning: [],
-      debug: [],
-      citations: [],
-      createdAt: new Date().toISOString(),
+      streaming: false,
     });
     saveAgentConversation();
     renderAgentConversation();
     status.textContent = "Agent query failed.";
   } finally {
-    agentIsThinking = false;
     result.classList.add("visible");
     button.disabled = false;
     agentButton.disabled = false;

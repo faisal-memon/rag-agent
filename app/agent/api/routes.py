@@ -1,6 +1,12 @@
 """HTTP routes that adapt FastAPI requests to the agent runtime."""
 
+import json
+from queue import Empty, Queue
+from threading import Thread
+from typing import Iterator
+
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import StreamingResponse
 
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
@@ -90,6 +96,42 @@ def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryRespo
     history = [message.model_dump() for message in payload.history]
     result = _agent(request).answer(payload.question, history=history)
     return AgentQueryResponse(**result)
+
+
+@router.post("/agent/query/stream")
+def stream_agent_query(request: Request, payload: AgentQueryRequest) -> StreamingResponse:
+    """Stream concise agent lifecycle events, followed by the final response."""
+    history = [message.model_dump() for message in payload.history]
+    agent = _agent(request)
+    events: Queue[dict | None] = Queue()
+
+    def run_agent() -> None:
+        try:
+            result = agent.answer(payload.question, history=history, on_progress=events.put)
+            events.put({"type": "complete", "result": result})
+        except Exception as exc:  # pragma: no cover - exercised by the browser error path
+            events.put({"type": "error", "message": str(exc)})
+        finally:
+            events.put(None)
+
+    def event_stream() -> Iterator[str]:
+        worker = Thread(target=run_agent, daemon=True)
+        worker.start()
+        while True:
+            try:
+                event = events.get(timeout=15)
+            except Empty:
+                yield ": keep-alive\n\n"
+                continue
+            if event is None:
+                break
+            yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/debug/retrieve", response_model=RetrievalDebugResponse)

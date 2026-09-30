@@ -532,6 +532,29 @@ class AgentTest(unittest.TestCase):
         self.assertEqual("return_answer", result["debug"][-1]["decision"])
         execute_tool.assert_not_called()
 
+    def test_agent_reports_progress_for_each_tool_call(self) -> None:
+        events = []
+        settings = _settings_with_api(agent_max_steps=3, memory_path=Path(tempfile.mkdtemp()) / "MEMORY.md")
+        responses = iter(
+            [
+                '{"action":"tool","tool":"get_school_lunch","arguments":{"day":"2026-09-29"}}',
+                '{"action":"answer","evidence_status":"supported","answer":"Lunch is available."}',
+            ]
+        )
+
+        with (
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", side_effect=lambda *_args, **_kwargs: next(responses)),
+            patch(
+                "app.agent.agent._execute_tool",
+                return_value={"tool": "get_school_lunch", "arguments": {}, "result": {"choices": ["Pasta"]}},
+            ),
+        ):
+            Agent(settings).answer("What is school lunch today?", on_progress=events.append)
+
+        self.assertEqual(["thinking", "tool_call", "tool_result", "thinking"], [event["type"] for event in events])
+        self.assertEqual("get_school_lunch", events[1]["tool"])
+
     def test_agent_accepts_plain_prose_for_agent_configuration_question(self) -> None:
         prose_answer = "Add the rule to the planner prompt so candidate files are inspected."
 
@@ -674,8 +697,10 @@ class AgentTest(unittest.TestCase):
 
     def test_web_ui_exposes_agent_tool_trace(self) -> None:
         self.assertIn('id="agent"', INDEX_HTML)
-        self.assertIn('fetch("/agent/query"', APP_JS)
+        self.assertIn('fetch("/agent/query/stream"', APP_JS)
         self.assertIn('id="agent-chat"', INDEX_HTML)
+        self.assertIn("readAgentProgress(response", APP_JS)
+        self.assertIn("agentProgressTimelineHtml(message.progress)", APP_JS)
         self.assertIn("agentTraceTimelineHtml(message)", APP_JS)
         self.assertIn("buildAgentTraceEvents(message)", APP_JS)
         self.assertIn('class="agent-trace"', APP_JS)
@@ -685,8 +710,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("history: requestHistory", APP_JS)
         self.assertIn('event.key !== "Enter" || event.shiftKey || event.isComposing', APP_JS)
         self.assertIn("event.preventDefault()", APP_JS)
-        self.assertIn('class="chat-message assistant thinking-message"', APP_JS)
-        self.assertIn("let agentIsThinking = false", APP_JS)
+        self.assertIn('class="agent-progress-event agent-progress-${escapeHtml(type)}"', APP_JS)
         self.assertIn("reasoning: data.reasoning || []", APP_JS)
         self.assertIn("debug: data.debug || []", APP_JS)
         self.assertIn("message.reasoning", APP_JS)
