@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest.mock import patch
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -10,7 +11,12 @@ from app.agent.external_tools.yoga_flow import (
     _select_upcoming_classes,
     parse_mindbody_schedule,
 )
-from app.agent.external_tools.school_lunch import _TextItem, parse_school_lunch
+from app.agent.external_tools.school_lunch import (
+    _TextItem,
+    _google_drive_download_url,
+    _resolve_lunchmaster_menu_url,
+    parse_school_lunch,
+)
 
 
 class OceanScheduleTest(unittest.TestCase):
@@ -78,6 +84,31 @@ class OceanScheduleTest(unittest.TestCase):
 
 
 class SchoolLunchTest(unittest.TestCase):
+    def test_resolves_requested_month_from_lunchmaster_menu_row(self) -> None:
+        menu_page = """
+        <p><strong>Breakfast &amp; Lunch (Hot/Cold)</strong>
+          <a href="https://drive.google.com/file/d/september/view">September</a> |
+          <a href="https://drive.google.com/file/d/october/view">October</a>:
+          available at sites labeled \"The LunchMaster\".</p>
+        <p><strong>Breakfast &amp; Lunch (Hot/Cold)</strong>
+          <a href="https://drive.google.com/file/d/other-october/view">October</a>:
+          available at other schools.</p>
+        """
+
+        with patch(
+            "app.agent.external_tools.school_lunch._download_menu_page", return_value=menu_page
+        ):
+            self.assertEqual(
+                "https://drive.google.com/file/d/october/view",
+                _resolve_lunchmaster_menu_url(date(2026, 10, 1)),
+            )
+
+    def test_builds_direct_download_url_from_google_drive_viewer_link(self) -> None:
+        self.assertEqual(
+            "https://drive.usercontent.google.com/download?id=october&export=download&confirm=t",
+            _google_drive_download_url("https://drive.google.com/file/d/october/view?usp=drive_link"),
+        )
+
     def test_parses_lunch_choices_for_a_school_day(self) -> None:
         lunch = parse_school_lunch(_school_lunch_items(), "K-12 LUNCH (HOT/COLD) SEPTEMBER", date(2026, 9, 28))
 
