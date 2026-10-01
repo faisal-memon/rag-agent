@@ -25,6 +25,14 @@ const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
 let mediaRecorder = null;
 let recordedChunks = [];
+let recordingUnavailable = false;
+
+function disableRecording(message) {
+  recordingUnavailable = true;
+  recordButton.disabled = true;
+  recordButton.title = message;
+  status.textContent = message;
+}
 
 function citationPreview(text) {
   if (!text) return "";
@@ -596,14 +604,23 @@ async function toggleRecording() {
         form.append("audio", audio, "recording.webm");
         const response = await fetch("/agent/transcribe", { method: "POST", body: form });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "Transcription failed.");
+        if (!response.ok) {
+          if (response.status === 503) {
+            disableRecording("Transcription unavailable. Start Whisper to enable recording.");
+          }
+          throw new Error(data.detail || "Transcription failed.");
+        }
         question.value = data.text;
         question.focus();
         status.textContent = "Transcript is ready to review.";
       } catch (error) {
-        status.textContent = error.message || "Transcription failed.";
+        if (!recordButton.disabled) {
+          status.textContent = error.message || "Transcription failed.";
+        }
       } finally {
-        recordButton.disabled = false;
+        if (!recordingUnavailable) {
+          recordButton.disabled = false;
+        }
       }
     });
     mediaRecorder.start();
@@ -653,6 +670,10 @@ async function loadPipelineStatus() {
 button.addEventListener("click", () => runQuery());
 agentButton.addEventListener("click", runAgent);
 recordButton.addEventListener("click", toggleRecording);
+
+if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+  disableRecording("Microphone recording is not supported by this browser.");
+}
 debugButton.addEventListener("click", () => runQuery(0));
 pipelineButton.addEventListener("click", loadPipelineStatus);
 clearChatButton.addEventListener("click", () => {
