@@ -36,6 +36,10 @@ class AgentQueryRequest(BaseModel):
     history: list[AgentChatMessage] = Field(default_factory=list, max_length=20)
 
 
+class TranscriptResponse(BaseModel):
+    text: str
+
+
 class AgentToolCall(BaseModel):
     tool: str
     arguments: dict[str, Any]

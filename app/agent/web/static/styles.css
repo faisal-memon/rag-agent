@@ -189,6 +189,12 @@ button.secondary {
   background: var(--panel-strong);
 }
 
+button.recording {
+  border-color: var(--danger);
+  color: #fff;
+  background: var(--danger);
+}
+
 button:disabled {
   cursor: wait;
   opacity: 0.62;
