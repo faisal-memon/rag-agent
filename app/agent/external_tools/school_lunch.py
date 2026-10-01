@@ -35,8 +35,12 @@ def get_school_lunch(day: str | None = None) -> dict:
         day: Optional local calendar date in YYYY-MM-DD format. Defaults to today.
     """
     requested_day = _parse_day(day)
-    menu = _parse_lunch_pdf(_download_menu_pdf(requested_day), requested_day)
-    return menu
+    try:
+        return _parse_lunch_pdf(_download_menu_pdf(requested_day), requested_day)
+    except ValueError as exc:
+        if str(exc).startswith("SFUSD has not published a LunchMaster"):
+            return _no_lunch(requested_day, str(exc))
+        raise
 
 
 def _download_menu_pdf(requested_day: date) -> bytes:

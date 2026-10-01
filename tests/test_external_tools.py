@@ -15,6 +15,7 @@ from app.agent.external_tools.school_lunch import (
     _TextItem,
     _google_drive_download_url,
     _resolve_lunchmaster_menu_url,
+    get_school_lunch,
     parse_school_lunch,
 )
 
@@ -108,6 +109,21 @@ class SchoolLunchTest(unittest.TestCase):
             "https://drive.usercontent.google.com/download?id=october&export=download&confirm=t",
             _google_drive_download_url("https://drive.google.com/file/d/october/view?usp=drive_link"),
         )
+
+    def test_reports_when_the_requested_month_has_not_been_published(self) -> None:
+        menu_page = """
+        <p><strong>Breakfast &amp; Lunch (Hot/Cold)</strong>
+          <a href="https://drive.google.com/file/d/october/view">October</a>:
+          available at sites labeled \"The LunchMaster\".</p>
+        """
+
+        with patch(
+            "app.agent.external_tools.school_lunch._download_menu_page", return_value=menu_page
+        ):
+            lunch = get_school_lunch("2026-11-01")
+
+        self.assertFalse(lunch["school_lunch_available"])
+        self.assertIn("has not published", lunch["reason"])
 
     def test_parses_lunch_choices_for_a_school_day(self) -> None:
         lunch = parse_school_lunch(_school_lunch_items(), "K-12 LUNCH (HOT/COLD) SEPTEMBER", date(2026, 9, 28))
