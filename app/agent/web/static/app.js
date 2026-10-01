@@ -1,5 +1,6 @@
 const button = document.getElementById("ask");
 const agentButton = document.getElementById("agent");
+const recordButton = document.getElementById("record");
 const debugButton = document.getElementById("debug");
 const pipelineButton = document.getElementById("pipeline");
 const question = document.getElementById("question");
@@ -22,6 +23,8 @@ let lastDebugMode = "semantic";
 const agentHistoryKey = "nextcloud-rag-agent-history-v1";
 const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
+let mediaRecorder = null;
+let recordedChunks = [];
 
 function citationPreview(text) {
   if (!text) return "";
@@ -562,6 +565,56 @@ async function runAgent() {
   }
 }
 
+async function toggleRecording() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+    recordButton.disabled = true;
+    status.textContent = "Transcribing recording...";
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    status.textContent = "This browser does not support microphone recording.";
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size) recordedChunks.push(event.data);
+    });
+    mediaRecorder.addEventListener("stop", async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      const audio = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      mediaRecorder = null;
+      recordButton.classList.remove("recording");
+      recordButton.textContent = "Record";
+      try {
+        const form = new FormData();
+        form.append("audio", audio, "recording.webm");
+        const response = await fetch("/agent/transcribe", { method: "POST", body: form });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Transcription failed.");
+        question.value = data.text;
+        question.focus();
+        status.textContent = "Transcript is ready to review.";
+      } catch (error) {
+        status.textContent = error.message || "Transcription failed.";
+      } finally {
+        recordButton.disabled = false;
+      }
+    });
+    mediaRecorder.start();
+    recordButton.classList.add("recording");
+    recordButton.textContent = "Stop recording";
+    status.textContent = "Recording...";
+  } catch (_error) {
+    status.textContent = "Microphone access was not granted.";
+  }
+}
+
 async function loadPipelineStatus() {
   button.disabled = true;
   agentButton.disabled = true;
@@ -599,6 +652,7 @@ async function loadPipelineStatus() {
 
 button.addEventListener("click", () => runQuery());
 agentButton.addEventListener("click", runAgent);
+recordButton.addEventListener("click", toggleRecording);
 debugButton.addEventListener("click", () => runQuery(0));
 pipelineButton.addEventListener("click", loadPipelineStatus);
 clearChatButton.addEventListener("click", () => {
