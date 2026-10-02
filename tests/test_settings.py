@@ -58,13 +58,17 @@ class SettingsApiTest(unittest.TestCase):
                     "citations": [],
                 }
 
-        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(agent=StreamingAgent())))
-        response = routes.stream_agent_query(request, AgentQueryRequest(question="What is lunch?"))
+        request = SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(agent=StreamingAgent())),
+            headers={"Remote-User": "test-user"},
+        )
+        with patch("app.agent.api.routes.load_or_create", return_value=("00000000-0000-0000-0000-000000000001", [])), patch("app.agent.api.routes.append_messages"):
+            response = routes.stream_agent_query(request, AgentQueryRequest(question="What is lunch?"))
 
-        async def read_stream():
-            return [chunk async for chunk in response.body_iterator]
+            async def read_stream():
+                return [chunk async for chunk in response.body_iterator]
 
-        chunks = asyncio.run(read_stream())
+            chunks = asyncio.run(read_stream())
         body = b"".join(chunk if isinstance(chunk, bytes) else chunk.encode() for chunk in chunks).decode()
 
         self.assertIn('"type":"thinking"', body)

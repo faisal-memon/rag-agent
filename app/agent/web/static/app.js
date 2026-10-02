@@ -21,8 +21,10 @@ let debugLimit = 8;
 let lastDebugQuestion = "";
 let lastDebugMode = "semantic";
 const agentHistoryKey = "nextcloud-rag-agent-history-v1";
+const agentConversationIdKey = "nextcloud-rag-agent-conversation-id-v1";
 const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
+let agentConversationId = localStorage.getItem(agentConversationIdKey) || null;
 let mediaRecorder = null;
 let recordedChunks = [];
 
@@ -524,7 +526,7 @@ async function runAgent() {
     const response = await fetch("/agent/query/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: value, history: requestHistory }),
+      body: JSON.stringify({ conversation_id: agentConversationId, question: value, history: requestHistory }),
     });
 
     if (!response.ok) {
@@ -534,6 +536,10 @@ async function runAgent() {
     await readAgentProgress(response, (event) => {
       if (event.type === "complete") {
         const data = event.result || {};
+        if (data.conversation_id) {
+          agentConversationId = data.conversation_id;
+          localStorage.setItem(agentConversationIdKey, agentConversationId);
+        }
         Object.assign(progressMessage, {
           content: data.answer || "No answer returned.",
           plan: data.plan || [],
@@ -673,6 +679,8 @@ pipelineButton.addEventListener("click", loadPipelineStatus);
 clearChatButton.addEventListener("click", () => {
   agentConversation = [];
   localStorage.removeItem(agentHistoryKey);
+  localStorage.removeItem(agentConversationIdKey);
+  agentConversationId = null;
   renderAgentConversation();
   result.classList.remove("visible");
   status.textContent = "Agent conversation cleared.";
