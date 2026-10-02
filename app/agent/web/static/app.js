@@ -25,12 +25,10 @@ const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
 let mediaRecorder = null;
 let recordedChunks = [];
-let recordingUnavailable = false;
 
-function disableRecording(message) {
-  recordingUnavailable = true;
-  recordButton.disabled = true;
+function showRecordingError(message) {
   recordButton.title = message;
+  status.classList.add("error");
   status.textContent = message;
 }
 
@@ -577,6 +575,7 @@ async function toggleRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
     recordButton.disabled = true;
+    status.classList.remove("error");
     status.textContent = "Transcribing recording...";
     return;
   }
@@ -605,30 +604,25 @@ async function toggleRecording() {
         const response = await fetch("/agent/transcribe", { method: "POST", body: form });
         const data = await response.json();
         if (!response.ok) {
-          if (response.status === 503) {
-            disableRecording("Transcription unavailable. Start Whisper to enable recording.");
-          }
           throw new Error(data.detail || "Transcription failed.");
         }
         question.value = data.text;
         question.focus();
+        status.classList.remove("error");
         status.textContent = "Transcript is ready to review.";
       } catch (error) {
-        if (!recordButton.disabled) {
-          status.textContent = error.message || "Transcription failed.";
-        }
+        showRecordingError(error.message || "Transcription failed.");
       } finally {
-        if (!recordingUnavailable) {
-          recordButton.disabled = false;
-        }
+        recordButton.disabled = false;
       }
     });
     mediaRecorder.start();
     recordButton.classList.add("recording");
     recordButton.textContent = "Stop recording";
+    status.classList.remove("error");
     status.textContent = "Recording...";
   } catch (_error) {
-    status.textContent = "Microphone access was not granted.";
+    showRecordingError("Microphone access was not granted.");
   }
 }
 
@@ -672,7 +666,7 @@ agentButton.addEventListener("click", runAgent);
 recordButton.addEventListener("click", toggleRecording);
 
 if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-  disableRecording("Microphone recording is not supported by this browser.");
+  showRecordingError("Microphone recording is not supported by this browser.");
 }
 debugButton.addEventListener("click", () => runQuery(0));
 pipelineButton.addEventListener("click", loadPipelineStatus);
