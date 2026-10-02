@@ -32,6 +32,7 @@ class AgentChatMessage(BaseModel):
 
 
 class AgentQueryRequest(BaseModel):
+    conversation_id: str | None = None
     question: str = Field(min_length=1)
     history: list[AgentChatMessage] = Field(default_factory=list, max_length=20)
 
@@ -57,6 +58,7 @@ class AgentReasoningStep(BaseModel):
 
 
 class AgentQueryResponse(BaseModel):
+    conversation_id: str | None = None
     answer: str
     plan: list[AgentToolCall]
     tool_results: list[AgentToolResult]
