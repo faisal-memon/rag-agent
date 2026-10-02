@@ -10,7 +10,7 @@ from app.agent.api.schemas import QueryRequest
 
 
 class SearchTest(unittest.TestCase):
-    def test_hybrid_search_merges_exact_and_semantic_candidates(self) -> None:
+    def test_hybrid_search_preserves_ordered_search_lists(self) -> None:
         keyword_chunk = {
             "chunk_id": 1,
             "filename": "tax.md",
@@ -35,8 +35,8 @@ class SearchTest(unittest.TestCase):
         ):
             result = hybrid_search("income")
 
-        self.assertEqual([1, 2], [chunk["chunk_id"] for chunk in result])
-        self.assertTrue(all(chunk["retrieval_mode"] == "hybrid" for chunk in result))
+        self.assertEqual([keyword_chunk], result["keyword_matches"])
+        self.assertEqual([semantic_chunk], result["semantic_matches"])
 
     def test_keyword_search_does_not_generate_an_embedding(self) -> None:
         with (
