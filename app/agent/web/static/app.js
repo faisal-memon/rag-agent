@@ -28,6 +28,7 @@ let recordedChunks = [];
 
 function showRecordingError(message) {
   recordButton.title = message;
+  status.classList.add("error");
   status.textContent = message;
 }
 
@@ -574,6 +575,7 @@ async function toggleRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
     recordButton.disabled = true;
+    status.classList.remove("error");
     status.textContent = "Transcribing recording...";
     return;
   }
@@ -606,6 +608,7 @@ async function toggleRecording() {
         }
         question.value = data.text;
         question.focus();
+        status.classList.remove("error");
         status.textContent = "Transcript is ready to review.";
       } catch (error) {
         showRecordingError(error.message || "Transcription failed.");
@@ -616,6 +619,7 @@ async function toggleRecording() {
     mediaRecorder.start();
     recordButton.classList.add("recording");
     recordButton.textContent = "Stop recording";
+    status.classList.remove("error");
     status.textContent = "Recording...";
   } catch (_error) {
     showRecordingError("Microphone access was not granted.");
