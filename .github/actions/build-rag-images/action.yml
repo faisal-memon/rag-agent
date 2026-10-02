@@ -20,7 +20,7 @@ runs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build API Docker image
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         target: api
@@ -32,7 +32,7 @@ runs:
         cache-to: type=gha,mode=max,scope=rag-agent-api
 
     - name: Build embed Docker image
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         target: embed
@@ -44,7 +44,7 @@ runs:
         cache-to: type=gha,mode=max,scope=rag-agent-embed
 
     - name: Build normalize Docker image
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         target: normalize
