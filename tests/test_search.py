@@ -5,10 +5,39 @@ from pydantic import ValidationError
 
 from app.agent.config import get_api_settings
 from app.agent.search import search_debug
+from app.agent.tools import hybrid_search
 from app.agent.api.schemas import QueryRequest
 
 
 class SearchTest(unittest.TestCase):
+    def test_hybrid_search_merges_exact_and_semantic_candidates(self) -> None:
+        keyword_chunk = {
+            "chunk_id": 1,
+            "filename": "tax.md",
+            "content": "adjusted gross income",
+            "matched_fts": True,
+            "matched_vector": False,
+            "fts_score": 0.8,
+            "vector_score": 0.0,
+        }
+        semantic_chunk = {
+            "chunk_id": 2,
+            "filename": "income.md",
+            "content": "taxable income concept",
+            "matched_fts": False,
+            "matched_vector": True,
+            "fts_score": 0.0,
+            "vector_score": 0.9,
+        }
+        with (
+            patch("app.agent.tools.keyword_search", return_value=[keyword_chunk]),
+            patch("app.agent.tools.semantic_search", return_value=[semantic_chunk]),
+        ):
+            result = hybrid_search("income")
+
+        self.assertEqual([1, 2], [chunk["chunk_id"] for chunk in result])
+        self.assertTrue(all(chunk["retrieval_mode"] == "hybrid" for chunk in result))
+
     def test_keyword_search_does_not_generate_an_embedding(self) -> None:
         with (
             patch("app.agent.search._keyword_rows", return_value=[]) as keyword_rows,

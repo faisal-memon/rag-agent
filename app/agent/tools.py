@@ -20,6 +20,7 @@ AGENT_TOOL_NAMES = (
     "search_documents",
     "keyword_search",
     "semantic_search",
+    "hybrid_search",
     "grep_documents",
     "read_document",
     "remember",
@@ -143,6 +144,35 @@ def semantic_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
     """
     result = search_debug(query, mode=RETRIEVAL_MODE_SEMANTIC, limit=_bounded_limit(limit), offset=0)
     return result["chunks"]
+
+
+def hybrid_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
+    """Search with both full-text and vector retrieval, then merge the candidates.
+
+    Args:
+        query: The user's document question, searched using exact terms and semantic similarity.
+        limit: Maximum number of merged chunks to return.
+    """
+    limit = _bounded_limit(limit)
+    candidates = {}
+    for rank, chunk in enumerate(keyword_search(query, limit=limit), start=1):
+        candidates.setdefault(chunk["chunk_id"], {**chunk, "_rank_sum": 0.0})
+        candidates[chunk["chunk_id"]]["_rank_sum"] += 1 / (60 + rank)
+        candidates[chunk["chunk_id"]]["matched_fts"] = True
+    for rank, chunk in enumerate(semantic_search(query, limit=limit), start=1):
+        candidates.setdefault(chunk["chunk_id"], {**chunk, "_rank_sum": 0.0})
+        merged = candidates[chunk["chunk_id"]]
+        merged["_rank_sum"] += 1 / (60 + rank)
+        merged["matched_vector"] = True
+        for key in ("filename", "path", "section", "page", "content", "fts_score", "vector_score"):
+            if key in chunk and not merged.get(key):
+                merged[key] = chunk[key]
+
+    merged_chunks = sorted(candidates.values(), key=lambda chunk: chunk["_rank_sum"], reverse=True)
+    for chunk in merged_chunks:
+        chunk["score"] = chunk.pop("_rank_sum")
+        chunk["retrieval_mode"] = "hybrid"
+    return merged_chunks[:limit]
 
 
 def read_document(
@@ -272,6 +302,7 @@ AGENT_TOOL_FUNCTIONS = {
     "search_documents": search_documents,
     "keyword_search": keyword_search,
     "semantic_search": semantic_search,
+    "hybrid_search": hybrid_search,
     "grep_documents": grep_documents,
     "read_document": read_document,
     "remember": remember,
