@@ -7,4 +7,4 @@ openai==3.19.2
 pydantic==2.13.5
 pydantic-settings==2.15.0
 python-multipart==0.0.32
-liteparse==2.14.7
+liteparse==2.15.1
