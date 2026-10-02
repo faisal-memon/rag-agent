@@ -5,8 +5,9 @@ from queue import Empty, Queue
 from threading import Thread
 from typing import Iterator
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
@@ -18,10 +19,12 @@ from app.agent.api.schemas import (
     QueryRequest,
     ReindexResponse,
     RetrievalDebugResponse,
+    TranscriptResponse,
 )
 from app.agent.pipeline import pipeline_status
 from app.agent.search import search_debug
 from app.agent.web.routes import debug_page, index_page, settings_page
+from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 from app.core.config import read_runtime_settings, write_runtime_settings
 
 router = APIRouter()
@@ -96,6 +99,29 @@ def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryRespo
     history = [message.model_dump() for message in payload.history]
     result = _agent(request).answer(payload.question, history=history)
     return AgentQueryResponse(**result)
+
+
+@router.post("/agent/transcribe", response_model=TranscriptResponse)
+async def transcribe(request: Request, audio: UploadFile = File(...)) -> TranscriptResponse:
+    """Transcribe a short browser recording without sending it to an external service."""
+    if not (audio.content_type or "").startswith(("audio/", "video/")):
+        raise HTTPException(status_code=415, detail="Record an audio clip before transcribing.")
+    content = await audio.read(20 * 1024 * 1024 + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="The recording was empty.")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Keep recordings under 20 MB.")
+    try:
+        text = await run_in_threadpool(
+            transcribe_audio,
+            base_url=get_api_settings().whispercpp_base_url,
+            audio=content,
+            filename=audio.filename or "recording.webm",
+            content_type=audio.content_type or "audio/webm",
+        )
+    except TranscriptionUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return TranscriptResponse(text=text)
 
 
 @router.post("/agent/query/stream")

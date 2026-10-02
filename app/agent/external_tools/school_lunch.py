@@ -7,16 +7,18 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Iterable
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 from liteparse import LiteParse
 
-SCHOOL_LUNCH_MENU_URL = "https://drive.usercontent.google.com/download?id=1tqE0y4lzs-G1oys5OLagKPsBr2OirGvP&export=download&confirm=t"
+SFUSD_MENUS_URL = "https://www.sfusd.edu/services/health-wellness/nutrition-school-meals/menus"
 PUBLIC_USER_AGENT = "Mozilla/5.0 (compatible; rag-agent/0.1)"
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday")
 MONTH_NAMES = {name.upper(): number for number, name in enumerate(calendar.month_name) if name}
 MENU_REFRESH_INTERVAL = timedelta(hours=6)
-_menu_cache: tuple[datetime, bytes] | None = None
+_menu_page_cache: tuple[datetime, str] | None = None
+_menu_pdf_cache: dict[str, tuple[datetime, bytes]] = {}
 
 
 @dataclass(frozen=True)
@@ -33,21 +35,67 @@ def get_school_lunch(day: str | None = None) -> dict:
         day: Optional local calendar date in YYYY-MM-DD format. Defaults to today.
     """
     requested_day = _parse_day(day)
-    menu = _parse_lunch_pdf(_download_menu_pdf(), requested_day)
-    return menu
+    try:
+        return _parse_lunch_pdf(_download_menu_pdf(requested_day), requested_day)
+    except ValueError as exc:
+        if str(exc).startswith("SFUSD has not published a LunchMaster"):
+            return _no_lunch(requested_day, str(exc))
+        raise
 
 
-def _download_menu_pdf() -> bytes:
-    """Refresh the public monthly menu periodically and reuse it between questions."""
-    global _menu_cache
+def _download_menu_pdf(requested_day: date) -> bytes:
+    """Download the currently published LunchMaster menu for the requested month."""
+    menu_url = _resolve_lunchmaster_menu_url(requested_day)
     now = datetime.now(timezone.utc)
-    if _menu_cache is not None and now - _menu_cache[0] < MENU_REFRESH_INTERVAL:
-        return _menu_cache[1]
-    request = Request(SCHOOL_LUNCH_MENU_URL, headers={"User-Agent": PUBLIC_USER_AGENT})
+    cached = _menu_pdf_cache.get(menu_url)
+    if cached is not None and now - cached[0] < MENU_REFRESH_INTERVAL:
+        return cached[1]
+    request = Request(_google_drive_download_url(menu_url), headers={"User-Agent": PUBLIC_USER_AGENT})
     with urlopen(request, timeout=20) as response:
         pdf = response.read()
-    _menu_cache = (now, pdf)
+    _menu_pdf_cache[menu_url] = (now, pdf)
     return pdf
+
+
+def _resolve_lunchmaster_menu_url(requested_day: date) -> str:
+    """Find the public LunchMaster hot/cold PDF for a calendar month."""
+    menu_page = _download_menu_page()
+    month_name = calendar.month_name[requested_day.month]
+    pattern = re.compile(
+        r"Breakfast\s*&amp;\s*Lunch\s*\(Hot/Cold\)(?P<links>.*?)(?:</p>|<p>)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    for row in pattern.finditer(menu_page):
+        if "LunchMaster" not in menu_page[max(0, row.start() - 2_000) : row.end() + 2_000]:
+            continue
+        links = re.findall(r'<a\s+href="(?P<url>[^"]+)"[^>]*>\s*(?P<label>[^<]+)\s*</a>', row.group("links"), flags=re.IGNORECASE)
+        for url, label in links:
+            if label.strip().casefold() == month_name.casefold():
+                return url
+    raise ValueError(f"SFUSD has not published a LunchMaster hot/cold menu for {month_name}")
+
+
+def _download_menu_page() -> str:
+    """Refresh the public SFUSD menu index periodically."""
+    global _menu_page_cache
+    now = datetime.now(timezone.utc)
+    if _menu_page_cache is not None and now - _menu_page_cache[0] < MENU_REFRESH_INTERVAL:
+        return _menu_page_cache[1]
+    request = Request(SFUSD_MENUS_URL, headers={"User-Agent": PUBLIC_USER_AGENT})
+    with urlopen(request, timeout=20) as response:
+        page = response.read().decode("utf-8")
+    _menu_page_cache = (now, page)
+    return page
+
+
+def _google_drive_download_url(view_url: str) -> str:
+    """Turn SFUSD's public Google Drive viewer link into a direct PDF download."""
+    parsed = urlparse(view_url)
+    match = re.search(r"/file/d/(?P<id>[^/]+)", parsed.path)
+    file_id = match.group("id") if match else parse_qs(parsed.query).get("id", [None])[0]
+    if file_id is None:
+        raise ValueError("SFUSD menu link did not contain a Google Drive file ID")
+    return f"https://drive.usercontent.google.com/download?id={file_id}&export=download&confirm=t"
 
 
 def _parse_day(day: str | None) -> date:
