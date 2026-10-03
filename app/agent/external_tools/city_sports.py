@@ -58,7 +58,7 @@ class _ScheduleParser(HTMLParser):
 
 
 def get_city_sports_schedule(day: str | None = None) -> dict:
-    """Get City Sports Club 20th Avenue classes and opening hours for a date.
+    """Get City Sports San Francisco classes and opening hours for a date.
 
     Args:
         day: Optional local calendar date in YYYY-MM-DD format. Defaults to today in San Francisco.
@@ -84,7 +84,7 @@ def parse_city_sports_schedule(html: str, requested: date) -> dict:
                 continue
             classes.append({"name": match.group("name").strip(), "time": row[0], "instructor": match.group("instructor").strip()})
     return {
-        "club": "City Sports Club - San Francisco 20th Avenue",
+        "club": "City Sports San Francisco",
         "date": requested.isoformat(),
         "weekday": _WEEKDAYS[weekday],
         "classes": classes,
