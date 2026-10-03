@@ -8,3 +8,5 @@ pydantic==2.13.5
 pydantic-settings==2.15.0
 python-multipart==0.0.32
 liteparse==2.14.7
+
+dateparser==1.2.2
