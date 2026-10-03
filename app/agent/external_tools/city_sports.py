@@ -73,7 +73,7 @@ def get_city_sports_schedule(day: str | None = None) -> dict:
 def parse_city_sports_schedule(html: str, requested: date) -> dict:
     parser = _ScheduleParser()
     parser.feed(html)
-    weekday = (requested.weekday() + 1) % 7
+    weekday = _city_sports_weekday_index(requested)
     classes = []
     for row in parser.rows:
         if len(row) < 8 or not re.fullmatch(r"\d{1,2}:\d{2} [AP]M", row[0], re.I):
@@ -91,6 +91,11 @@ def parse_city_sports_schedule(html: str, requested: date) -> dict:
         "hours": _hours_for_weekday(html, weekday),
         "source": CITY_SPORTS_SCHEDULE_URL,
     }
+
+
+def _city_sports_weekday_index(requested: date) -> int:
+    """Convert Python's Monday-first weekday to City Sports' Sunday-first column index."""
+    return (requested.weekday() + 1) % 7
 
 
 def _hours_for_weekday(html: str, weekday: int) -> str | None:
