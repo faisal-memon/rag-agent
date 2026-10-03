@@ -125,7 +125,7 @@ def sanitize_step(step: Any) -> dict | None:
                 requested_day = None
         return {"tool": tool, "arguments": {"day": requested_day}}
 
-    if tool in {"get_school_lunch", "get_city_sports_schedule"}:
+    if tool in {"get_school_lunch", "get_city_sports_schedule", "get_weather"}:
         requested_day = arguments.get("day")
         if requested_day is not None:
             try:

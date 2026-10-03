@@ -188,3 +188,16 @@ class CitySportsScheduleTest(unittest.TestCase):
         self.assertEqual("Friday", result["weekday"])
         self.assertEqual("5:00am - 10:00pm", result["hours"])
         self.assertEqual(["Zumba® Class", "Cycle"], [item["name"] for item in result["classes"]])
+class WeatherTest(unittest.TestCase):
+    def test_weather_normalizes_daily_forecast(self) -> None:
+        from io import BytesIO
+        from app.agent.external_tools.weather import get_weather
+
+        payload = {"daily": {"time": ["2026-10-02"], "weather_code": [61], "temperature_2m_max": [68], "temperature_2m_min": [52], "precipitation_probability_max": [40], "precipitation_sum": [0.12], "sunrise": ["2026-10-02T07:10"], "sunset": ["2026-10-02T18:45"]}}
+        class Response(BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        with patch("app.agent.external_tools.weather.urlopen", return_value=Response(json.dumps(payload).encode())):
+            result = get_weather("2026-10-02")
+        self.assertEqual("slight rain", result["condition"])
+        self.assertEqual(68, result["temperature_high_f"])
