@@ -132,3 +132,18 @@ class ConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class NaturalDateTest(unittest.TestCase):
+    def test_resolves_relative_weekday_in_pacific_time(self) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from app.core.dates import resolve_date
+
+        now = datetime(2026, 9, 30, 12, tzinfo=ZoneInfo("America/Los_Angeles"))
+        self.assertEqual("2026-10-02", resolve_date("Friday", now=now).isoformat())
+        self.assertEqual("2026-10-07", resolve_date("next Wednesday", now=now).isoformat())
+
+    def test_rejects_unparseable_phrase(self) -> None:
+        from app.core.dates import resolve_date
+        with self.assertRaises(ValueError):
+            resolve_date("not a date")
