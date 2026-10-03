@@ -41,7 +41,7 @@ class _ScheduleParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag in {"td", "th"} and self.in_cell:
-            self.row.append(" ".join("".join(self.current).split()))
+            self.row.append(re.sub(r"[ \t\r\f\v]+", " ", "".join(self.current)).strip())
             self.in_cell = False
         if tag == "tr" and self.in_row:
             self.rows.append(self.row)
