@@ -23,7 +23,7 @@ def get_city_sports_schedule(day: str | None = None) -> dict:
     request = Request(CITY_SPORTS_SCHEDULE_URL, headers={"User-Agent": "Mozilla/5.0 (compatible; rag-agent/0.1)"})
     with urlopen(request, timeout=15) as response:
         html = response.read().decode("utf-8")
-    return parse_city_sports_schedule(html, requested)
+    return _parse_city_sports_schedule(html, requested)
 
 
 class _ScheduleParser(HTMLParser):
@@ -69,7 +69,7 @@ class _ScheduleParser(HTMLParser):
         if self.in_cell:
             self.current.append(data)
 
-def parse_city_sports_schedule(html: str, requested: date) -> dict:
+def _parse_city_sports_schedule(html: str, requested: date) -> dict:
     parser = _ScheduleParser()
     parser.feed(html)
     weekday = _city_sports_weekday_index(requested)

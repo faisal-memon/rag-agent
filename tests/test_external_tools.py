@@ -174,7 +174,7 @@ def _school_lunch_items() -> list[_TextItem]:
 
 class CitySportsScheduleTest(unittest.TestCase):
     def test_parses_classes_and_hours_for_requested_day(self) -> None:
-        from app.agent.external_tools.city_sports import parse_city_sports_schedule
+        from app.agent.external_tools.city_sports import _parse_city_sports_schedule
 
         html = """
         <table id="tblSchedule"><tr><th>Time</th><th>Sunday</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th><th>Saturday</th></tr>
@@ -184,7 +184,7 @@ class CitySportsScheduleTest(unittest.TestCase):
         <tr><th>Friday</th><td>5:00am - 10:00pm</td></tr>
         <tr><th>Saturday - Sunday</th><td>8:00am - 8:00pm</td></tr></table>
         """
-        result = parse_city_sports_schedule(html, date(2026, 10, 2))
+        result = _parse_city_sports_schedule(html, date(2026, 10, 2))
         self.assertEqual("Friday", result["weekday"])
         self.assertEqual("5:00am - 10:00pm", result["hours"])
         self.assertEqual(["Zumba® Class", "Cycle"], [item["name"] for item in result["classes"]])
