@@ -179,6 +179,10 @@ class CitySportsScheduleTest(unittest.TestCase):
         html = """
         <table id="tblSchedule"><tr><th>Time</th><th>Sunday</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th><th>Saturday</th></tr>
         <tr><td><h5>09:45 AM</h5></td><td></td><td></td><td></td><td></td><td></td><td><strong><a>Zumba® Class</a></strong> (Cindy)<br /><strong><a>Cycle</a></strong> (Stephanie)</td><td></td></tr></table>
+        <table class="standardTableCompact"><tr><th>Location Hours:</th></tr>
+        <tr><th>Monday - Thursday</th><td>5:00am - 11:00pm</td></tr>
+        <tr><th>Friday</th><td>5:00am - 10:00pm</td></tr>
+        <tr><th>Saturday - Sunday</th><td>8:00am - 8:00pm</td></tr></table>
         """
         result = parse_city_sports_schedule(html, date(2026, 10, 2))
         self.assertEqual("Friday", result["weekday"])

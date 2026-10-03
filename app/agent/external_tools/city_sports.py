@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 from html.parser import HTMLParser
+from html import unescape
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -87,14 +88,25 @@ def parse_city_sports_schedule(html: str, requested: date) -> dict:
         "date": requested.isoformat(),
         "weekday": _WEEKDAYS[weekday],
         "classes": classes,
-        "hours": _hours_for_weekday(weekday),
+        "hours": _hours_for_weekday(html, weekday),
         "source": CITY_SPORTS_SCHEDULE_URL,
     }
 
 
-def _hours_for_weekday(weekday: int) -> str:
+def _hours_for_weekday(html: str, weekday: int) -> str | None:
+    """Extract the location hours for the requested weekday from the page."""
+    text = unescape(re.sub(r"<[^>]+>", " ", html))
+    ranges = {
+        label.lower(): value
+        for label, value in re.findall(
+            r"(Monday\s*-\s*Thursday|Friday|Saturday\s*-\s*Sunday)\s+"
+            r"(\d{1,2}:\d{2}\s*[ap]m\s*-\s*\d{1,2}:\d{2}\s*[ap]m)",
+            text,
+            re.IGNORECASE,
+        )
+    }
     if weekday == 5:
-        return "5:00am - 10:00pm"
+        return ranges.get("friday")
     if weekday in {0, 6}:
-        return "8:00am - 8:00pm"
-    return "5:00am - 11:00pm"
+        return ranges.get("saturday - sunday")
+    return ranges.get("monday - thursday")
