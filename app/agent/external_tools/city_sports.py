@@ -26,49 +26,6 @@ def get_city_sports_schedule(day: str | None = None) -> dict:
     return _parse_city_sports_schedule(html, requested)
 
 
-class _ScheduleParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.in_schedule = False
-        self.in_hours = False
-        self.in_row = False
-        self.in_cell = False
-        self.current: list[str] = []
-        self.row: list[str] = []
-        self.rows: list[list[str]] = []
-        self.hours: list[str] = []
-        self._tag_stack: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attrs_dict = dict(attrs)
-        if tag == "table" and attrs_dict.get("id") == "tblSchedule":
-            self.in_schedule = True
-        if tag == "table" and self.in_hours:
-            self.in_hours = True
-        if tag == "tr" and self.in_schedule:
-            self.in_row, self.row = True, []
-        if tag in {"td", "th"} and self.in_row:
-            self.in_cell, self.current = True, []
-        if tag == "br" and self.in_cell:
-            self.current.append("\n")
-        self._tag_stack.append(tag)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in {"td", "th"} and self.in_cell:
-            self.row.append(re.sub(r"[ \t\r\f\v]+", " ", "".join(self.current)).strip())
-            self.in_cell = False
-        if tag == "tr" and self.in_row:
-            self.rows.append(self.row)
-            self.in_row = False
-        if tag == "table" and self.in_schedule:
-            self.in_schedule = False
-        if self._tag_stack:
-            self._tag_stack.pop()
-
-    def handle_data(self, data: str) -> None:
-        if self.in_cell:
-            self.current.append(data)
-
 def _parse_city_sports_schedule(html: str, requested: date) -> dict:
     parser = _ScheduleParser()
     parser.feed(html)
@@ -114,3 +71,46 @@ def _hours_for_weekday(html: str, weekday: int) -> str | None:
     if weekday in {0, 6}:
         return ranges.get("saturday - sunday")
     return ranges.get("monday - thursday")
+
+class _ScheduleParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.in_schedule = False
+        self.in_hours = False
+        self.in_row = False
+        self.in_cell = False
+        self.current: list[str] = []
+        self.row: list[str] = []
+        self.rows: list[list[str]] = []
+        self.hours: list[str] = []
+        self._tag_stack: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attrs_dict = dict(attrs)
+        if tag == "table" and attrs_dict.get("id") == "tblSchedule":
+            self.in_schedule = True
+        if tag == "table" and self.in_hours:
+            self.in_hours = True
+        if tag == "tr" and self.in_schedule:
+            self.in_row, self.row = True, []
+        if tag in {"td", "th"} and self.in_row:
+            self.in_cell, self.current = True, []
+        if tag == "br" and self.in_cell:
+            self.current.append("\n")
+        self._tag_stack.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"td", "th"} and self.in_cell:
+            self.row.append(re.sub(r"[ \t\r\f\v]+", " ", "".join(self.current)).strip())
+            self.in_cell = False
+        if tag == "tr" and self.in_row:
+            self.rows.append(self.row)
+            self.in_row = False
+        if tag == "table" and self.in_schedule:
+            self.in_schedule = False
+        if self._tag_stack:
+            self._tag_stack.pop()
+
+    def handle_data(self, data: str) -> None:
+        if self.in_cell:
+            self.current.append(data)
