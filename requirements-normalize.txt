@@ -1,4 +1,4 @@
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 pydantic==2.13.5
 pydantic-settings==2.15.0
 docling==2.131.0
