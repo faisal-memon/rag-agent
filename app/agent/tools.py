@@ -21,6 +21,7 @@ AGENT_TOOL_NAMES = (
     "search_documents",
     "keyword_search",
     "semantic_search",
+    "hybrid_search",
     "grep_documents",
     "read_document",
     "remember",
@@ -145,6 +146,20 @@ def semantic_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
     """
     result = search_debug(query, mode=RETRIEVAL_MODE_SEMANTIC, limit=_bounded_limit(limit), offset=0)
     return result["chunks"]
+
+
+def hybrid_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> dict[str, list[dict]]:
+    """Search with both full-text and vector retrieval and preserve both rankings.
+
+    Args:
+        query: The user's document question, searched using exact terms and semantic similarity.
+        limit: Maximum number of chunks to return from each search method.
+    """
+    limit = _bounded_limit(limit)
+    return {
+        "keyword_matches": keyword_search(query, limit=limit),
+        "semantic_matches": semantic_search(query, limit=limit),
+    }
 
 
 def read_document(
@@ -274,6 +289,7 @@ AGENT_TOOL_FUNCTIONS = {
     "search_documents": search_documents,
     "keyword_search": keyword_search,
     "semantic_search": semantic_search,
+    "hybrid_search": hybrid_search,
     "grep_documents": grep_documents,
     "read_document": read_document,
     "remember": remember,

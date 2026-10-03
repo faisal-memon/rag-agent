@@ -71,7 +71,7 @@ def sanitize_step(step: Any) -> dict | None:
     if not isinstance(arguments, dict):
         arguments = {}
 
-    if tool in {"keyword_search", "semantic_search"}:
+    if tool in {"keyword_search", "semantic_search", "hybrid_search"}:
         return {
             "tool": tool,
             "arguments": {
