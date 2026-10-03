@@ -13,6 +13,19 @@ PACIFIC_TIME = ZoneInfo("America/Los_Angeles")
 _WEEKDAYS = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 
 
+def get_city_sports_schedule(day: str | None = None) -> dict:
+    """Get City Sports San Francisco classes and opening hours for a date.
+
+    Args:
+        day: Optional local calendar date in YYYY-MM-DD format. Defaults to today in San Francisco.
+    """
+    requested = date.fromisoformat(day) if day else datetime.now(PACIFIC_TIME).date()
+    request = Request(CITY_SPORTS_SCHEDULE_URL, headers={"User-Agent": "Mozilla/5.0 (compatible; rag-agent/0.1)"})
+    with urlopen(request, timeout=15) as response:
+        html = response.read().decode("utf-8")
+    return parse_city_sports_schedule(html, requested)
+
+
 class _ScheduleParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -55,20 +68,6 @@ class _ScheduleParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self.in_cell:
             self.current.append(data)
-
-
-def get_city_sports_schedule(day: str | None = None) -> dict:
-    """Get City Sports San Francisco classes and opening hours for a date.
-
-    Args:
-        day: Optional local calendar date in YYYY-MM-DD format. Defaults to today in San Francisco.
-    """
-    requested = date.fromisoformat(day) if day else datetime.now(PACIFIC_TIME).date()
-    request = Request(CITY_SPORTS_SCHEDULE_URL, headers={"User-Agent": "Mozilla/5.0 (compatible; rag-agent/0.1)"})
-    with urlopen(request, timeout=15) as response:
-        html = response.read().decode("utf-8")
-    return parse_city_sports_schedule(html, requested)
-
 
 def parse_city_sports_schedule(html: str, requested: date) -> dict:
     parser = _ScheduleParser()
