@@ -10,11 +10,15 @@ import dateparser
 PACIFIC_TIME = ZoneInfo("America/Los_Angeles")
 
 
-def resolve_date(value: str | None, *, now: datetime | None = None, timezone: ZoneInfo = PACIFIC_TIME) -> date:
+def resolve_date(value: str | None, *, now: datetime | None = None, timezone: ZoneInfo | None = None) -> date:
     """Resolve a user date phrase relative to a timezone-aware current date.
 
     Empty values mean today. Ambiguous or unparseable phrases raise ValueError.
     """
+    if timezone is None:
+        from app.agent.config import get_api_settings
+
+        timezone = ZoneInfo(get_api_settings().app_timezone)
     reference = (now or datetime.now(timezone)).astimezone(timezone)
     phrase = (value or "today").strip()
     if not phrase:

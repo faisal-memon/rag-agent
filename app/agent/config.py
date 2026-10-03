@@ -9,6 +9,7 @@ from app.core.config import ConfiguredSettings, DatabaseSettings, runtime_settin
 
 
 class ApiSettings(ConfiguredSettings):
+    app_timezone: str = Field(default="America/Los_Angeles", alias="APP_TIMEZONE")
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     normalized_output_dir: Path = Field(default=Path("/data/normalized"), alias="NORMALIZED_OUTPUT_DIR")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
