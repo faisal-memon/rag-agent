@@ -492,6 +492,11 @@ def _execute_tool(
             result = tools.get_weather(day=arguments.get("day"))
         elif tool == "get_cat_fact":
             result = tools.get_cat_fact()
+        elif tool == "get_news":
+            result = tools.get_news(
+                category=str(arguments.get("category") or "technology"),
+                limit=int(arguments.get("limit") or 10),
+            )
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
