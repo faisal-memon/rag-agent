@@ -485,6 +485,8 @@ def _execute_tool(
             result = tools.get_city_sports_schedule(day=arguments.get("day"))
         elif tool == "get_weather":
             result = tools.get_weather(day=arguments.get("day"))
+        elif tool == "get_cat_fact":
+            result = tools.get_cat_fact()
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
