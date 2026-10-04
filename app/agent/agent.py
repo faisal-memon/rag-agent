@@ -140,6 +140,7 @@ def _answer_with_agent(
             model,
             debug,
             agent,
+            profile_name,
         )
         decision_feedback = ""
         if decision["action"] == "synthesize":
@@ -268,6 +269,7 @@ def _decide_next_action(
     model: str,
     debug: list[dict],
     agent: Agent,
+    profile_name: str | None = None,
 ) -> dict:
     prompt = agent.render_prompt(
         "planner.md",

@@ -120,11 +120,9 @@ def reindex() -> ReindexResponse:
 def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryResponse:
     conversation_id, saved_history, user = _load_conversation(request, payload)
     history = saved_history or [message.model_dump() for message in payload.history]
-    result = _agent(request).answer(
-        payload.question,
-        history=history,
-        profile_name=_conversation_profile_name(request),
-    )
+    profile_name = _conversation_profile_name(request)
+    answer_kwargs = {"profile_name": profile_name} if profile_name else {}
+    result = _agent(request).answer(payload.question, history=history, **answer_kwargs)
     append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
     return AgentQueryResponse(conversation_id=conversation_id, **result)
 
@@ -162,12 +160,9 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
 
     def run_agent() -> None:
         try:
-            result = agent.answer(
-                payload.question,
-                history=history,
-                on_progress=events.put,
-                profile_name=_conversation_profile_name(request),
-            )
+            profile_name = _conversation_profile_name(request)
+            answer_kwargs = {"profile_name": profile_name} if profile_name else {}
+            result = agent.answer(payload.question, history=history, on_progress=events.put, **answer_kwargs)
             append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
             result["conversation_id"] = conversation_id
             events.put({"type": "complete", "result": result})
