@@ -8,7 +8,11 @@ from app.agent.config import get_api_settings
 
 
 def get_cat_fact() -> dict:
-    """Return one cat fact from the configured public MCP server.
+    """Return a random cat fact for lightweight cat-trivia requests.
+
+    Use this when the user asks for a random cat fact, cat trivia, or a fun fact
+    about cats. Do not use it for veterinary advice, behavior questions, or
+    research requests that need evidence beyond a single trivia fact.
 
     The endpoint is fixed by application configuration and this adapter exposes
     only the server's read-only ``get_cat_fact`` tool to the planner.
