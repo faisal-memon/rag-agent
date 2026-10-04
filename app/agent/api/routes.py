@@ -42,6 +42,11 @@ def _conversation_user(request: Request) -> str:
     return user
 
 
+def _conversation_profile_name(request: Request) -> str | None:
+    name = str(request.headers.get("Remote-Name", "")).strip()
+    return name or None
+
+
 def _runtime_settings() -> AgentRuntimeSettings:
     settings = get_api_settings()
     return AgentRuntimeSettings(
@@ -107,7 +112,11 @@ def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryRespo
     user = _conversation_user(request)
     conversation_id, saved_history = load_or_create(user, payload.conversation_id)
     history = saved_history or [message.model_dump() for message in payload.history]
-    result = _agent(request).answer(payload.question, history=history)
+    result = _agent(request).answer(
+        payload.question,
+        history=history,
+        profile_name=_conversation_profile_name(request),
+    )
     append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
     return AgentQueryResponse(conversation_id=conversation_id, **result)
 
@@ -146,7 +155,12 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
 
     def run_agent() -> None:
         try:
-            result = agent.answer(payload.question, history=history, on_progress=events.put)
+            result = agent.answer(
+                payload.question,
+                history=history,
+                on_progress=events.put,
+                profile_name=_conversation_profile_name(request),
+            )
             append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
             result["conversation_id"] = conversation_id
             events.put({"type": "complete", "result": result})
