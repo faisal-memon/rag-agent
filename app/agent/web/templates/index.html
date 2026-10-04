@@ -8,11 +8,17 @@
   </head>
   <body class="__BODY_CLASS__">
     <main>
+      <aside class="conversation-sidebar" id="conversation-sidebar" aria-label="Conversations">
+        <div class="conversation-sidebar-header"><strong>Conversations</strong><button class="secondary" id="toggle-conversations" type="button" aria-label="Hide conversations">Hide</button></div>
+        <button id="new-conversation" type="button">New conversation</button>
+        <div id="conversation-list" class="conversation-list"></div>
+      </aside>
       <section class="hero">
         <div class="eyebrow">nextcloud-rag</div>
         <h1>__PAGE_HEADING__</h1>
         <p class="subtitle">__PAGE_SUBTITLE__</p>
         <nav class="page-nav" aria-label="Application">
+          <button class="secondary" id="show-conversations" type="button">Conversations</button>
           <a class="agent-nav" href="/">Chat</a>
           <a class="debug-nav" href="/debug">Debug</a>
           <a class="settings-nav" href="/settings">Settings</a>

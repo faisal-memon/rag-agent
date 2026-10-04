@@ -66,6 +66,12 @@ class AgentQueryResponse(BaseModel):
     debug: list[dict[str, Any]] = Field(default_factory=list)
     citations: list[Citation]
 
+class ConversationSummary(BaseModel):
+    id: str
+    created_at: str
+    updated_at: str
+    title: str
+
 
 class AgentRuntimeSettings(BaseModel):
     llm_provider: Literal["openai", "llamacpp"]
