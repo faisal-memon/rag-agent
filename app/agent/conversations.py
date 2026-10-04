@@ -71,3 +71,21 @@ def append_messages(user_name: str, conversation_id: str, messages: list[dict]) 
         )
         cur.execute("UPDATE conversations SET updated_at = NOW() WHERE id = %s", (UUID(conversation_id),))
         conn.commit()
+
+def list_conversations(user_name: str, limit: int = 50) -> list[dict]:
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute("""SELECT c.id, c.created_at, c.updated_at,
+                              (SELECT content FROM conversation_messages m
+                               WHERE m.conversation_id = c.id AND m.role = 'user'
+                               ORDER BY m.id LIMIT 1)
+                       FROM conversations c WHERE c.user_name = %s
+                       ORDER BY c.updated_at DESC LIMIT %s""", (user_name, limit))
+        return [{"id": str(row[0]), "created_at": row[1].isoformat(), "updated_at": row[2].isoformat(), "title": row[3] or "New conversation"} for row in cur.fetchall()]
+
+def delete_conversation(user_name: str, conversation_id: str) -> bool:
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute("DELETE FROM conversations WHERE id = %s AND user_name = %s", (UUID(conversation_id), user_name))
+        conn.commit()
+        return cur.rowcount > 0

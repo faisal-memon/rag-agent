@@ -861,6 +861,15 @@ body.agent-only main {
   width: min(860px, calc(100% - 28px));
 }
 
+.conversation-sidebar { position: fixed; left: 14px; top: 14px; width: 260px; max-height: calc(100vh - 28px); overflow: auto; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; z-index: 5; }
+.conversation-sidebar.hidden { display: none; }
+.conversation-sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.conversation-list { display: grid; gap: 6px; margin-top: 12px; }
+.conversation-item { display: grid; gap: 3px; text-align: left; padding: 9px; background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; }
+.conversation-item.active { border-color: var(--accent); }
+.conversation-item small { color: var(--muted); }
+body.agent-only main { margin-left: 300px; }
+
 body.agent-only .hero {
   order: 1;
 }
@@ -898,6 +907,8 @@ body.agent-only .actions {
 }
 
 @media (max-width: 720px) {
+  .conversation-sidebar { left: 8px; top: 8px; width: calc(100vw - 16px); }
+  body.agent-only main { margin-left: 0; }
   .pipeline-grid {
     grid-template-columns: 1fr;
   }
