@@ -83,6 +83,25 @@ def list_conversations(user_name: str, limit: int = 50) -> list[dict]:
                        ORDER BY c.updated_at DESC LIMIT %s""", (user_name, limit))
         return [{"id": str(row[0]), "created_at": row[1].isoformat(), "updated_at": row[2].isoformat(), "title": row[3] or "New conversation"} for row in cur.fetchall()]
 
+def get_conversation(user_name: str, conversation_id: str) -> list[dict] | None:
+    """Return one user's conversation, or None when it does not exist for that user."""
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute(
+            """SELECT m.role, m.content
+               FROM conversations c
+               LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+               WHERE c.id = %s AND c.user_name = %s
+               ORDER BY m.id DESC LIMIT 20""",
+            (UUID(conversation_id), user_name),
+        )
+        rows = list(reversed(cur.fetchall()))
+        if not rows:
+            cur.execute("SELECT 1 FROM conversations WHERE id = %s AND user_name = %s", (UUID(conversation_id), user_name))
+            if cur.fetchone() is None:
+                return None
+        return [{"role": role, "content": content} for role, content in rows if role is not None]
+
 def delete_conversation(user_name: str, conversation_id: str) -> bool:
     with db_cursor(get_api_settings().database) as (conn, cur):
         _ensure_schema(cur)

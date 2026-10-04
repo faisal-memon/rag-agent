@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
-from app.agent.conversations import append_messages, delete_conversation, list_conversations, load_or_create
+from app.agent.conversations import append_messages, delete_conversation, get_conversation, list_conversations, load_or_create
 from app.agent.api.schemas import (
     AgentRuntimeSettings,
     AgentQueryRequest,
@@ -129,6 +129,13 @@ def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryRespo
 @router.get("/agent/conversations")
 def conversations(request: Request) -> list[dict]:
     return list_conversations(_conversation_user(request))
+
+@router.get("/agent/conversations/{conversation_id}")
+def conversation(request: Request, conversation_id: str) -> list[dict]:
+    messages = get_conversation(_conversation_user(request), conversation_id)
+    if messages is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return messages
 
 @router.delete("/agent/conversations/{conversation_id}", status_code=204)
 def remove_conversation(request: Request, conversation_id: str) -> None:

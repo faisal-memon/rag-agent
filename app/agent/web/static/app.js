@@ -37,18 +37,33 @@ async function loadConversations() {
   if (!conversationList) return;
   try {
     const response = await fetch("/agent/conversations");
-    if (!response.ok) return;
+    if (!response.ok) {
+      conversationList.innerHTML = response.status === 401
+        ? '<div class="conversation-empty">Sign in to load conversations.</div>'
+        : '<div class="conversation-empty">Unable to load conversations.</div>';
+      return;
+    }
     const items = await response.json();
     conversationList.innerHTML = items.map(item => `<button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button>`).join("");
-    conversationList.querySelectorAll("[data-conversation-id]").forEach(button => button.addEventListener("click", () => {
-      agentConversationId = button.dataset.conversationId;
-      localStorage.setItem(agentConversationIdKey, agentConversationId);
-      agentConversation = [];
-      localStorage.setItem(agentHistoryKey, "[]");
-      renderAgentConversation();
-      loadConversations();
-    }));
+    conversationList.querySelectorAll("[data-conversation-id]").forEach(button => button.addEventListener("click", () => loadConversation(button.dataset.conversationId)));
   } catch (error) { console.warn("Unable to load conversations", error); }
+}
+
+async function loadConversation(conversationId) {
+  try {
+    const response = await fetch(`/agent/conversations/${encodeURIComponent(conversationId)}`);
+    if (!response.ok) throw new Error(`conversation load failed (${response.status})`);
+    agentConversationId = conversationId;
+    agentConversation = await response.json();
+    localStorage.setItem(agentConversationIdKey, agentConversationId);
+    localStorage.setItem(agentHistoryKey, JSON.stringify(agentConversation));
+    renderAgentConversation();
+    await loadConversations();
+  } catch (error) {
+    console.warn("Unable to load conversation", error);
+    status.textContent = "Unable to load that conversation.";
+    status.classList.add("error");
+  }
 }
 
 function setConversationSidebar(hidden) {
