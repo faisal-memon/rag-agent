@@ -39,16 +39,21 @@ def load_or_create(user_name: str, conversation_id: str | None) -> tuple[str, li
         _ensure_schema(cur)
         cur.execute(
             """INSERT INTO conversations (id, user_name) VALUES (%s, %s)
-               ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
-               WHERE conversations.user_name = EXCLUDED.user_name""",
+               ON CONFLICT (id) DO NOTHING""",
             (requested, user_name),
         )
         cur.execute(
-            """SELECT role, content FROM conversation_messages
-               WHERE conversation_id = %s ORDER BY id DESC LIMIT 20""",
+            """SELECT c.user_name, m.role, m.content
+               FROM conversations c
+               LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+               WHERE c.id = %s
+               ORDER BY m.id DESC LIMIT 20""",
             (requested,),
         )
-        history = list(reversed(cur.fetchall()))
+        rows = cur.fetchall()
+        if rows and rows[0][0] != user_name:
+            raise PermissionError("Conversation does not belong to this user")
+        history = list(reversed([(role, content) for _, role, content in rows if role is not None]))
         conn.commit()
     return str(requested), [{"role": role, "content": content} for role, content in history]
 

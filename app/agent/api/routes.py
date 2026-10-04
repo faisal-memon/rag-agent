@@ -47,6 +47,15 @@ def _conversation_profile_name(request: Request) -> str | None:
     return name or None
 
 
+def _load_conversation(request: Request, payload: AgentQueryRequest) -> tuple[str, list[dict], str]:
+    user = _conversation_user(request)
+    try:
+        conversation_id, saved_history = load_or_create(user, payload.conversation_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found") from exc
+    return conversation_id, saved_history, user
+
+
 def _runtime_settings() -> AgentRuntimeSettings:
     settings = get_api_settings()
     return AgentRuntimeSettings(
@@ -109,8 +118,7 @@ def reindex() -> ReindexResponse:
 
 @router.post("/agent/query", response_model=AgentQueryResponse)
 def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryResponse:
-    user = _conversation_user(request)
-    conversation_id, saved_history = load_or_create(user, payload.conversation_id)
+    conversation_id, saved_history, user = _load_conversation(request, payload)
     history = saved_history or [message.model_dump() for message in payload.history]
     result = _agent(request).answer(
         payload.question,
@@ -147,8 +155,7 @@ async def transcribe(request: Request, audio: UploadFile = File(...)) -> Transcr
 @router.post("/agent/query/stream")
 def stream_agent_query(request: Request, payload: AgentQueryRequest) -> StreamingResponse:
     """Stream concise agent lifecycle events, followed by the final response."""
-    user = _conversation_user(request)
-    conversation_id, saved_history = load_or_create(user, payload.conversation_id)
+    conversation_id, saved_history, user = _load_conversation(request, payload)
     history = saved_history or [message.model_dump() for message in payload.history]
     agent = _agent(request)
     events: Queue[dict | None] = Queue()
