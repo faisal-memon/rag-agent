@@ -42,11 +42,12 @@ class Agent:
         question: str,
         history: list[dict] | None = None,
         on_progress: ProgressCallback | None = None,
+        profile_name: str | None = None,
     ) -> dict:
         """Answer one user question using bounded model-selected tools."""
         if not self.memory.loaded:
             self.startup()
-        return _answer_with_agent(self, question, history, on_progress)
+        return _answer_with_agent(self, question, history, on_progress, profile_name)
 
     def render_prompt(self, name: str, values: dict[str, object]) -> str:
         return self.prompts.render(name, values)
@@ -60,6 +61,7 @@ def _answer_with_agent(
     question: str,
     history: list[dict] | None = None,
     on_progress: ProgressCallback | None = None,
+    profile_name: str | None = None,
 ) -> dict:
     history = history or []
     max_steps = agent.settings.agent_max_steps
@@ -74,7 +76,7 @@ def _answer_with_agent(
 
     memory_state = agent.memory.read()
     original_question = _identity_question_from_history(history)
-    if not memory.profile_name(memory_state):
+    if not profile_name and not memory.profile_name(memory_state):
         if original_question:
             name = memory.profile_name_from_reply(question)
             if not name:
@@ -138,6 +140,7 @@ def _answer_with_agent(
             model,
             debug,
             agent,
+            profile_name,
         )
         decision_feedback = ""
         if decision["action"] == "synthesize":
@@ -266,6 +269,7 @@ def _decide_next_action(
     model: str,
     debug: list[dict],
     agent: Agent,
+    profile_name: str | None = None,
 ) -> dict:
     prompt = agent.render_prompt(
         "planner.md",
@@ -277,6 +281,7 @@ def _decide_next_action(
             "tool_descriptions": tools.render_tool_descriptions(),
             "conversation": conversation or "(none)",
             "question": question,
+            "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
             "current_local_time": _current_local_time(),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
         },

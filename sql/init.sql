@@ -38,3 +38,20 @@ CREATE INDEX IF NOT EXISTS idx_documents_missing_since ON documents(missing_sinc
 CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_tsvector ON chunks USING GIN(content_tsvector);
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+
+CREATE TABLE IF NOT EXISTS conversations (
+  id UUID PRIMARY KEY,
+  user_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations (user_name, updated_at DESC);
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id BIGSERIAL PRIMARY KEY,
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_order ON conversation_messages (conversation_id, id);

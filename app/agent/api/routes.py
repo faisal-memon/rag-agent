@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
+from app.agent.conversations import append_messages, load_or_create
 from app.agent.api.schemas import (
     AgentRuntimeSettings,
     AgentQueryRequest,
@@ -32,6 +33,27 @@ router = APIRouter()
 
 def _agent(request: Request) -> Agent:
     return request.app.state.agent
+
+
+def _conversation_user(request: Request) -> str:
+    user = str(request.headers.get("Remote-User", "")).strip()
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in through Authelia before using conversation history.")
+    return user
+
+
+def _conversation_profile_name(request: Request) -> str | None:
+    name = str(request.headers.get("Remote-Name", "")).strip()
+    return name or None
+
+
+def _load_conversation(request: Request, payload: AgentQueryRequest) -> tuple[str, list[dict], str]:
+    user = _conversation_user(request)
+    try:
+        conversation_id, saved_history = load_or_create(user, payload.conversation_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found") from exc
+    return conversation_id, saved_history, user
 
 
 def _runtime_settings() -> AgentRuntimeSettings:
@@ -96,9 +118,13 @@ def reindex() -> ReindexResponse:
 
 @router.post("/agent/query", response_model=AgentQueryResponse)
 def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryResponse:
-    history = [message.model_dump() for message in payload.history]
-    result = _agent(request).answer(payload.question, history=history)
-    return AgentQueryResponse(**result)
+    conversation_id, saved_history, user = _load_conversation(request, payload)
+    history = saved_history or [message.model_dump() for message in payload.history]
+    profile_name = _conversation_profile_name(request)
+    answer_kwargs = {"profile_name": profile_name} if profile_name else {}
+    result = _agent(request).answer(payload.question, history=history, **answer_kwargs)
+    append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
+    return AgentQueryResponse(conversation_id=conversation_id, **result)
 
 
 @router.post("/agent/transcribe", response_model=TranscriptResponse)
@@ -127,13 +153,18 @@ async def transcribe(request: Request, audio: UploadFile = File(...)) -> Transcr
 @router.post("/agent/query/stream")
 def stream_agent_query(request: Request, payload: AgentQueryRequest) -> StreamingResponse:
     """Stream concise agent lifecycle events, followed by the final response."""
-    history = [message.model_dump() for message in payload.history]
+    conversation_id, saved_history, user = _load_conversation(request, payload)
+    history = saved_history or [message.model_dump() for message in payload.history]
     agent = _agent(request)
     events: Queue[dict | None] = Queue()
 
     def run_agent() -> None:
         try:
-            result = agent.answer(payload.question, history=history, on_progress=events.put)
+            profile_name = _conversation_profile_name(request)
+            answer_kwargs = {"profile_name": profile_name} if profile_name else {}
+            result = agent.answer(payload.question, history=history, on_progress=events.put, **answer_kwargs)
+            append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
+            result["conversation_id"] = conversation_id
             events.put({"type": "complete", "result": result})
         except Exception as exc:  # pragma: no cover - exercised by the browser error path
             events.put({"type": "error", "message": str(exc)})
