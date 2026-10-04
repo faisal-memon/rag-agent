@@ -19,5 +19,4 @@ class CatFactsToolTest(unittest.TestCase):
         ):
             result = get_cat_fact()
 
-        self.assertIn("Cat Facts MCP request failed", result["error"])
-
+        self.assertEqual("Cat Facts MCP is temporarily unavailable. Try again later.", result["error"])
