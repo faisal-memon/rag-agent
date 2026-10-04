@@ -9,6 +9,11 @@ const result = document.getElementById("result");
 const agentChatToolbar = document.getElementById("agent-chat-toolbar");
 const agentChat = document.getElementById("agent-chat");
 const clearChatButton = document.getElementById("clear-chat");
+const conversationSidebar = document.getElementById("conversation-sidebar");
+const conversationList = document.getElementById("conversation-list");
+const newConversationButton = document.getElementById("new-conversation");
+const toggleConversations = document.getElementById("toggle-conversations");
+const showConversations = document.getElementById("show-conversations");
 const pipelineSummary = document.getElementById("pipeline-summary");
 const answer = document.getElementById("answer");
 const citations = document.getElementById("citations");
@@ -27,6 +32,42 @@ let agentConversation = loadAgentConversation();
 let agentConversationId = localStorage.getItem(agentConversationIdKey) || null;
 let mediaRecorder = null;
 let recordedChunks = [];
+
+async function loadConversations() {
+  if (!conversationList) return;
+  try {
+    const response = await fetch("/agent/conversations");
+    if (!response.ok) return;
+    const items = await response.json();
+    conversationList.innerHTML = items.map(item => `<button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button>`).join("");
+    conversationList.querySelectorAll("[data-conversation-id]").forEach(button => button.addEventListener("click", () => {
+      agentConversationId = button.dataset.conversationId;
+      localStorage.setItem(agentConversationIdKey, agentConversationId);
+      agentConversation = [];
+      localStorage.setItem(agentHistoryKey, "[]");
+      renderAgentConversation();
+      loadConversations();
+    }));
+  } catch (error) { console.warn("Unable to load conversations", error); }
+}
+
+function setConversationSidebar(hidden) {
+  conversationSidebar?.classList.toggle("hidden", hidden);
+  localStorage.setItem("conversation-sidebar-hidden", hidden ? "1" : "0");
+}
+
+newConversationButton?.addEventListener("click", () => {
+  agentConversationId = null;
+  agentConversation = [];
+  localStorage.removeItem(agentConversationIdKey);
+  localStorage.setItem(agentHistoryKey, "[]");
+  renderAgentConversation();
+  loadConversations();
+});
+toggleConversations?.addEventListener("click", () => setConversationSidebar(true));
+showConversations?.addEventListener("click", () => setConversationSidebar(false));
+setConversationSidebar(localStorage.getItem("conversation-sidebar-hidden") === "1");
+loadConversations();
 
 function showRecordingError(message) {
   recordButton.title = message;
