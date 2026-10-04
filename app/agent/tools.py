@@ -5,6 +5,8 @@ from typing import Any
 
 from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
 from app.agent.external_tools.school_lunch import get_school_lunch
+from app.agent.external_tools.city_sports import get_city_sports_schedule
+from app.agent.external_tools.weather import get_weather
 from app.agent.external_tools.yoga_flow import get_noe_schedule, get_ocean_schedule, get_upcoming_yoga_classes
 from app.agent.config import get_api_settings
 from app.core.db import db_cursor
@@ -20,6 +22,7 @@ AGENT_TOOL_NAMES = (
     "search_documents",
     "keyword_search",
     "semantic_search",
+    "hybrid_search",
     "grep_documents",
     "read_document",
     "remember",
@@ -27,6 +30,8 @@ AGENT_TOOL_NAMES = (
     "get_noe_schedule",
     "get_upcoming_yoga_classes",
     "get_school_lunch",
+    "get_city_sports_schedule",
+    "get_weather",
 )
 RETRIEVAL_TOOL_NAMES = (
     "search_documents",
@@ -143,6 +148,20 @@ def semantic_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
     """
     result = search_debug(query, mode=RETRIEVAL_MODE_SEMANTIC, limit=_bounded_limit(limit), offset=0)
     return result["chunks"]
+
+
+def hybrid_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> dict[str, list[dict]]:
+    """Search with both full-text and vector retrieval and preserve both rankings.
+
+    Args:
+        query: The user's document question, searched using exact terms and semantic similarity.
+        limit: Maximum number of chunks to return from each search method.
+    """
+    limit = _bounded_limit(limit)
+    return {
+        "keyword_matches": keyword_search(query, limit=limit),
+        "semantic_matches": semantic_search(query, limit=limit),
+    }
 
 
 def read_document(
@@ -272,6 +291,7 @@ AGENT_TOOL_FUNCTIONS = {
     "search_documents": search_documents,
     "keyword_search": keyword_search,
     "semantic_search": semantic_search,
+    "hybrid_search": hybrid_search,
     "grep_documents": grep_documents,
     "read_document": read_document,
     "remember": remember,
@@ -279,6 +299,8 @@ AGENT_TOOL_FUNCTIONS = {
     "get_noe_schedule": get_noe_schedule,
     "get_upcoming_yoga_classes": get_upcoming_yoga_classes,
     "get_school_lunch": get_school_lunch,
+    "get_city_sports_schedule": get_city_sports_schedule,
+    "get_weather": get_weather,
 }
 
 
