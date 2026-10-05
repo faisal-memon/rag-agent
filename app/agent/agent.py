@@ -75,7 +75,6 @@ def _answer_with_agent(
     decision_feedback = ""
 
     memory_state = agent.memory.read()
-    mcp_registry = tools.get_mcp_registry()
     original_question = _identity_question_from_history(history)
     if not profile_name and not memory.profile_name(memory_state):
         if original_question:
@@ -272,6 +271,7 @@ def _decide_next_action(
     agent: Agent,
     profile_name: str | None = None,
 ) -> dict:
+    mcp_registry = tools.get_mcp_registry()
     prompt = agent.render_prompt(
         "planner.md",
         {
