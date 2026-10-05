@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import anyio
+import time
 from urllib.request import Request, urlopen
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from app.agent.config import get_api_settings
+
+_CACHE_TTL_SECONDS = 300.0
+_registry_cache: dict | None = None
+_registry_cached_at = 0.0
 
 
 class MCPServer(BaseModel):
@@ -37,6 +42,9 @@ class MCPRegistry(BaseModel):
 
 def get_mcp_registry() -> dict:
     """List approved MCP servers from the configured registry URL."""
+    global _registry_cache, _registry_cached_at
+    if _registry_cache is not None and time.monotonic() - _registry_cached_at < _CACHE_TTL_SECONDS:
+        return _registry_cache
     try:
         request = Request(get_api_settings().mcp_registry_url, headers={"Accept": "application/json"})
         with urlopen(request, timeout=5) as response:
@@ -48,7 +56,9 @@ def get_mcp_registry() -> dict:
                 entry = server.as_tool_entry()
                 entry["tools"] = _list_tools(str(server.url))
                 servers.append(entry)
-        return {"servers": servers}
+        _registry_cache = {"servers": servers}
+        _registry_cached_at = time.monotonic()
+        return _registry_cache
     except (TypeError, ValueError):
         return {"error": "MCP registry returned an invalid document."}
     except Exception as exc:  # pragma: no cover - network failures

@@ -75,6 +75,7 @@ def _answer_with_agent(
     decision_feedback = ""
 
     memory_state = agent.memory.read()
+    mcp_registry = tools.get_mcp_registry()
     original_question = _identity_question_from_history(history)
     if not profile_name and not memory.profile_name(memory_state):
         if original_question:
@@ -284,6 +285,7 @@ def _decide_next_action(
             "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
             "current_local_time": _current_local_time(),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
+            "mcp_registry": json.dumps(mcp_registry, indent=2),
         },
     )
     text = _complete_text(

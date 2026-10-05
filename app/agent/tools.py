@@ -33,7 +33,6 @@ AGENT_TOOL_NAMES = (
     "get_school_lunch",
     "get_city_sports_schedule",
     "get_weather",
-    "get_mcp_registry",
     "call_mcp_tool",
 )
 RETRIEVAL_TOOL_NAMES = (
@@ -304,7 +303,6 @@ AGENT_TOOL_FUNCTIONS = {
     "get_school_lunch": get_school_lunch,
     "get_city_sports_schedule": get_city_sports_schedule,
     "get_weather": get_weather,
-    "get_mcp_registry": get_mcp_registry,
     "call_mcp_tool": call_mcp_tool,
 }
 
