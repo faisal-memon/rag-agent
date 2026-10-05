@@ -44,9 +44,28 @@ async function loadConversations() {
       return;
     }
     const items = await response.json();
-    conversationList.innerHTML = items.map(item => `<button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button>`).join("");
+    conversationList.innerHTML = items.map(item => `<div class="conversation-row"><button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button><button class="conversation-delete" data-delete-conversation-id="${escapeHtml(item.id)}" aria-label="Delete conversation">×</button></div>`).join("");
     conversationList.querySelectorAll("[data-conversation-id]").forEach(button => button.addEventListener("click", () => loadConversation(button.dataset.conversationId)));
+    conversationList.querySelectorAll("[data-delete-conversation-id]").forEach(button => button.addEventListener("click", () => deleteConversation(button.dataset.deleteConversationId)));
   } catch (error) { console.warn("Unable to load conversations", error); }
+}
+
+async function deleteConversation(conversationId) {
+  if (!window.confirm("Delete this conversation?")) return;
+  const response = await fetch(`/agent/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
+  if (!response.ok) {
+    status.textContent = "Unable to delete that conversation.";
+    status.classList.add("error");
+    return;
+  }
+  if (agentConversationId === conversationId) {
+    agentConversationId = null;
+    agentConversation = [];
+    localStorage.removeItem(agentConversationIdKey);
+    localStorage.setItem(agentHistoryKey, "[]");
+    renderAgentConversation();
+  }
+  await loadConversations();
 }
 
 async function loadConversation(conversationId) {

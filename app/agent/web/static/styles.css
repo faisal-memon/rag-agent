@@ -865,9 +865,12 @@ body.agent-only main {
 .conversation-sidebar.hidden { display: none; }
 .conversation-sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .conversation-list { display: grid; gap: 6px; margin-top: 12px; }
+.conversation-row { display: grid; grid-template-columns: 1fr auto; gap: 4px; align-items: stretch; }
 .conversation-item { display: grid; gap: 3px; text-align: left; padding: 9px; background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; }
 .conversation-item.active { border-color: var(--accent); }
 .conversation-item small { color: var(--muted); }
+.conversation-delete { width: 30px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.conversation-delete:hover { color: var(--danger, #d14); border-color: var(--danger, #d14); }
 body.agent-only main { margin-left: 300px; }
 
 body.agent-only .hero {
