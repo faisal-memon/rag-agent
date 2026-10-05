@@ -22,10 +22,7 @@ class MCPServer(BaseModel):
 
     def as_tool_entry(self) -> dict[str, object]:
         """Return the stable, JSON-compatible shape exposed to the agent."""
-        entry = {"name": self.name, "url": str(self.url), "enabled": self.enabled}
-        if self.description is not None:
-            entry["description"] = self.description
-        return entry
+        return self.model_dump(mode="json", exclude_none=True)
 
 
 class MCPRegistry(BaseModel):
