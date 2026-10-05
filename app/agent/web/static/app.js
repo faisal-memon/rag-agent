@@ -30,6 +30,7 @@ const agentConversationIdKey = "nextcloud-rag-agent-conversation-id-v1";
 const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
 let agentConversationId = localStorage.getItem(agentConversationIdKey) || null;
+let pendingConversation = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 
@@ -44,7 +45,10 @@ async function loadConversations() {
       return;
     }
     const items = await response.json();
-    conversationList.innerHTML = items.map(item => `<div class="conversation-row"><button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button><button class="conversation-delete" data-delete-conversation-id="${escapeHtml(item.id)}" aria-label="Delete conversation">×</button></div>`).join("");
+    const pendingMarkup = pendingConversation
+      ? '<div class="conversation-row"><button class="conversation-item active" disabled><span>New thread</span><small>Not started</small></button></div>'
+      : '';
+    conversationList.innerHTML = pendingMarkup + items.map(item => `<div class="conversation-row"><button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button><button class="conversation-delete" data-delete-conversation-id="${escapeHtml(item.id)}" aria-label="Delete conversation">×</button></div>`).join("");
     conversationList.querySelectorAll("[data-conversation-id]").forEach(button => button.addEventListener("click", () => loadConversation(button.dataset.conversationId)));
     conversationList.querySelectorAll("[data-delete-conversation-id]").forEach(button => button.addEventListener("click", () => deleteConversation(button.dataset.deleteConversationId)));
   } catch (error) { console.warn("Unable to load conversations", error); }
@@ -92,6 +96,7 @@ function setConversationSidebar(hidden) {
 
 newConversationButton?.addEventListener("click", () => {
   agentConversationId = null;
+  pendingConversation = true;
   agentConversation = [];
   localStorage.removeItem(agentConversationIdKey);
   localStorage.setItem(agentHistoryKey, "[]");
@@ -605,7 +610,9 @@ async function runAgent() {
         const data = event.result || {};
         if (data.conversation_id) {
           agentConversationId = data.conversation_id;
+          pendingConversation = false;
           localStorage.setItem(agentConversationIdKey, agentConversationId);
+          loadConversations();
         }
         Object.assign(progressMessage, {
           content: data.answer || "No answer returned.",
