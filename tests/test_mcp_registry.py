@@ -12,14 +12,14 @@ class MCPRegistryTest(unittest.TestCase):
         response.__enter__.return_value.read.return_value = b"{}"
         with patch("app.agent.external_tools.mcp_registry.json.load", return_value={
             "servers": [
-                {"name": "news", "url": "http://news-mcp:8080/mcp", "enabled": True},
+                {"name": "news", "url": "http://news-mcp:8080/mcp", "description": "RSS headlines", "enabled": True},
                 {"name": "disabled", "url": "http://disabled/mcp", "enabled": False},
             ]
         }):
             result = get_mcp_registry()
 
         self.assertEqual(
-            {"servers": [{"name": "news", "url": "http://news-mcp:8080/mcp", "enabled": True}]},
+            {"servers": [{"name": "news", "url": "http://news-mcp:8080/mcp", "description": "RSS headlines", "enabled": True}]},
             result,
         )
 
@@ -29,4 +29,3 @@ class MCPRegistryTest(unittest.TestCase):
             "servers": [{"name": "news", "url": "not-a-url"}]
         }):
             self.assertEqual({"error": "MCP registry returned an invalid document."}, get_mcp_registry())
-

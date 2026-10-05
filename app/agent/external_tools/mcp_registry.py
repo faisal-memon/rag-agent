@@ -17,11 +17,15 @@ class MCPServer(BaseModel):
 
     name: str = Field(min_length=1)
     url: AnyHttpUrl
+    description: str | None = None
     enabled: bool = True
 
     def as_tool_entry(self) -> dict[str, object]:
         """Return the stable, JSON-compatible shape exposed to the agent."""
-        return {"name": self.name, "url": str(self.url), "enabled": self.enabled}
+        entry = {"name": self.name, "url": str(self.url), "enabled": self.enabled}
+        if self.description is not None:
+            entry["description"] = self.description
+        return entry
 
 
 class MCPRegistry(BaseModel):
