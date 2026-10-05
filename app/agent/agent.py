@@ -492,6 +492,12 @@ def _execute_tool(
             result = tools.get_weather(day=arguments.get("day"))
         elif tool == "get_mcp_registry":
             result = tools.get_mcp_registry()
+        elif tool == "call_mcp_tool":
+            result = tools.call_mcp_tool(
+                server=str(arguments.get("server") or ""),
+                tool=str(arguments.get("tool") or ""),
+                arguments=arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {},
+            )
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
