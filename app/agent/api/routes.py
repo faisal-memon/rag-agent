@@ -65,6 +65,8 @@ def _runtime_settings() -> AgentRuntimeSettings:
         llamacpp_chat_model=settings.llamacpp_chat_model,
         query_limit=settings.query_limit,
         agent_max_steps=settings.agent_max_steps,
+        home_latitude=settings.home_latitude,
+        home_longitude=settings.home_longitude,
     )
 
 
