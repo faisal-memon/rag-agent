@@ -48,6 +48,16 @@
           <input id="agent-max-steps" name="agent_max_steps" type="number" min="1" max="12" required />
         </fieldset>
 
+        <fieldset>
+          <legend>home location</legend>
+          <p class="field-help">Optional coordinates used for nearby transit queries.</p>
+          <label for="home-latitude">Latitude</label>
+          <input id="home-latitude" name="home_latitude" type="number" min="-90" max="90" step="any" />
+
+          <label for="home-longitude">Longitude</label>
+          <input id="home-longitude" name="home_longitude" type="number" min="-180" max="180" step="any" />
+        </fieldset>
+
         <div class="actions">
           <button type="submit" id="save-settings">Save settings</button>
           <span class="status" id="settings-status">Loading…</span>
