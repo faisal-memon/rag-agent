@@ -16,14 +16,6 @@ _registry_cache: dict | None = None
 _registry_cached_at = 0.0
 
 
-class MCPRegistry(BaseModel):
-    """Validated registry document returned by the registry service."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    servers: list["MCPServer"]
-
-
 class MCPServer(BaseModel):
     """One approved MCP endpoint advertised by the registry."""
 
@@ -40,7 +32,12 @@ class MCPServer(BaseModel):
         return self.model_dump(mode="json", exclude_none=True)
 
 
-MCPRegistry.model_rebuild()
+class MCPRegistry(BaseModel):
+    """Validated registry document returned by the registry service."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    servers: list[MCPServer]
 
 
 def get_mcp_registry() -> dict:
