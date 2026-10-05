@@ -497,6 +497,8 @@ def _execute_tool(
                 category=str(arguments.get("category") or "technology"),
                 limit=int(arguments.get("limit") or 10),
             )
+        elif tool == "get_mcp_registry":
+            result = tools.get_mcp_registry()
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
