@@ -271,6 +271,7 @@ def _decide_next_action(
     agent: Agent,
     profile_name: str | None = None,
 ) -> dict:
+    mcp_registry = tools.get_mcp_registry()
     prompt = agent.render_prompt(
         "planner.md",
         {
@@ -284,6 +285,7 @@ def _decide_next_action(
             "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
             "current_local_time": _current_local_time(),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
+            "mcp_registry": json.dumps(mcp_registry, indent=2),
         },
     )
     text = _complete_text(
@@ -492,6 +494,12 @@ def _execute_tool(
             result = tools.get_weather(day=arguments.get("day"))
         elif tool == "get_mcp_registry":
             result = tools.get_mcp_registry()
+        elif tool == "call_mcp_tool":
+            result = tools.call_mcp_tool(
+                server=str(arguments.get("server") or ""),
+                tool=str(arguments.get("tool") or ""),
+                arguments=arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {},
+            )
         elif tool == "remember":
             if not memory.write_is_allowed(question, history or []):
                 result = {
