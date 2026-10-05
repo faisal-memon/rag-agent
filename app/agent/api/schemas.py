@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class QueryRequest(BaseModel):
@@ -26,21 +26,9 @@ class Citation(BaseModel):
     retrieval_mode: str | None = None
 
 
-class AgentChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(max_length=20000)
-
-
 class AgentQueryRequest(BaseModel):
     conversation_id: str | None = None
     question: str = Field(min_length=1)
-    history: list[AgentChatMessage] = Field(default_factory=list, max_length=20)
-
-    @field_validator("history")
-    @classmethod
-    def drop_incomplete_messages(cls, history: list[AgentChatMessage]) -> list[AgentChatMessage]:
-        """Tolerate client-side in-progress placeholders in persisted history."""
-        return [message for message in history if message.content.strip()]
 
 
 class TranscriptResponse(BaseModel):
