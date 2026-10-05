@@ -32,7 +32,6 @@ class ApiSettings(ConfiguredSettings):
         default="https://mcpplatform.dev/mcp/srv_c7dcf1cd45",
         alias="CAT_FACTS_MCP_URL",
     )
-    news_mcp_url: str = Field(default="http://news-mcp:8080/mcp", alias="NEWS_MCP_URL")
     mcp_registry_url: str = Field(default="http://mcp-registry/registry.json", alias="MCP_REGISTRY_URL")
 
 
