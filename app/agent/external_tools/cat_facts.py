@@ -34,7 +34,7 @@ async def _get_cat_fact() -> dict:
     from mcp.client.streamable_http import streamable_http_client
 
     with anyio.fail_after(CAT_FACTS_TIMEOUT_SECONDS):
-        async with streamable_http_client(get_api_settings().cat_facts_mcp_url) as (read, write, _):
+        async with streamable_http_client(get_api_settings().cat_facts_mcp_url) as (read, write):
             async with ClientSession(read, write) as client:
                 await client.initialize()
                 result = await client.call_tool("get_cat_fact", {})
