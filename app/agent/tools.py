@@ -7,7 +7,6 @@ from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, se
 from app.agent.external_tools.school_lunch import get_school_lunch
 from app.agent.external_tools.city_sports import get_city_sports_schedule
 from app.agent.external_tools.weather import get_weather
-from app.agent.external_tools.cat_facts import get_cat_fact
 from app.agent.external_tools.mcp_registry import get_mcp_registry
 from app.agent.external_tools.yoga_flow import get_noe_schedule, get_ocean_schedule, get_upcoming_yoga_classes
 from app.agent.config import get_api_settings
@@ -34,7 +33,6 @@ AGENT_TOOL_NAMES = (
     "get_school_lunch",
     "get_city_sports_schedule",
     "get_weather",
-    "get_cat_fact",
     "get_mcp_registry",
 )
 RETRIEVAL_TOOL_NAMES = (
@@ -305,7 +303,6 @@ AGENT_TOOL_FUNCTIONS = {
     "get_school_lunch": get_school_lunch,
     "get_city_sports_schedule": get_city_sports_schedule,
     "get_weather": get_weather,
-    "get_cat_fact": get_cat_fact,
     "get_mcp_registry": get_mcp_registry,
 }
 
