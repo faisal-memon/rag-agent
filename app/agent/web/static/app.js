@@ -392,13 +392,6 @@ function saveAgentConversation() {
   }
 }
 
-function agentHistoryForRequest() {
-  return agentConversation.slice(-12).map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
-}
-
 function renderAgentConversation() {
   const messagesHtml = agentConversation.map((message) => {
     if (message.role === "user") {
@@ -548,7 +541,6 @@ async function runAgent() {
     return;
   }
 
-  const requestHistory = agentHistoryForRequest();
   agentConversation.push({
     role: "user",
     content: value,
@@ -582,7 +574,7 @@ async function runAgent() {
     const response = await fetch("/agent/query/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_id: agentConversationId, question: value, history: requestHistory }),
+      body: JSON.stringify({ conversation_id: agentConversationId, question: value }),
     });
 
     if (!response.ok) {
