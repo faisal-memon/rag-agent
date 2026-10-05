@@ -119,7 +119,7 @@ def reindex() -> ReindexResponse:
 @router.post("/agent/query", response_model=AgentQueryResponse)
 def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryResponse:
     conversation_id, saved_history, user = _load_conversation(request, payload)
-    history = saved_history or [message.model_dump() for message in payload.history]
+    history = saved_history
     profile_name = _conversation_profile_name(request)
     answer_kwargs = {"profile_name": profile_name} if profile_name else {}
     result = _agent(request).answer(payload.question, history=history, **answer_kwargs)
@@ -170,7 +170,7 @@ async def transcribe(request: Request, audio: UploadFile = File(...)) -> Transcr
 def stream_agent_query(request: Request, payload: AgentQueryRequest) -> StreamingResponse:
     """Stream concise agent lifecycle events, followed by the final response."""
     conversation_id, saved_history, user = _load_conversation(request, payload)
-    history = saved_history or [message.model_dump() for message in payload.history]
+    history = saved_history
     agent = _agent(request)
     events: Queue[dict | None] = Queue()
 

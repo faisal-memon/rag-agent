@@ -26,15 +26,9 @@ class Citation(BaseModel):
     retrieval_mode: str | None = None
 
 
-class AgentChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=20000)
-
-
 class AgentQueryRequest(BaseModel):
     conversation_id: str | None = None
     question: str = Field(min_length=1)
-    history: list[AgentChatMessage] = Field(default_factory=list, max_length=20)
 
 
 class TranscriptResponse(BaseModel):
