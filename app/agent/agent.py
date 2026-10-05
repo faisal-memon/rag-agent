@@ -463,6 +463,11 @@ def _execute_tool(
                 query=str(arguments.get("query") or ""),
                 limit=int(arguments.get("limit") or tools.DEFAULT_CHUNK_LIMIT),
             )
+        elif tool == "hybrid_search":
+            result = tools.hybrid_search(
+                query=str(arguments.get("query") or ""),
+                limit=int(arguments.get("limit") or tools.DEFAULT_CHUNK_LIMIT),
+            )
         elif tool == "grep_documents":
             result = tools.grep_documents(
                 query=str(arguments.get("query") or ""),

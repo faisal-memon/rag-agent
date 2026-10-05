@@ -396,6 +396,13 @@ class AgentTest(unittest.TestCase):
         self.assertFalse(result["result"]["remembered"])
         self.assertFalse(memory_path.exists())
 
+    def test_execute_tool_dispatches_hybrid_search(self) -> None:
+        with patch("app.agent.agent.tools.hybrid_search", return_value={"keyword_matches": [], "semantic_matches": []}) as hybrid_search:
+            result = _execute_tool({"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}})
+
+        hybrid_search.assert_called_once_with(query="52 bus", limit=4)
+        self.assertEqual({"keyword_matches": [], "semantic_matches": []}, result["result"])
+
     def test_agent_can_remember_after_approval_reply(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory_path = Path(temp_dir) / "MEMORY.md"
