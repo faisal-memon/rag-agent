@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,6 +73,12 @@ class AgentTest(unittest.TestCase):
             '{"tool":"semantic_search","arguments":{"query":"car"}}',
             _extract_json_object(text),
         )
+
+    def test_extract_json_object_recovers_answer_with_inner_quotes(self) -> None:
+        text = '{"action":"answer","evidence_status":"supported","answer":"You asked about \\"the Free Press\\" and transit."}'
+        recovered = json.loads(_extract_json_object(text))
+        self.assertEqual("answer", recovered["action"])
+        self.assertIn('"the Free Press"', recovered["answer"])
 
     def test_extract_native_tool_call_from_model_text(self) -> None:
         text = '<|tool_call>call:search_documents{limit:8,query:"car vehicle"}<tool_call|>'

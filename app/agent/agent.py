@@ -358,6 +358,8 @@ def _decide_next_action(
             reason=str(exc),
             raw_text=text,
         )
+        if not tool_results:
+            raise RuntimeError("Planner returned an invalid action; please try again.") from exc
 
     if not tool_results:
         _append_debug(
