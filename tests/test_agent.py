@@ -176,7 +176,7 @@ class AgentTest(unittest.TestCase):
     def test_system_prompt_defines_personal_document_agent(self) -> None:
         prompt = render_prompt("system.md", {})
 
-        self.assertIn("personal home and document assistant", prompt)
+        self.assertIn("general-purpose personal assistant", prompt)
         self.assertIn("Never invent facts about the user", prompt)
         self.assertIn("cite the document filename or path", prompt)
         self.assertNotIn("get_ocean_schedule", prompt)
@@ -517,7 +517,7 @@ class AgentTest(unittest.TestCase):
         ):
             _answer("Hi")
 
-        self.assertIn("You are the user's personal home and document assistant.", prompts[0][0])
+        self.assertIn("You are a cheerful, capable general-purpose personal assistant.", prompts[0][0])
         self.assertNotIn("get_ocean_schedule", prompts[0][0])
         self.assertIn("Return JSON only", prompts[0][0])
         self.assertIn("2026-09-26T10:15-07:00", prompts[0][1])
