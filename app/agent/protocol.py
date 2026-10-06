@@ -20,7 +20,31 @@ def extract_json_object(text: str) -> str:
     end = text.rfind("}")
     if start == -1 or end == -1 or end < start:
         raise ValueError("No JSON object found")
-    return text[start : end + 1]
+    candidate = text[start : end + 1]
+    try:
+        json.loads(candidate)
+        return candidate
+    except json.JSONDecodeError:
+        recovered = _recover_answer_object(candidate)
+        if recovered is not None:
+            return recovered
+        raise
+
+
+def _recover_answer_object(candidate: str) -> str | None:
+    """Recover an answer action when prose contains unescaped quotes."""
+    action_match = re.search(r'"action"\s*:\s*"([^"]+)"', candidate)
+    evidence_match = re.search(r'"evidence_status"\s*:\s*"([^"]+)"', candidate)
+    answer_marker = re.search(r'"answer"\s*:\s*"', candidate)
+    if not action_match or not evidence_match or not answer_marker or not candidate.rstrip().endswith("}"):
+        return None
+    answer_start = answer_marker.end()
+    answer_end = candidate.rfind('"}')
+    if answer_end < answer_start:
+        return None
+    answer = candidate[answer_start:answer_end]
+    answer = answer.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+    return json.dumps({"action": action_match.group(1), "evidence_status": evidence_match.group(1), "answer": answer})
 
 
 def extract_native_tool_call(text: str) -> dict | None:
