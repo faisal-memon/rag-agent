@@ -119,6 +119,8 @@ textarea {
   padding: 13px 14px;
   color: var(--ink);
   background: #080c0a;
+  background-color: #080c0a;
+  opacity: 1;
   font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   outline: none;
 }
