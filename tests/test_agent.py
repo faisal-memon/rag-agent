@@ -180,12 +180,12 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Answer using ONLY the tool results below.", prompt)
         self.assertIn("What car do I have?", prompt)
 
-    def test_system_prompt_defines_personal_document_agent(self) -> None:
+    def test_system_prompt_defines_general_purpose_assistant(self) -> None:
         prompt = render_prompt("system.md", {})
 
         self.assertIn("general-purpose personal assistant", prompt)
         self.assertIn("Never invent facts", prompt)
-        self.assertIn("cite the document filename or path", prompt)
+        self.assertIn("Cite sources when using documents or public information", prompt)
         self.assertNotIn("get_ocean_schedule", prompt)
         self.assertNotIn("semantic_search", prompt)
 

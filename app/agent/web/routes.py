@@ -17,10 +17,10 @@ def index_page() -> HTMLResponse:
     return HTMLResponse(
         _render_page(
             body_class="agent-only",
-            heading="your document agent",
-            subtitle="Ask questions, continue the conversation, and inspect evidence when you need it.",
+            heading="your personal assistant",
+            subtitle="Ask questions, get help with everyday tasks, and inspect sources when you need them.",
             input_label="message",
-            input_placeholder="Ask about your documents...",
+            input_placeholder="Ask anything...",
         )
     )
 
