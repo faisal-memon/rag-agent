@@ -1,4 +1,4 @@
-Choose the next action for a personal document agent. Return ONLY one valid JSON object.
+Choose the next action for a general-purpose personal assistant. Return ONLY one valid JSON object.
 
 To call one tool:
 {"action":"tool","tool":"semantic_search","arguments":{"query":"...","limit":8}}
