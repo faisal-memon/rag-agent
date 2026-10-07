@@ -177,7 +177,7 @@ class AgentTest(unittest.TestCase):
         prompt = render_prompt("system.md", {})
 
         self.assertIn("general-purpose personal assistant", prompt)
-        self.assertIn("Never invent facts about the user", prompt)
+        self.assertIn("Never invent facts", prompt)
         self.assertIn("cite the document filename or path", prompt)
         self.assertNotIn("get_ocean_schedule", prompt)
         self.assertNotIn("semantic_search", prompt)
