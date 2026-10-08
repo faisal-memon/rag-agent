@@ -161,6 +161,23 @@ def sanitize_step(step: Any) -> dict | None:
     if tool == "get_upcoming_yoga_classes":
         return {"tool": tool, "arguments": {}}
 
+    if tool == "call_mcp_tool":
+        server = str(arguments.get("server") or "").strip()
+        mcp_tool = str(arguments.get("tool") or "").strip()
+        mcp_arguments = arguments.get("arguments")
+        if mcp_arguments is None:
+            mcp_arguments = arguments.get("args")
+        if not server or not mcp_tool or not isinstance(mcp_arguments, dict):
+            return None
+        return {
+            "tool": tool,
+            "arguments": {
+                "server": server[:128],
+                "tool": mcp_tool[:128],
+                "arguments": mcp_arguments,
+            },
+        }
+
     return {
         "tool": tool,
         "arguments": {
