@@ -72,12 +72,24 @@ jobs:
           version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
           github-token: ${{ github.token }}
 
+      - name: Detect normalization changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            normalize:
+              - 'Dockerfile'
+              - 'requirements-normalize.txt'
+              - 'app/normalize/**'
+              - 'app/core/**'
+
       - name: Build and push Docker images
         uses: ./.github/actions/build-rag-images
         with:
           push: true
           tag: ${{ steps.bump.outputs.new-tag }}
           latest: true
+          build-normalize: ${{ steps.changes.outputs.normalize }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
