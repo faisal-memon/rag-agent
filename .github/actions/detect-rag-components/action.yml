@@ -1,0 +1,41 @@
+name: Detect RAG components
+description: Identify which RAG image components are affected by a change.
+outputs:
+  common:
+    description: Shared build, Dockerfile, or core files changed.
+    value: ${{ steps.changes.outputs.common }}
+  release:
+    description: Release workflow configuration changed.
+    value: ${{ steps.changes.outputs.release }}
+  api:
+    description: API-specific files changed.
+    value: ${{ steps.changes.outputs.api }}
+  embed:
+    description: Embed-specific files changed.
+    value: ${{ steps.changes.outputs.embed }}
+  normalize:
+    description: Normalize-specific files changed.
+    value: ${{ steps.changes.outputs.normalize }}
+runs:
+  using: composite
+  steps:
+    - name: Detect changed components
+      id: changes
+      uses: dorny/paths-filter@v3
+      with:
+        filters: |
+          common:
+            - '.github/actions/**'
+            - 'Dockerfile'
+            - 'app/core/**'
+          release:
+            - '.github/workflows/release_build.yaml'
+          api:
+            - 'requirements-api.txt'
+            - 'app/agent/**'
+          embed:
+            - 'requirements-embed.txt'
+            - 'app/embed/**'
+          normalize:
+            - 'requirements-normalize.txt'
+            - 'app/normalize/**'

@@ -67,30 +67,13 @@ jobs:
 
       - name: Detect changed components
         id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            api:
-              - 'Dockerfile'
-              - 'requirements-api.txt'
-              - 'app/agent/**'
-              - 'app/core/**'
-            embed:
-              - 'Dockerfile'
-              - 'requirements-embed.txt'
-              - 'app/embed/**'
-              - 'app/core/**'
-            normalize:
-              - 'Dockerfile'
-              - 'requirements-normalize.txt'
-              - 'app/normalize/**'
-              - 'app/core/**'
+        uses: ./.github/actions/detect-rag-components
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
       - name: Release API image
-        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.api == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.release == 'true' || steps.changes.outputs.common == 'true' || steps.changes.outputs.api == 'true'
         uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: api-v
@@ -100,7 +83,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Release embed image
-        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.embed == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.release == 'true' || steps.changes.outputs.common == 'true' || steps.changes.outputs.embed == 'true'
         uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: embed-v
@@ -110,7 +93,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Release normalize image
-        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.normalize == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.release == 'true' || steps.changes.outputs.common == 'true' || steps.changes.outputs.normalize == 'true'
         uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: normalize-v
