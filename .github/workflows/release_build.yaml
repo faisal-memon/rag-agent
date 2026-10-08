@@ -65,22 +65,56 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump version tag
-        id: bump
-        uses: faisal-memon/pr-label-semver@v0
+      - name: Detect changed components
+        id: changes
+        uses: dorny/paths-filter@v3
         with:
+          filters: |
+            api:
+              - 'Dockerfile'
+              - 'requirements-api.txt'
+              - 'app/agent/**'
+              - 'app/core/**'
+            embed:
+              - 'Dockerfile'
+              - 'requirements-embed.txt'
+              - 'app/embed/**'
+              - 'app/core/**'
+            normalize:
+              - 'Dockerfile'
+              - 'requirements-normalize.txt'
+              - 'app/normalize/**'
+              - 'app/core/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Release API image
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.api == 'true'
+        uses: ./.github/actions/release-rag-image
+        with:
+          tag-prefix: api-v
+          target: api
+          image: api
           version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
           github-token: ${{ github.token }}
 
-      - name: Build and push Docker images
-        uses: ./.github/actions/build-rag-images
+      - name: Release embed image
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.embed == 'true'
+        uses: ./.github/actions/release-rag-image
         with:
-          push: true
-          tag: ${{ steps.bump.outputs.new-tag }}
-          latest: true
+          tag-prefix: embed-v
+          target: embed
+          image: embed
+          version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
+          github-token: ${{ github.token }}
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+      - name: Release normalize image
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.normalize == 'true'
+        uses: ./.github/actions/release-rag-image
         with:
-          tag_name: ${{ steps.bump.outputs.new-tag }}
-          generate_release_notes: true
+          tag-prefix: normalize-v
+          target: normalize
+          image: normalize
+          version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
+          github-token: ${{ github.token }}
