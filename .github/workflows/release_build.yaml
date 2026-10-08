@@ -86,83 +86,35 @@ jobs:
               - 'app/normalize/**'
               - 'app/core/**'
 
-      - name: Bump API version tag
-        id: bump-api
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Release API image
         if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.api == 'true'
-        uses: faisal-memon/pr-label-semver@v0
+        uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: api-v
+          target: api
+          image: api
           version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
           github-token: ${{ github.token }}
 
-      - name: Bump embed version tag
-        id: bump-embed
+      - name: Release embed image
         if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.embed == 'true'
-        uses: faisal-memon/pr-label-semver@v0
+        uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: embed-v
+          target: embed
+          image: embed
           version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
           github-token: ${{ github.token }}
 
-      - name: Bump normalize version tag
-        id: bump-normalize
+      - name: Release normalize image
         if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.normalize == 'true'
-        uses: faisal-memon/pr-label-semver@v0
+        uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: normalize-v
+          target: normalize
+          image: normalize
           version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
           github-token: ${{ github.token }}
-
-      - name: Build and push API image
-        if: steps.bump-api.outputs.new-tag != ''
-        uses: ./.github/actions/build-rag-images
-        with:
-          push: true
-          tag: ${{ steps.bump-api.outputs.new-tag }}
-          latest: true
-          build-api: true
-          build-embed: false
-          build-normalize: false
-
-      - name: Create API GitHub Release
-        if: steps.bump-api.outputs.new-tag != ''
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.bump-api.outputs.new-tag }}
-          generate_release_notes: true
-
-      - name: Build and push embed image
-        if: steps.bump-embed.outputs.new-tag != ''
-        uses: ./.github/actions/build-rag-images
-        with:
-          push: true
-          tag: ${{ steps.bump-embed.outputs.new-tag }}
-          latest: true
-          build-api: false
-          build-embed: true
-          build-normalize: false
-
-      - name: Create embed GitHub Release
-        if: steps.bump-embed.outputs.new-tag != ''
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.bump-embed.outputs.new-tag }}
-          generate_release_notes: true
-
-      - name: Build and push normalize image
-        if: steps.bump-normalize.outputs.new-tag != ''
-        uses: ./.github/actions/build-rag-images
-        with:
-          push: true
-          tag: ${{ steps.bump-normalize.outputs.new-tag }}
-          latest: true
-          build-api: false
-          build-embed: false
-          build-normalize: true
-
-      - name: Create normalize GitHub Release
-        if: steps.bump-normalize.outputs.new-tag != ''
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.bump-normalize.outputs.new-tag }}
-          generate_release_notes: true

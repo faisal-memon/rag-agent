@@ -1,0 +1,45 @@
+name: Release RAG image
+description: Bump, build, publish, and release one RAG image component.
+inputs:
+  tag-prefix:
+    description: Prefix for this component's version tags.
+    required: true
+  target:
+    description: Dockerfile target to build.
+    required: true
+  image:
+    description: GHCR image name suffix.
+    required: true
+  version-bump:
+    description: Optional explicit version bump.
+    required: false
+    default: ""
+  github-token:
+    description: GitHub token.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Bump component version tag
+      id: bump
+      uses: faisal-memon/pr-label-semver@v0
+      with:
+        tag-prefix: ${{ inputs.tag-prefix }}
+        version-bump: ${{ inputs.version-bump }}
+        github-token: ${{ inputs.github-token }}
+    - name: Build and push component image
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        target: ${{ inputs.target }}
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/rag-agent-${{ inputs.image }}:${{ steps.bump.outputs.new-tag }}
+          ghcr.io/${{ github.repository_owner }}/rag-agent-${{ inputs.image }}:latest
+        cache-from: type=gha,scope=rag-agent-${{ inputs.image }}
+        cache-to: type=gha,mode=max,scope=rag-agent-${{ inputs.image }}
+    - name: Create component GitHub Release
+      uses: softprops/action-gh-release@v3
+      with:
+        tag_name: ${{ steps.bump.outputs.new-tag }}
+        generate_release_notes: true
