@@ -27,6 +27,7 @@ runs:
         tag-prefix: ${{ inputs.tag-prefix }}
         version-bump: ${{ inputs.version-bump }}
         github-token: ${{ inputs.github-token }}
+        write-tag: false
     - name: Build and push component image
       uses: docker/build-push-action@v7
       with:
