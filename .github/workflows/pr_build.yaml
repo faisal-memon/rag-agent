@@ -42,8 +42,15 @@ jobs:
       - name: Build application
         run: make build
 
-      - name: Validate Docker builds
+      - name: Detect changed components
+        id: changes
+        uses: ./.github/actions/detect-rag-components
+
+      - name: Validate affected Docker builds
         uses: ./.github/actions/build-rag-images
         with:
           push: false
           tag: pr-${{ github.event.number }}
+          build-api: ${{ steps.changes.outputs.common == 'true' || steps.changes.outputs.api == 'true' }}
+          build-embed: ${{ steps.changes.outputs.common == 'true' || steps.changes.outputs.embed == 'true' }}
+          build-normalize: ${{ steps.changes.outputs.common == 'true' || steps.changes.outputs.normalize == 'true' }}

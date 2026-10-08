@@ -67,23 +67,7 @@ jobs:
 
       - name: Detect changed components
         id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            common:
-              - '.github/workflows/**'
-              - '.github/actions/**'
-              - 'Dockerfile'
-              - 'app/core/**'
-            api:
-              - 'requirements-api.txt'
-              - 'app/agent/**'
-            embed:
-              - 'requirements-embed.txt'
-              - 'app/embed/**'
-            normalize:
-              - 'requirements-normalize.txt'
-              - 'app/normalize/**'
+        uses: ./.github/actions/detect-rag-components
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
