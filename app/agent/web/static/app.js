@@ -369,6 +369,26 @@ function buildAgentTraceEvents(message) {
     });
   }
 
+  // Keep the expandable trace useful when planning fails before the server
+  // can return reasoning/debug events. The progress events are still safe,
+  // user-facing status updates, and the error explains why the run stopped.
+  if (!traceEvents.length) {
+    (message.progress || []).forEach((event) => {
+      traceEvents.push({
+        type: event.type === "error" ? "warning" : "thinking",
+        title: event.message || (event.type === "thinking" ? "Thinking" : "Agent update"),
+        detail: event.message || "",
+      });
+    });
+  }
+  if (message.error) {
+    traceEvents.push({
+      type: "warning",
+      title: "agent error",
+      detail: message.error,
+    });
+  }
+
   return traceEvents;
 }
 
@@ -635,8 +655,14 @@ async function runAgent() {
     saveAgentConversation();
     renderAgentConversation();
   } catch (error) {
+    const errorMessage = error.message || "Agent request failed.";
     Object.assign(progressMessage, {
-      content: `Agent request failed: ${error.message}`,
+      content: `Agent request failed: ${errorMessage}`,
+      error: errorMessage,
+      progress: [
+        ...(progressMessage.progress || []),
+        { type: "error", message: errorMessage },
+      ],
       streaming: false,
     });
     saveAgentConversation();
