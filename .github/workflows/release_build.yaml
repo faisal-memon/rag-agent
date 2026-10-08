@@ -73,7 +73,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Release API image
-        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.common == 'true' || steps.changes.outputs.api == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.release == 'true' || steps.changes.outputs.common == 'true' || steps.changes.outputs.api == 'true'
         uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: api-v
@@ -83,7 +83,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Release embed image
-        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.common == 'true' || steps.changes.outputs.embed == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.release == 'true' || steps.changes.outputs.common == 'true' || steps.changes.outputs.embed == 'true'
         uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: embed-v
@@ -93,7 +93,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Release normalize image
-        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.common == 'true' || steps.changes.outputs.normalize == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.release == 'true' || steps.changes.outputs.common == 'true' || steps.changes.outputs.normalize == 'true'
         uses: ./.github/actions/release-rag-image
         with:
           tag-prefix: normalize-v

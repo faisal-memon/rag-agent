@@ -2,8 +2,11 @@ name: Detect RAG components
 description: Identify which RAG image components are affected by a change.
 outputs:
   common:
-    description: Shared workflow, build, Dockerfile, or core files changed.
+    description: Shared build, Dockerfile, or core files changed.
     value: ${{ steps.changes.outputs.common }}
+  release:
+    description: Release workflow configuration changed.
+    value: ${{ steps.changes.outputs.release }}
   api:
     description: API-specific files changed.
     value: ${{ steps.changes.outputs.api }}
@@ -22,10 +25,11 @@ runs:
       with:
         filters: |
           common:
-            - '.github/workflows/**'
             - '.github/actions/**'
             - 'Dockerfile'
             - 'app/core/**'
+          release:
+            - '.github/workflows/release_build.yaml'
           api:
             - 'requirements-api.txt'
             - 'app/agent/**'
