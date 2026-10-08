@@ -12,6 +12,14 @@ inputs:
     description: Whether to also apply the latest tag to each RAG image.
     required: false
     default: "false"
+  build-api:
+    description: Whether to build and publish the API image.
+    required: false
+    default: "true"
+  build-embed:
+    description: Whether to build and publish the embedding image.
+    required: false
+    default: "true"
   build-normalize:
     description: Whether to build and publish the normalization image.
     required: false
@@ -24,6 +32,7 @@ runs:
       uses: docker/setup-buildx-action@v4
 
     - name: Build API Docker image
+      if: inputs.build-api == 'true'
       uses: docker/build-push-action@v7
       with:
         context: .
@@ -36,6 +45,7 @@ runs:
         cache-to: type=gha,mode=max,scope=rag-agent-api
 
     - name: Build embed Docker image
+      if: inputs.build-embed == 'true'
       uses: docker/build-push-action@v7
       with:
         context: .

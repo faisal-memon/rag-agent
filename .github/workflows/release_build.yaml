@@ -65,34 +65,104 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump version tag
-        id: bump
-        uses: faisal-memon/pr-label-semver@v0
-        with:
-          version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
-          github-token: ${{ github.token }}
-
-      - name: Detect normalization changes
+      - name: Detect changed components
         id: changes
         uses: dorny/paths-filter@v3
         with:
           filters: |
+            api:
+              - 'Dockerfile'
+              - 'requirements-api.txt'
+              - 'app/agent/**'
+              - 'app/core/**'
+            embed:
+              - 'Dockerfile'
+              - 'requirements-embed.txt'
+              - 'app/embed/**'
+              - 'app/core/**'
             normalize:
               - 'Dockerfile'
               - 'requirements-normalize.txt'
               - 'app/normalize/**'
               - 'app/core/**'
 
-      - name: Build and push Docker images
+      - name: Bump API version tag
+        id: bump-api
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.api == 'true'
+        uses: faisal-memon/pr-label-semver@v0
+        with:
+          tag-prefix: api-v
+          version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
+          github-token: ${{ github.token }}
+
+      - name: Bump embed version tag
+        id: bump-embed
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.embed == 'true'
+        uses: faisal-memon/pr-label-semver@v0
+        with:
+          tag-prefix: embed-v
+          version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
+          github-token: ${{ github.token }}
+
+      - name: Bump normalize version tag
+        id: bump-normalize
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.normalize == 'true'
+        uses: faisal-memon/pr-label-semver@v0
+        with:
+          tag-prefix: normalize-v
+          version-bump: ${{ github.event_name == 'workflow_dispatch' && inputs.version_bump || '' }}
+          github-token: ${{ github.token }}
+
+      - name: Build and push API image
+        if: steps.bump-api.outputs.new-tag != ''
         uses: ./.github/actions/build-rag-images
         with:
           push: true
-          tag: ${{ steps.bump.outputs.new-tag }}
+          tag: ${{ steps.bump-api.outputs.new-tag }}
           latest: true
-          build-normalize: ${{ steps.changes.outputs.normalize }}
+          build-api: true
+          build-embed: false
+          build-normalize: false
 
-      - name: Create GitHub Release
+      - name: Create API GitHub Release
+        if: steps.bump-api.outputs.new-tag != ''
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.bump.outputs.new-tag }}
+          tag_name: ${{ steps.bump-api.outputs.new-tag }}
+          generate_release_notes: true
+
+      - name: Build and push embed image
+        if: steps.bump-embed.outputs.new-tag != ''
+        uses: ./.github/actions/build-rag-images
+        with:
+          push: true
+          tag: ${{ steps.bump-embed.outputs.new-tag }}
+          latest: true
+          build-api: false
+          build-embed: true
+          build-normalize: false
+
+      - name: Create embed GitHub Release
+        if: steps.bump-embed.outputs.new-tag != ''
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.bump-embed.outputs.new-tag }}
+          generate_release_notes: true
+
+      - name: Build and push normalize image
+        if: steps.bump-normalize.outputs.new-tag != ''
+        uses: ./.github/actions/build-rag-images
+        with:
+          push: true
+          tag: ${{ steps.bump-normalize.outputs.new-tag }}
+          latest: true
+          build-api: false
+          build-embed: false
+          build-normalize: true
+
+      - name: Create normalize GitHub Release
+        if: steps.bump-normalize.outputs.new-tag != ''
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.bump-normalize.outputs.new-tag }}
           generate_release_notes: true
