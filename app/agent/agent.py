@@ -366,16 +366,13 @@ def _decide_next_action(
             debug,
             "controller_decision",
             phase="planning",
-            decision="fallback_tool",
+            decision="error",
             reason="planner_output_unusable_without_tool_results",
-            tool="semantic_search",
-            arguments={"query": question, "limit": tools.DEFAULT_CHUNK_LIMIT},
         )
-        return {
-            "action": "tool",
-            "tool": "semantic_search",
-            "arguments": {"query": question, "limit": tools.DEFAULT_CHUNK_LIMIT},
-        }
+        raise RuntimeError(
+            "Planner returned no usable action; no tool was executed. "
+            "The request could not be safely routed."
+        )
     _append_debug(
         debug,
         "controller_decision",
