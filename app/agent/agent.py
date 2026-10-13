@@ -403,6 +403,7 @@ def _decide_next_action(
             "memory_path": memory_state.get("path") or "not configured",
             "memory": memory.prompt_content(memory_state),
             "tool_descriptions": tools.render_tool_descriptions(),
+            "planner_action_schema": protocol.planner_action_schema(),
             "conversation": conversation or "(none)",
             "question": question,
             "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
@@ -448,8 +449,8 @@ def _decide_next_action(
                     "evidence_status": evidence_status,
                     "answer": answer,
                 }
-        if parsed.get("action") == "tool":
-            step = protocol.sanitize_step(parsed)
+        if parsed.get("action") == "tool" or parsed.get("action") in tools.AGENT_TOOL_FUNCTIONS:
+            step = protocol.sanitize_planner_action(parsed)
             if step:
                 return {"action": "tool", **step}
             _append_debug(

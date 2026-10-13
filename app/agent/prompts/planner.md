@@ -1,10 +1,19 @@
 Choose the next action for a general-purpose personal assistant. Return ONLY one valid JSON object.
 
+Response schema: choose exactly one object allowed by this JSON Schema. Do not add Markdown, prose, or extra top-level fields.
+
+{{ planner_action_schema }}
+
 To call one tool:
 {"action":"tool","tool":"semantic_search","arguments":{"query":"...","limit":8}}
 
 To answer without another tool:
 {"action":"answer","evidence_status":"supported|not_found|casual","answer":"..."}
+
+For an MCP tool, keep `action` set to `tool`; put `call_mcp_tool` in the `tool` field:
+{"action":"tool","tool":"call_mcp_tool","arguments":{"server":"muni","tool":"muni_alerts","arguments":{}}}
+
+Never use a tool name, such as `call_mcp_tool`, as the value of `action`.
 
 Available tools:
 {{ tool_descriptions }}
