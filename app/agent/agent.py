@@ -74,51 +74,15 @@ def _answer_with_agent(
     seen_calls: set[str] = set()
     decision_feedback = ""
 
-    memory_state = agent.memory.read()
-    original_question = _identity_question_from_history(history)
-    if not profile_name and not memory.profile_name(memory_state):
-        if original_question:
-            name = memory.profile_name_from_reply(question)
-            if not name:
-                return _identity_onboarding_response("Please reply with the name you would like me to use for your records.")
-            remembered = memory.remember(agent.memory, f"{memory.PROFILE_NAME_PREFIX} {name}", "Profile")
-            if remembered.get("error"):
-                return _identity_onboarding_response(f"I could not save your name: {remembered['error']}")
-            question = original_question
-            memory_state = agent.memory.read()
-            _append_debug(
-                debug,
-                "controller_decision",
-                phase="identity",
-                decision="save_profile_name",
-                profile_name=name,
-            )
-        elif _needs_profile_name(question):
-            return _identity_onboarding_response()
+    question, memory_state, onboarding_response = _prepare_question_and_memory(
+        agent, question, history, profile_name, debug
+    )
+    if onboarding_response:
+        return onboarding_response
 
-    approved_memory = memory.approved_from_history(question, history)
-    if approved_memory:
-        step = {"tool": "remember", "arguments": approved_memory}
-        _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
-        tool_result = _execute_tool(step, question, history, agent)
-        _emit_progress(on_progress, "tool_result", tool=step["tool"], result=_summarize_tool_result(tool_result.get("result")))
-        return {
-            "answer": memory.result_answer(tool_result),
-            "plan": [step],
-            "tool_results": [tool_result],
-            "reasoning": reasoning,
-            "debug": [
-                {
-                    "event": "controller_decision",
-                    "phase": "memory_approval",
-                    "decision": "execute_tool",
-                    "tool": "remember",
-                    "arguments": approved_memory,
-                    "result_summary": _summarize_tool_result(tool_result.get("result")),
-                }
-            ],
-            "citations": [],
-        }
+    memory_approval_response = _handle_memory_approval(agent, question, history, on_progress, reasoning)
+    if memory_approval_response:
+        return memory_approval_response
 
     client, model = get_llm_client(agent.settings)
 
@@ -250,6 +214,82 @@ def _answer_with_agent(
         "reasoning": reasoning,
         "debug": debug,
         "citations": citations,
+    }
+
+
+def _prepare_question_and_memory(
+    agent: Agent,
+    question: str,
+    history: list[dict],
+    profile_name: str | None,
+    debug: list[dict],
+) -> tuple[str, dict, dict | None]:
+    """Load memory and complete the profile-name onboarding flow when needed."""
+    memory_state = agent.memory.read()
+    original_question = _identity_question_from_history(history)
+    if profile_name or memory.profile_name(memory_state):
+        return question, memory_state, None
+
+    if not original_question:
+        if _needs_profile_name(question):
+            return question, memory_state, _identity_onboarding_response()
+        return question, memory_state, None
+
+    name = memory.profile_name_from_reply(question)
+    if not name:
+        return (
+            question,
+            memory_state,
+            _identity_onboarding_response("Please reply with the name you would like me to use for your records."),
+        )
+
+    remembered = memory.remember(agent.memory, f"{memory.PROFILE_NAME_PREFIX} {name}", "Profile")
+    if remembered.get("error"):
+        return question, memory_state, _identity_onboarding_response(f"I could not save your name: {remembered['error']}")
+
+    _append_debug(
+        debug,
+        "controller_decision",
+        phase="identity",
+        decision="save_profile_name",
+        profile_name=name,
+    )
+    return original_question, agent.memory.read(), None
+
+
+def _handle_memory_approval(
+    agent: Agent,
+    question: str,
+    history: list[dict],
+    on_progress: ProgressCallback | None,
+    reasoning: list[dict],
+) -> dict | None:
+    """Persist an explicitly approved memory proposal without invoking the model."""
+    approved_memory = memory.approved_from_history(question, history)
+    if not approved_memory:
+        return None
+
+    step = {"tool": "remember", "arguments": approved_memory}
+    _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
+    tool_result = _execute_tool(step, question, history, agent)
+    result_summary = _summarize_tool_result(tool_result.get("result"))
+    _emit_progress(on_progress, "tool_result", tool=step["tool"], result=result_summary)
+    return {
+        "answer": memory.result_answer(tool_result),
+        "plan": [step],
+        "tool_results": [tool_result],
+        "reasoning": reasoning,
+        "debug": [
+            {
+                "event": "controller_decision",
+                "phase": "memory_approval",
+                "decision": "execute_tool",
+                "tool": "remember",
+                "arguments": approved_memory,
+                "result_summary": result_summary,
+            }
+        ],
+        "citations": [],
     }
 
 def _current_local_time() -> str:
