@@ -258,6 +258,8 @@ class AgentTest(unittest.TestCase):
         )
 
         self.assertIn("Do not call these tools for greetings", prompt)
+        self.assertIn("Response schema: choose exactly one of these shapes", prompt)
+        self.assertIn('"action":"tool","tool":"call_mcp_tool"', prompt)
         self.assertIn("get_ocean_schedule", prompt)
         self.assertIn("grep_documents", prompt)
 
