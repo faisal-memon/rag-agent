@@ -106,6 +106,35 @@ class AgentTest(unittest.TestCase):
             _sanitize_step({"tool": "get_upcoming_yoga_classes", "arguments": {"ignored": "value"}}),
         )
 
+    def test_sanitize_step_accepts_mcp_tool_arguments(self) -> None:
+        self.assertEqual(
+            {
+                "tool": "call_mcp_tool",
+                "arguments": {
+                    "server": "muni",
+                    "tool": "muni_alerts",
+                    "arguments": {"route": "N Judah"},
+                },
+            },
+            _sanitize_step(
+                {
+                    "tool": "call_mcp_tool",
+                    "arguments": {
+                        "server": "muni",
+                        "tool": "muni_alerts",
+                        "args": {"route": "N Judah"},
+                    },
+                }
+            ),
+        )
+
+    def test_sanitize_step_rejects_incomplete_mcp_tool_call(self) -> None:
+        self.assertIsNone(
+            _sanitize_step(
+                {"tool": "call_mcp_tool", "arguments": {"server": "muni", "tool": "muni_alerts"}}
+            )
+        )
+
     def test_sanitize_step_preserves_school_lunch_day(self) -> None:
         self.assertEqual(
             {"tool": "get_school_lunch", "arguments": {"day": "2026-09-28"}},
