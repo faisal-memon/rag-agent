@@ -70,9 +70,7 @@ def _answer_with_agent(
     tool_results: list[dict] = []
     reasoning: list[dict] = []
     debug: list[dict] = []
-    answer = ""
     seen_calls: set[str] = set()
-    decision_feedback = ""
 
     question, memory_state, onboarding_response = _prepare_question_and_memory(
         agent, question, history, profile_name, debug
@@ -86,110 +84,23 @@ def _answer_with_agent(
 
     client, model = get_llm_client(agent.settings)
 
-    for _ in range(max_steps):
-        _emit_progress(
-            on_progress,
-            "thinking",
-            message="Reviewing available information" if tool_results else "Thinking",
-        )
-        decision = _decide_next_action(
-            question,
-            conversation,
-            memory_state,
-            tool_results,
-            max_steps - len(plan),
-            decision_feedback,
-            reasoning,
-            client,
-            model,
-            debug,
-            agent,
-            profile_name,
-        )
-        decision_feedback = ""
-        if decision["action"] == "synthesize":
-            _append_debug(debug, "controller_decision", phase="planning", decision="synthesize")
-            break
-        if decision["action"] == "answer":
-            if decision["evidence_status"] == "not_found" and not _absence_search_complete(plan):
-                decision_feedback = (
-                    "The not-found conclusion was rejected. Before claiming absence, use at least two different "
-                    "retrieval tools, including keyword_search or grep_documents."
-                )
-                _append_debug(
-                    debug,
-                    "controller_decision",
-                    phase="planning",
-                    decision="reject_answer",
-                    reason="not_found_requires_more_retrieval",
-                    parsed=decision,
-                )
-                continue
-            answer = decision["answer"]
-            _append_debug(
-                debug,
-                "controller_decision",
-                phase="planning",
-                decision="return_answer",
-                parsed=decision,
-            )
-            break
-
-        step = {"tool": decision["tool"], "arguments": decision["arguments"]}
-        signature = json.dumps(step, sort_keys=True)
-        if signature in seen_calls:
-            plan.append(step)
-            tool_results.append(
-                {
-                    **step,
-                    "result": {
-                        "error": "This exact tool call was already executed. Use existing evidence or try a different call."
-                    },
-                }
-            )
-            _append_debug(
-                debug,
-                "controller_decision",
-                phase="tool",
-                decision="reject_duplicate_tool_call",
-                tool=step["tool"],
-                arguments=step["arguments"],
-            )
-            _emit_progress(
-                on_progress,
-                "tool_result",
-                tool=step["tool"],
-                result=_summarize_tool_result(tool_results[-1].get("result")),
-            )
-            continue
-
-        seen_calls.add(signature)
-        plan.append(step)
-        _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
-        _append_debug(
-            debug,
-            "controller_decision",
-            phase="planning",
-            decision="execute_tool",
-            tool=step["tool"],
-            arguments=step["arguments"],
-        )
-        tool_result = _execute_tool(step, question, history, agent)
-        tool_results.append(tool_result)
-        _emit_progress(
-            on_progress,
-            "tool_result",
-            tool=step["tool"],
-            result=_summarize_tool_result(tool_result.get("result")),
-        )
-        _append_debug(
-            debug,
-            "tool_result",
-            phase="tool",
-            tool=step["tool"],
-            arguments=step["arguments"],
-            result_summary=_summarize_tool_result(tool_result.get("result")),
-        )
+    answer = _run_agent_loop(
+        agent,
+        question,
+        history,
+        conversation,
+        memory_state,
+        profile_name,
+        max_steps,
+        plan,
+        tool_results,
+        reasoning,
+        debug,
+        seen_calls,
+        on_progress,
+        client,
+        model,
+    )
 
     if not answer:
         _emit_progress(on_progress, "thinking", message="Preparing answer")
@@ -215,6 +126,178 @@ def _answer_with_agent(
         "debug": debug,
         "citations": citations,
     }
+
+
+def _run_agent_loop(
+    agent: Agent,
+    question: str,
+    history: list[dict],
+    conversation: str,
+    memory_state: dict,
+    profile_name: str | None,
+    max_steps: int,
+    plan: list[dict],
+    tool_results: list[dict],
+    reasoning: list[dict],
+    debug: list[dict],
+    seen_calls: set[str],
+    on_progress: ProgressCallback | None,
+    client: OpenAI,
+    model: str,
+) -> str:
+    """Run bounded planner and tool iterations, returning a direct answer if chosen."""
+    decision_feedback = ""
+
+    for _ in range(max_steps):
+        _emit_progress(
+            on_progress,
+            "thinking",
+            message="Reviewing available information" if tool_results else "Thinking",
+        )
+        decision = _decide_next_action(
+            question,
+            conversation,
+            memory_state,
+            tool_results,
+            max_steps - len(plan),
+            decision_feedback,
+            reasoning,
+            client,
+            model,
+            debug,
+            agent,
+            profile_name,
+        )
+        answer, decision_feedback, should_stop = _handle_planner_decision(
+            decision,
+            plan,
+            tool_results,
+            debug,
+        )
+        if should_stop:
+            break
+        if decision["action"] != "tool":
+            continue
+        _execute_planned_tool(
+            decision,
+            question,
+            history,
+            agent,
+            plan,
+            tool_results,
+            debug,
+            seen_calls,
+            on_progress,
+        )
+
+    return answer or ""
+
+
+def _handle_planner_decision(
+    decision: dict,
+    plan: list[dict],
+    tool_results: list[dict],
+    debug: list[dict],
+) -> tuple[str | None, str, bool]:
+    """Apply a planner decision that does not execute a tool."""
+    if decision["action"] == "synthesize":
+        _append_debug(debug, "controller_decision", phase="planning", decision="synthesize")
+        return None, "", True
+
+    if decision["action"] != "answer":
+        return None, "", False
+
+    if decision["evidence_status"] == "not_found" and not _absence_search_complete(plan):
+        feedback = (
+            "The not-found conclusion was rejected. Before claiming absence, use at least two different "
+            "retrieval tools, including keyword_search or grep_documents."
+        )
+        _append_debug(
+            debug,
+            "controller_decision",
+            phase="planning",
+            decision="reject_answer",
+            reason="not_found_requires_more_retrieval",
+            parsed=decision,
+        )
+        return None, feedback, False
+
+    _append_debug(
+        debug,
+        "controller_decision",
+        phase="planning",
+        decision="return_answer",
+        parsed=decision,
+    )
+    return decision["answer"], "", True
+
+
+def _execute_planned_tool(
+    decision: dict,
+    question: str,
+    history: list[dict],
+    agent: Agent,
+    plan: list[dict],
+    tool_results: list[dict],
+    debug: list[dict],
+    seen_calls: set[str],
+    on_progress: ProgressCallback | None,
+) -> None:
+    """Execute one planner-selected tool and record its trace events."""
+    step = {"tool": decision["tool"], "arguments": decision["arguments"]}
+    signature = json.dumps(step, sort_keys=True)
+    if signature in seen_calls:
+        duplicate_result = {
+            **step,
+            "result": {
+                "error": "This exact tool call was already executed. Use existing evidence or try a different call."
+            },
+        }
+        plan.append(step)
+        tool_results.append(duplicate_result)
+        _append_debug(
+            debug,
+            "controller_decision",
+            phase="tool",
+            decision="reject_duplicate_tool_call",
+            tool=step["tool"],
+            arguments=step["arguments"],
+        )
+        _emit_progress(
+            on_progress,
+            "tool_result",
+            tool=step["tool"],
+            result=_summarize_tool_result(duplicate_result["result"]),
+        )
+        return
+
+    seen_calls.add(signature)
+    plan.append(step)
+    _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
+    _append_debug(
+        debug,
+        "controller_decision",
+        phase="planning",
+        decision="execute_tool",
+        tool=step["tool"],
+        arguments=step["arguments"],
+    )
+    tool_result = _execute_tool(step, question, history, agent)
+    tool_results.append(tool_result)
+    _emit_progress(
+        on_progress,
+        "tool_result",
+        tool=step["tool"],
+        result=_summarize_tool_result(tool_result.get("result")),
+    )
+    _append_debug(
+        debug,
+        "tool_result",
+        phase="tool",
+        tool=step["tool"],
+        arguments=step["arguments"],
+        result_summary=_summarize_tool_result(tool_result.get("result")),
+    )
 
 
 def _prepare_question_and_memory(
