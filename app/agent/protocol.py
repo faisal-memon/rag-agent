@@ -190,3 +190,22 @@ def sanitize_step(step: Any) -> dict | None:
             "max_chars": tools._bounded_max_chars(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
         },
     }
+
+
+def sanitize_planner_action(action: Any) -> dict | None:
+    """Normalize either supported planner spelling of a tool action.
+
+    The canonical planner response has ``action: tool`` and a separate ``tool``
+    field. llama.cpp models also sometimes emit the selected tool name as the
+    action itself. Both forms pass through the same allowlist and argument
+    bounds before the controller executes them.
+    """
+    if not isinstance(action, dict):
+        return None
+    if action.get("action") == "tool":
+        return sanitize_step(action)
+
+    tool = action.get("action")
+    if tool not in tools.AGENT_TOOL_FUNCTIONS:
+        return None
+    return sanitize_step({"tool": tool, "arguments": action.get("arguments")})

@@ -448,8 +448,8 @@ def _decide_next_action(
                     "evidence_status": evidence_status,
                     "answer": answer,
                 }
-        if parsed.get("action") == "tool":
-            step = protocol.sanitize_step(parsed)
+        if parsed.get("action") == "tool" or parsed.get("action") in tools.AGENT_TOOL_FUNCTIONS:
+            step = protocol.sanitize_planner_action(parsed)
             if step:
                 return {"action": "tool", **step}
             _append_debug(

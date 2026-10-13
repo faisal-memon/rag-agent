@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from app.agent.protocol import (
     extract_json_object as _extract_json_object,
     extract_native_tool_call as _extract_native_tool_call,
+    sanitize_planner_action as _sanitize_planner_action,
     sanitize_step as _sanitize_step,
 )
 from app.agent.memory import (
@@ -119,6 +120,28 @@ class AgentTest(unittest.TestCase):
             _sanitize_step(
                 {
                     "tool": "call_mcp_tool",
+                    "arguments": {
+                        "server": "muni",
+                        "tool": "muni_alerts",
+                        "args": {"route": "N Judah"},
+                    },
+                }
+            ),
+        )
+
+    def test_sanitize_planner_action_accepts_direct_mcp_tool_action(self) -> None:
+        self.assertEqual(
+            {
+                "tool": "call_mcp_tool",
+                "arguments": {
+                    "server": "muni",
+                    "tool": "muni_alerts",
+                    "arguments": {"route": "N Judah"},
+                },
+            },
+            _sanitize_planner_action(
+                {
+                    "action": "call_mcp_tool",
                     "arguments": {
                         "server": "muni",
                         "tool": "muni_alerts",
