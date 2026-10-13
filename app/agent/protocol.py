@@ -8,10 +8,41 @@ small action dictionary that the controller is willing to execute.
 import json
 import re
 from datetime import date
-from typing import Any
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 import app.agent.tools as tools
 from app.agent import memory
+
+
+class ToolPlannerAction(BaseModel):
+    """Canonical planner action used to invoke one catalogued tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["tool"]
+    tool: str = Field(json_schema_extra={"enum": list(tools.AGENT_TOOL_FUNCTIONS)})
+    arguments: dict[str, Any]
+
+
+class AnswerPlannerAction(BaseModel):
+    """Canonical planner action used to return a final answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["answer"]
+    evidence_status: Literal["supported", "not_found", "casual"]
+    answer: str
+
+
+PlannerAction = Annotated[ToolPlannerAction | AnswerPlannerAction, Field(discriminator="action")]
+_PLANNER_ACTION_ADAPTER = TypeAdapter(PlannerAction)
+
+
+def planner_action_schema() -> str:
+    """Return JSON Schema generated from the planner's Python action models."""
+    return json.dumps(_PLANNER_ACTION_ADAPTER.json_schema(), indent=2)
 
 
 def extract_json_object(text: str) -> str:
@@ -203,7 +234,11 @@ def sanitize_planner_action(action: Any) -> dict | None:
     if not isinstance(action, dict):
         return None
     if action.get("action") == "tool":
-        return sanitize_step(action)
+        try:
+            canonical = ToolPlannerAction.model_validate(action)
+        except ValidationError:
+            return None
+        return sanitize_step(canonical.model_dump())
 
     tool = action.get("action")
     if tool not in tools.AGENT_TOOL_FUNCTIONS:

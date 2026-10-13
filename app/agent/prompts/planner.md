@@ -1,6 +1,8 @@
 Choose the next action for a general-purpose personal assistant. Return ONLY one valid JSON object.
 
-Response schema: choose exactly one of these shapes. Do not add Markdown, prose, or extra top-level fields.
+Response schema: choose exactly one object allowed by this JSON Schema. Do not add Markdown, prose, or extra top-level fields.
+
+{{ planner_action_schema }}
 
 To call one tool:
 {"action":"tool","tool":"semantic_search","arguments":{"query":"...","limit":8}}

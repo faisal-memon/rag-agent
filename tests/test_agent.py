@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from app.agent.protocol import (
     extract_json_object as _extract_json_object,
     extract_native_tool_call as _extract_native_tool_call,
+    planner_action_schema as _planner_action_schema,
     sanitize_planner_action as _sanitize_planner_action,
     sanitize_step as _sanitize_step,
 )
@@ -246,6 +247,7 @@ class AgentTest(unittest.TestCase):
             "planner.md",
             {
                 "tool_descriptions": "(tools)",
+                "planner_action_schema": _planner_action_schema(),
                 "remaining_steps": 1,
                 "decision_feedback": "(none)",
                 "memory_path": "(none)",
@@ -258,7 +260,8 @@ class AgentTest(unittest.TestCase):
         )
 
         self.assertIn("Do not call these tools for greetings", prompt)
-        self.assertIn("Response schema: choose exactly one of these shapes", prompt)
+        self.assertIn("Response schema: choose exactly one object allowed by this JSON Schema", prompt)
+        self.assertIn('"const": "tool"', prompt)
         self.assertIn('"action":"tool","tool":"call_mcp_tool"', prompt)
         self.assertIn("get_ocean_schedule", prompt)
         self.assertIn("grep_documents", prompt)
