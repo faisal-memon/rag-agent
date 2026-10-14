@@ -3,6 +3,8 @@ from pathlib import Path
 
 from fastapi.responses import HTMLResponse
 
+from app.agent.version import APP_VERSION
+
 WEB_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = WEB_DIR / "templates"
 STATIC_DIR = WEB_DIR / "static"
@@ -55,6 +57,7 @@ def _render_page(
         "__PAGE_SUBTITLE__": subtitle,
         "__INPUT_LABEL__": input_label,
         "__INPUT_PLACEHOLDER__": input_placeholder,
+        "__APP_VERSION__": APP_VERSION,
     }
     page = INDEX_HTML
     for placeholder, value in replacements.items():

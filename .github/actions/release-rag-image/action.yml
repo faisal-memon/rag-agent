@@ -28,12 +28,20 @@ runs:
         version-bump: ${{ inputs.version-bump }}
         github-token: ${{ inputs.github-token }}
         write-tag: false
+    - name: Prepare image version
+      id: image
+      shell: bash
+      run: echo "version=${BUMPED_TAG#${{ inputs.tag-prefix }}}" >> "$GITHUB_OUTPUT"
+      env:
+        BUMPED_TAG: ${{ steps.bump.outputs.new-tag }}
     - name: Build and push component image
       uses: docker/build-push-action@v7
       with:
         context: .
         target: ${{ inputs.target }}
         push: true
+        build-args: |
+          RAG_AGENT_VERSION=${{ steps.image.outputs.version }}
         tags: |
           ghcr.io/${{ github.repository_owner }}/rag-agent-${{ inputs.image }}:${{ steps.bump.outputs.new-tag }}
           ghcr.io/${{ github.repository_owner }}/rag-agent-${{ inputs.image }}:latest
