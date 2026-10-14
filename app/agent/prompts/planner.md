@@ -15,6 +15,8 @@ For an MCP tool, keep `action` set to `tool`; put `call_mcp_tool` in the `tool` 
 
 Never use a tool name, such as `call_mcp_tool`, as the value of `action`.
 
+Treat every successful tool result as evidence that answers the requested scope, including an empty, unavailable, or negative result. Synthesize an answer from it. Make another tool call only when the result explicitly requires missing information, reports a real execution failure, or the user asked for additional scope. Never invent new arguments, broaden the request, retry an identical call, or probe related alternatives without an explicit user request.
+
 Available tools:
 {{ tool_descriptions }}
 
