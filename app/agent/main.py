@@ -8,6 +8,7 @@ from app.agent.agent import Agent
 from app.agent.api.routes import router
 from app.agent.config import get_api_settings
 from app.agent.web.routes import STATIC_DIR
+from app.agent.version import APP_VERSION
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -19,6 +20,6 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Nextcloud Personal RAG", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Nextcloud Personal RAG", version=APP_VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(router)

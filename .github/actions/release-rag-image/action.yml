@@ -34,6 +34,8 @@ runs:
         context: .
         target: ${{ inputs.target }}
         push: true
+        build-args: |
+          RAG_AGENT_VERSION=${{ steps.bump.outputs.new-tag }}
         tags: |
           ghcr.io/${{ github.repository_owner }}/rag-agent-${{ inputs.image }}:${{ steps.bump.outputs.new-tag }}
           ghcr.io/${{ github.repository_owner }}/rag-agent-${{ inputs.image }}:latest
