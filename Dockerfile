@@ -8,7 +8,6 @@ ENV PYTHONUNBUFFERED=1
 FROM base AS api
 
 ARG RAG_AGENT_VERSION=dev
-ENV RAG_AGENT_VERSION=${RAG_AGENT_VERSION}
 
 COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt
@@ -16,6 +15,7 @@ COPY app/__init__.py ./app/__init__.py
 COPY app/agent ./app/agent
 COPY app/core ./app/core
 COPY sql ./sql
+RUN printf 'APP_VERSION = "%s"\n' "$RAG_AGENT_VERSION" > ./app/agent/_build_version.py
 
 CMD ["uvicorn", "app.agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
