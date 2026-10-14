@@ -465,6 +465,7 @@ function saveAgentConversation() {
 }
 
 function renderAgentConversation() {
+  const wasNearChatBottom = agentChat.scrollHeight - agentChat.scrollTop - agentChat.clientHeight < 80;
   const messagesHtml = agentConversation.map((message) => {
     if (message.role === "user") {
       return `
@@ -501,7 +502,9 @@ function renderAgentConversation() {
   agentChatToolbar.classList.toggle("visible", hasVisibleConversation);
   if (hasVisibleConversation) {
     result.classList.add("visible");
-    agentChat.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (wasNearChatBottom) {
+      agentChat.scrollTop = agentChat.scrollHeight;
+    }
   }
 }
 

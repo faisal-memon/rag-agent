@@ -775,6 +775,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("readAgentProgress(response", APP_JS)
         self.assertIn("agentProgressTimelineHtml(message.progress, message.streaming)", APP_JS)
         self.assertIn("agentTraceTimelineHtml(message)", APP_JS)
+        self.assertIn("agentChat.scrollTop = agentChat.scrollHeight", APP_JS)
+        self.assertIn("max-height: calc(100vh - 280px)", STYLES_CSS)
         self.assertIn("buildAgentTraceEvents(message)", APP_JS)
         self.assertIn('class="agent-trace"', APP_JS)
         self.assertIn('class="trace-event trace-${escapeHtml(event.type)}"', APP_JS)

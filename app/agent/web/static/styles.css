@@ -444,6 +444,9 @@ button:disabled {
 .agent-chat {
   display: none;
   gap: 18px;
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .agent-chat.visible {
@@ -947,6 +950,10 @@ body.agent-only .actions {
   .chat-message,
   .chat-message.user {
     max-width: 100%;
+  }
+
+  .agent-chat {
+    max-height: calc(100vh - 260px);
   }
 
   .tool-call summary {
