@@ -771,7 +771,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn('fetch("/agent/query/stream"', APP_JS)
         self.assertIn('id="agent-chat"', INDEX_HTML)
         self.assertIn("readAgentProgress(response", APP_JS)
-        self.assertIn("agentProgressTimelineHtml(message.progress)", APP_JS)
+        self.assertIn("agentProgressTimelineHtml(message.progress, message.streaming)", APP_JS)
         self.assertIn("agentTraceTimelineHtml(message)", APP_JS)
         self.assertIn("buildAgentTraceEvents(message)", APP_JS)
         self.assertIn('class="agent-trace"', APP_JS)
