@@ -263,6 +263,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Response schema: choose exactly one object allowed by this JSON Schema", prompt)
         self.assertIn('"const": "tool"', prompt)
         self.assertIn('"action":"tool","tool":"call_mcp_tool"', prompt)
+        self.assertIn("Treat every successful tool result as evidence", prompt)
+        self.assertIn("Never invent new arguments", prompt)
         self.assertIn("get_ocean_schedule", prompt)
         self.assertIn("grep_documents", prompt)
 
