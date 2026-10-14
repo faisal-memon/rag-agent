@@ -261,8 +261,29 @@ function progressResultTitle(event) {
   return "Tool completed";
 }
 
-function agentProgressTimelineHtml(events) {
-  const rows = (events || []).map((event) => {
+function thinkingIndicatorHtml() {
+  return `<div class="thinking-indicator agent-progress-live" aria-live="polite">
+    <span>Thinking</span>
+    <span class="thinking-dots" aria-hidden="true">
+      <span class="thinking-dot"></span>
+      <span class="thinking-dot"></span>
+      <span class="thinking-dot"></span>
+    </span>
+  </div>`;
+}
+
+function agentProgressTimelineHtml(events, streaming = false) {
+  const normalizedEvents = [];
+  (events || []).forEach((event) => {
+    // While streaming, the live indicator is the single source of truth for
+    // thinking state. Keep completed thinking entries for the final trace.
+    if (streaming && event.type === "thinking") return;
+    // The stream can emit an initial thinking event immediately after the UI
+    // creates its placeholder. Keep one timeline entry per state transition.
+    if (event.type === "thinking" && normalizedEvents[normalizedEvents.length - 1]?.type === "thinking") return;
+    normalizedEvents.push(event);
+  });
+  const rows = normalizedEvents.map((event) => {
     const type = event.type || "thinking";
     const title = type === "thinking"
       ? event.message || "Thinking"
@@ -277,7 +298,11 @@ function agentProgressTimelineHtml(events) {
       <span>${escapeHtml(title)}</span>
     </div>`;
   }).join("");
-  return rows ? `<div class="agent-progress" aria-live="polite">${rows}</div>` : "";
+  if (!rows && !streaming) return "";
+  return `<div class="agent-progress" aria-live="polite">
+    ${rows}
+    ${streaming ? thinkingIndicatorHtml() : ""}
+  </div>`;
 }
 
 function buildAgentTraceEvents(message) {
@@ -410,7 +435,10 @@ function agentTraceTimelineHtml(message) {
   return `
     <details class="agent-trace">
       <summary>
-        <span>agent trace</span>
+        <span class="trace-disclosure-label">
+          <span class="trace-disclosure-show">Show agent trace</span>
+          <span class="trace-disclosure-hide">Hide agent trace</span>
+        </span>
         <span>${events.length} event${events.length === 1 ? "" : "s"} · ${toolCount} tool call${toolCount === 1 ? "" : "s"}</span>
       </summary>
       ${rows || '<div class="trace-empty">No trace events were recorded.</div>'}
@@ -459,7 +487,7 @@ function renderAgentConversation() {
     return `
       <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
         <div class="chat-role">rag agent</div>
-        ${agentProgressTimelineHtml(message.progress)}
+        ${agentProgressTimelineHtml(message.progress, message.streaming)}
         ${message.streaming ? "" : `<div class="chat-content">${escapeHtml(message.content)}</div>`}
         ${message.streaming ? "" : agentTraceTimelineHtml(message)}
         ${sourceFold}
@@ -593,7 +621,7 @@ async function runAgent() {
   const progressMessage = {
     role: "assistant",
     content: "",
-    progress: [{ type: "thinking", message: "Thinking" }],
+    progress: [],
     streaming: true,
     createdAt: new Date().toISOString(),
   };
