@@ -490,7 +490,7 @@ function renderAgentConversation() {
         <div class="chat-role">rag agent</div>
         ${agentProgressTimelineHtml(message.progress, message.streaming)}
         ${message.streaming ? "" : `<div class="chat-content">${escapeHtml(message.content)}</div>`}
-        ${message.streaming ? "" : agentTraceTimelineHtml(message)}
+        ${agentTraceTimelineHtml(message)}
         ${sourceFold}
       </article>
     `;
