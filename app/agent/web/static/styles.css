@@ -56,6 +56,17 @@ main {
   color: var(--accent-2);
 }
 
+.app-version {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 10;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}
+
 h1 {
   margin: 0;
   color: var(--ink);
