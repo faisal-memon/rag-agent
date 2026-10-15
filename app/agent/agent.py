@@ -178,7 +178,7 @@ def _run_agent_loop(
             break
         if decision["action"] != "tool":
             continue
-        _execute_planned_tool(
+        tool_result = _execute_planned_tool(
             decision,
             question,
             history,
@@ -189,6 +189,12 @@ def _run_agent_loop(
             seen_calls,
             on_progress,
         )
+        if decision["tool"] == "call_mcp_tool":
+            result = tool_result.get("result") or {}
+            if isinstance(result, dict) and result.get("error"):
+                server = decision["arguments"].get("server", "unknown")
+                tool = decision["arguments"].get("tool", "unknown")
+                raise RuntimeError(f"MCP tool {server}/{tool} failed: {result['error']}")
 
     return answer or ""
 
@@ -242,7 +248,7 @@ def _execute_planned_tool(
     debug: list[dict],
     seen_calls: set[str],
     on_progress: ProgressCallback | None,
-) -> None:
+) -> dict:
     """Execute one planner-selected tool and record its trace events."""
     step = {"tool": decision["tool"], "arguments": decision["arguments"]}
     signature = json.dumps(step, sort_keys=True)
@@ -269,7 +275,7 @@ def _execute_planned_tool(
             tool=step["tool"],
             result=_summarize_tool_result(duplicate_result["result"]),
         )
-        return
+        return duplicate_result
 
     seen_calls.add(signature)
     plan.append(step)
@@ -298,6 +304,7 @@ def _execute_planned_tool(
         arguments=step["arguments"],
         result_summary=_summarize_tool_result(tool_result.get("result")),
     )
+    return tool_result
 
 
 def _prepare_question_and_memory(
