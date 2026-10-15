@@ -803,7 +803,7 @@ class AgentTest(unittest.TestCase):
 
         self.assertIn('<body class="agent-only">', page)
         self.assertIn("<h1>your personal assistant</h1>", page)
-        self.assertIn('<span class="app-version">vdev</span>', page)
+        self.assertIn('<div class="app-version" aria-label="Application version">vdev</div>', page)
         self.assertIn("body.agent-only #ask", STYLES_CSS)
         self.assertIn('href="/debug">Debug</a>', page)
 
