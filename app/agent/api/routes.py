@@ -1,6 +1,7 @@
 """HTTP routes that adapt FastAPI requests to the agent runtime."""
 
 import json
+import logging
 from queue import Empty, Queue
 from threading import Thread
 from typing import Iterator
@@ -29,6 +30,16 @@ from app.agent.transcription import TranscriptionUnavailableError, transcribe_au
 from app.core.config import read_runtime_settings, write_runtime_settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _agent_exception_message(exc: Exception) -> str:
+    """Preserve the useful exception identity when streaming an agent failure."""
+    parts = [f"{type(exc).__name__}: {exc}" or type(exc).__name__]
+    cause = exc.__cause__ or exc.__context__
+    if cause:
+        parts.append(f"caused by {type(cause).__name__}: {cause}")
+    return " | ".join(parts)
 
 
 def _agent(request: Request) -> Agent:
@@ -185,7 +196,12 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
             result["conversation_id"] = conversation_id
             events.put({"type": "complete", "result": result})
         except Exception as exc:  # pragma: no cover - exercised by the browser error path
-            events.put({"type": "error", "message": str(exc)})
+            logger.exception("Agent request failed", extra={"conversation_id": conversation_id})
+            events.put({
+                "type": "error",
+                "message": _agent_exception_message(exc),
+                "error_type": type(exc).__name__,
+            })
         finally:
             events.put(None)
 
