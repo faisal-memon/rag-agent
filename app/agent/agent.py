@@ -431,7 +431,7 @@ def _user_location_capability(agent: Agent) -> str:
         return (
             "User location is configured. For location-aware tools, the server will inject the saved "
             "coordinates into the tool call. Do not ask the user for coordinates, claim they are missing, "
-            "or include coordinate values in your response."
+            "search documents for coordinates, or include coordinate values in your response."
         )
     return "User location is not configured."
 
