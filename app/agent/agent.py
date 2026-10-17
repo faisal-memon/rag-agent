@@ -428,7 +428,11 @@ def _current_local_time() -> str:
 def _user_location_capability(agent: Agent) -> str:
     """Describe location capability without exposing coordinates to the model."""
     if agent.settings.home_latitude is not None and agent.settings.home_longitude is not None:
-        return "User location is configured and available for location-aware tools."
+        return (
+            "User location is configured. For location-aware tools, the server will inject the saved "
+            "coordinates into the tool call. Do not ask the user for coordinates, claim they are missing, "
+            "or include coordinate values in your response."
+        )
     return "User location is not configured."
 
 
