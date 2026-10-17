@@ -28,6 +28,10 @@ class SettingsApiTest(unittest.TestCase):
                 openai_chat_model="gpt-4.1-mini",
                 llamacpp_base_url="http://model.local/v1",
                 llamacpp_chat_model="gemma-4",
+                embedding_provider="llamacpp",
+                openai_embedding_model="text-embedding-3-small",
+                embedding_llamacpp_base_url="http://embed.local/v1",
+                embedding_llamacpp_model="mxbai",
                 query_limit=10,
                 agent_max_steps=5,
             )

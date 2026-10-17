@@ -2,6 +2,19 @@ const form = document.getElementById("settings-form");
 const status = document.getElementById("settings-status");
 const saveButton = document.getElementById("save-settings");
 
+for (const tab of document.querySelectorAll(".settings-tab")) {
+  tab.addEventListener("click", () => {
+    for (const candidate of document.querySelectorAll(".settings-tab")) {
+      const active = candidate === tab;
+      candidate.classList.toggle("active", active);
+      candidate.setAttribute("aria-selected", String(active));
+    }
+    for (const panel of document.querySelectorAll(".settings-panel")) {
+      panel.hidden = panel.id !== tab.dataset.panel;
+    }
+  });
+}
+
 function setStatus(message) {
   status.textContent = message;
 }

@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
+from app.embed.config import get_embed_settings
 from app.agent.conversations import append_messages, delete_conversation, get_conversation, list_conversations, load_or_create
 from app.agent.api.schemas import (
     AgentRuntimeSettings,
@@ -74,6 +75,10 @@ def _runtime_settings() -> AgentRuntimeSettings:
         openai_chat_model=settings.openai_chat_model,
         llamacpp_base_url=settings.llamacpp_base_url,
         llamacpp_chat_model=settings.llamacpp_chat_model,
+        embedding_provider=get_embed_settings().provider,
+        openai_embedding_model=get_embed_settings().openai_embedding_model,
+        embedding_llamacpp_base_url=get_embed_settings().llamacpp_base_url,
+        embedding_llamacpp_model=get_embed_settings().llamacpp_model,
         query_limit=settings.query_limit,
         agent_max_steps=settings.agent_max_steps,
         home_latitude=settings.home_latitude,
@@ -83,6 +88,7 @@ def _runtime_settings() -> AgentRuntimeSettings:
 
 def _reload_agent(request: Request) -> None:
     get_api_settings.cache_clear()
+    get_embed_settings.cache_clear()
     agent = Agent(get_api_settings())
     request.app.state.agent = agent
     agent.startup()
@@ -116,7 +122,15 @@ def get_settings() -> AgentRuntimeSettings:
 @router.put("/api/settings", response_model=AgentRuntimeSettings)
 def update_settings(request: Request, payload: AgentRuntimeSettings) -> AgentRuntimeSettings:
     settings = read_runtime_settings()
-    settings["api"] = {**settings.get("api", {}), **payload.model_dump()}
+    values = payload.model_dump()
+    embed_values = {
+        "provider": values.pop("embedding_provider"),
+        "openai_embedding_model": values.pop("openai_embedding_model"),
+        "llamacpp_base_url": values.pop("embedding_llamacpp_base_url"),
+        "llamacpp_model": values.pop("embedding_llamacpp_model"),
+    }
+    settings["api"] = {**settings.get("api", {}), **values}
+    settings["embed"] = {**settings.get("embed", {}), **embed_values}
     write_runtime_settings(settings)
     _reload_agent(request)
     return _runtime_settings()

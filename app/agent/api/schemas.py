@@ -72,6 +72,10 @@ class AgentRuntimeSettings(BaseModel):
     openai_chat_model: str = Field(min_length=1)
     llamacpp_base_url: str = Field(min_length=1)
     llamacpp_chat_model: str = Field(min_length=1)
+    embedding_provider: Literal["openai", "llamacpp"]
+    openai_embedding_model: str = Field(min_length=1)
+    embedding_llamacpp_base_url: str = Field(min_length=1)
+    embedding_llamacpp_model: str = Field(min_length=1)
     query_limit: int = Field(ge=1, le=100)
     agent_max_steps: int = Field(ge=1, le=12)
     home_latitude: float | None = Field(default=None, ge=-90, le=90)
