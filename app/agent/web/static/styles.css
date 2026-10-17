@@ -32,6 +32,7 @@ body {
 
 main {
   width: min(1120px, calc(100% - 28px));
+  min-width: 0;
   margin: 0 auto;
   padding: 28px 0;
 }
@@ -82,6 +83,7 @@ h1 {
 
 .subtitle {
   max-width: 760px;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
@@ -89,6 +91,7 @@ h1 {
 
 .page-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   margin-top: 4px;
 }
@@ -107,6 +110,7 @@ body.settings-console .page-nav .settings-nav {
 }
 
 .query-card {
+  min-width: 0;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -283,6 +287,7 @@ button:disabled {
 
 .result {
   display: none;
+  min-width: 0;
   margin-top: 16px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -459,6 +464,7 @@ button:disabled {
 
 .agent-chat {
   display: none;
+  min-width: 0;
   gap: 18px;
   max-height: calc(100vh - 280px);
   overflow-y: auto;
@@ -470,6 +476,7 @@ button:disabled {
 }
 
 .chat-message {
+  min-width: 0;
   max-width: 92%;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -548,6 +555,7 @@ button:disabled {
   color: var(--ink);
   font-size: 14px;
   line-height: 1.65;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -979,6 +987,15 @@ body.agent-only .actions {
   .tool-args {
     display: none;
   }
+
+  .trace-event summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .trace-meta {
+    grid-column: 2;
+    max-width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -990,6 +1007,7 @@ body.agent-only .actions {
 
 .settings-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 20px 0 12px;
 }
