@@ -263,7 +263,7 @@ def _execute_planned_tool(
         duplicate_result = {
             **step,
             "result": {
-                "error": "This exact tool call was already executed. Use existing evidence or try a different call."
+                "error": "Planner repeated the same tool call with identical arguments in one turn."
             },
         }
         plan.append(step)
@@ -392,39 +392,6 @@ def _handle_memory_approval(
     }
 
 
-def _forced_location_mcp_action(question: str, agent: Agent, registry: dict) -> dict | None:
-    """Route explicit transit/location requests without document-search fallback."""
-    text = question.lower()
-    transit_terms = ("muni", "transit", "bus", "train", "tram", "streetcar")
-    location_terms = ("near me", "near my", "nearby", "my location", "my coordinates", "near coordinates")
-    if not any(term in text for term in transit_terms) or not any(term in text for term in location_terms):
-        return None
-    latitude = agent.settings.home_latitude
-    longitude = agent.settings.home_longitude
-    if latitude is None or longitude is None:
-        raise RuntimeError("Location is not configured for this transit request.")
-    for server in registry.get("servers", []) if isinstance(registry, dict) else []:
-        if server.get("name") != "muni" or not server.get("enabled", True):
-            continue
-        tools_list = server.get("tools")
-        if isinstance(tools_list, list) and any(item.get("name") == "muni_stops_nearby" for item in tools_list if isinstance(item, dict)):
-            return {
-                "action": "tool",
-                "tool": "call_mcp_tool",
-                "arguments": {
-                    "server": "muni",
-                    "tool": "muni_stops_nearby",
-                    "arguments": {
-                        "latitude": "{{user_latitude}}",
-                        "longitude": "{{user_longitude}}",
-                        "radius_meters": 1000,
-                        "operator_id": "SF",
-                    },
-                },
-            }
-        raise RuntimeError("The Muni MCP server is enabled but its nearby-stops tool is unavailable.")
-    raise RuntimeError("The Muni MCP server is not enabled for this transit request.")
-
 def _current_local_time() -> str:
     """Return the current time in the host's local time zone."""
     return datetime.now().astimezone().isoformat(timespec="minutes")
@@ -457,10 +424,6 @@ def _decide_next_action(
     profile_name: str | None = None,
 ) -> dict:
     mcp_registry = tools.get_mcp_registry()
-    forced_location_action = _forced_location_mcp_action(question, agent, mcp_registry)
-    if forced_location_action is not None:
-        _append_debug(debug, "controller_decision", phase="planning", decision="forced_location_mcp", parsed=forced_location_action)
-        return forced_location_action
     prompt = agent.render_prompt(
         "planner.md",
         {
