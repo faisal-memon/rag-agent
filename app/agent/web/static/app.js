@@ -676,7 +676,18 @@ async function runAgent() {
         });
         status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
       } else if (event.type === "error") {
-        throw new Error(event.message || "Agent request failed.");
+        const errorMessage = event.message || "Agent request failed.";
+        Object.assign(progressMessage, {
+          content: `Agent request failed: ${errorMessage}`,
+          error: errorMessage,
+          streaming: false,
+          progress: [
+            ...(progressMessage.progress || []),
+            { type: "error", message: errorMessage },
+          ],
+        });
+        status.textContent = "Agent query failed.";
+        renderAgentConversation();
       } else {
         progressMessage.progress.push(event);
         status.textContent = event.type === "tool_call" ? progressToolTitle(event.tool, event.arguments) : "Agent is working...";
