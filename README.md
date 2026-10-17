@@ -24,8 +24,7 @@ RAG Agent is a local-first MVP for a headless document agent that ingests files 
 ## Quick start
 
 1. Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY` when using OpenAI.
-   If you want local answer generation, set `LLM_PROVIDER=llamacpp` and point `LLAMACPP_BASE_URL` at your `llama.cpp` server.
-   If you want local embeddings, set `EMBEDDING_PROVIDER=llamacpp` and point `LLAMACPP_EMBEDDING_BASE_URL` at your embedding server.
+   After signing in, choose chat and embedding providers, model names, and endpoints in **Settings → Models**. Those values are stored in the runtime settings file and apply to new requests.
    Use `EMBEDDING_QUERY_PREFIX` and `EMBEDDING_DOCUMENT_PREFIX` to match your embedding model's expected prompt format.
    The container image prefetches the embedding tokenizer at build time and defaults `EMBEDDING_TOKENIZER_LOCAL_FILES_ONLY=true` so runtime chunking does not depend on network access.
    Use `RAG_ENABLED_SUFFIXES` to control which raw file types the normalizer watches.
