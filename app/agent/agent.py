@@ -260,28 +260,11 @@ def _execute_planned_tool(
     step = {"tool": decision["tool"], "arguments": decision["arguments"]}
     signature = json.dumps(step, sort_keys=True)
     if signature in seen_calls:
-        for prior_step, prior_result in zip(plan, tool_results):
-            if prior_step == step:
-                _append_debug(
-                    debug,
-                    "controller_decision",
-                    phase="tool",
-                    decision="reuse_existing_tool_result",
-                    tool=step["tool"],
-                    arguments=step["arguments"],
-                )
-                _emit_progress(
-                    on_progress,
-                    "tool_result",
-                    tool=step["tool"],
-                    result=_summarize_tool_result(prior_result.get("result")),
-                )
-                return prior_result
-
-        # Keep the guard safe if a caller supplies an inconsistent plan/result pair.
         duplicate_result = {
             **step,
-            "result": {"error": "A previous result for this tool call is unavailable."},
+            "result": {
+                "error": "Planner repeated the same tool call with identical arguments in one turn."
+            },
         }
         plan.append(step)
         tool_results.append(duplicate_result)
