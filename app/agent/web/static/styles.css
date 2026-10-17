@@ -987,3 +987,38 @@ body.agent-only .actions {
     animation: none;
   }
 }
+
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0 12px;
+}
+
+.settings-tab {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--panel-strong);
+  font-size: 13px;
+}
+
+.settings-tab.active {
+  border-color: var(--accent);
+  color: #061009;
+  background: var(--accent);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.checkbox-field {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkbox-field input {
+  width: auto;
+}

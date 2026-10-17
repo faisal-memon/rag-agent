@@ -24,6 +24,8 @@ class ApiSettings(ConfiguredSettings):
     home_latitude: float | None = Field(default=None, ge=-90, le=90, alias="HOME_LATITUDE")
     home_longitude: float | None = Field(default=None, ge=-180, le=180, alias="HOME_LONGITUDE")
     memory_path: Path = Field(default=Path("/memory/MEMORY.md"), alias="RAG_MEMORY_PATH")
+    memory_enabled: bool = Field(default=True, alias="RAG_MEMORY_ENABLED")
+    memory_require_approval: bool = Field(default=True, alias="RAG_MEMORY_REQUIRE_APPROVAL")
     embedding_provider: str = Field(default="openai", alias="EMBEDDING_PROVIDER")
     embedding_llamacpp_base_url: str = Field(default="http://localhost:8081/v1", alias="LLAMACPP_EMBEDDING_BASE_URL")
     embedding_llamacpp_api_key: str = Field(default="not-needed", alias="LLAMACPP_EMBEDDING_API_KEY")

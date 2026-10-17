@@ -5,7 +5,11 @@
     "llamacpp_base_url": "http://localhost:8080/v1",
     "llamacpp_chat_model": "local-model",
     "query_limit": 8,
-    "agent_max_steps": 6
+    "agent_max_steps": 6,
+    "embedding_provider": "openai",
+    "openai_embedding_model": "text-embedding-3-small",
+    "embedding_llamacpp_base_url": "http://localhost:8081/v1",
+    "embedding_llamacpp_model": "local-embedding-model"
   },
   "embed": {
     "provider": "openai",

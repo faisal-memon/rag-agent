@@ -54,6 +54,9 @@ Question:
 Current local time:
 {{ current_local_time }}
 
+User location capability:
+{{ user_location_capability }}
+
 Tool observations so far:
 {{ tool_results }}
 

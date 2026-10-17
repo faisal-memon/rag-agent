@@ -2,6 +2,19 @@ const form = document.getElementById("settings-form");
 const status = document.getElementById("settings-status");
 const saveButton = document.getElementById("save-settings");
 
+for (const tab of document.querySelectorAll(".settings-tab")) {
+  tab.addEventListener("click", () => {
+    for (const candidate of document.querySelectorAll(".settings-tab")) {
+      const active = candidate === tab;
+      candidate.classList.toggle("active", active);
+      candidate.setAttribute("aria-selected", String(active));
+    }
+    for (const panel of document.querySelectorAll(".settings-panel")) {
+      panel.hidden = panel.id !== tab.dataset.panel;
+    }
+  });
+}
+
 function setStatus(message) {
   status.textContent = message;
 }
@@ -9,7 +22,10 @@ function setStatus(message) {
 function fillForm(settings) {
   for (const [name, value] of Object.entries(settings)) {
     const input = form.elements.namedItem(name);
-    if (input) input.value = value;
+    if (input) {
+      if (input.type === "checkbox") input.checked = Boolean(value);
+      else input.value = value;
+    }
   }
 }
 
@@ -29,6 +45,8 @@ form.addEventListener("submit", async (event) => {
   data.agent_max_steps = Number(data.agent_max_steps);
   data.home_latitude = data.home_latitude === "" ? null : Number(data.home_latitude);
   data.home_longitude = data.home_longitude === "" ? null : Number(data.home_longitude);
+  data.memory_enabled = form.elements.memory_enabled.checked;
+  data.memory_require_approval = form.elements.memory_require_approval.checked;
 
   try {
     const response = await fetch("/api/settings", {

@@ -35,6 +35,9 @@ class Agent:
     def startup(self) -> str | None:
         """Load prompts and the durable memory file before serving requests."""
         self.prompts.load()
+        if not self.settings.memory_enabled:
+            self.memory.loaded = True
+            return None
         return self.memory.load()
 
     def answer(
@@ -78,7 +81,11 @@ def _answer_with_agent(
     if onboarding_response:
         return onboarding_response
 
-    memory_approval_response = _handle_memory_approval(agent, question, history, on_progress, reasoning)
+    memory_approval_response = (
+        _handle_memory_approval(agent, question, history, on_progress, reasoning)
+        if agent.settings.memory_enabled and agent.settings.memory_require_approval
+        else None
+    )
     if memory_approval_response:
         return memory_approval_response
 
@@ -315,6 +322,8 @@ def _prepare_question_and_memory(
     debug: list[dict],
 ) -> tuple[str, dict, dict | None]:
     """Load memory and complete the profile-name onboarding flow when needed."""
+    if not agent.settings.memory_enabled:
+        return question, {"path": "(disabled)", "content": "", "exists": False, "truncated": False, "error": None}, None
     memory_state = agent.memory.read()
     original_question = _identity_question_from_history(history)
     if profile_name or memory.profile_name(memory_state):
@@ -387,6 +396,13 @@ def _current_local_time() -> str:
     return datetime.now().astimezone().isoformat(timespec="minutes")
 
 
+def _user_location_capability(agent: Agent) -> str:
+    """Describe location capability without exposing coordinates to the model."""
+    if agent.settings.home_latitude is not None and agent.settings.home_longitude is not None:
+        return "User location is configured and available for location-aware tools."
+    return "User location is not configured."
+
+
 def _decide_next_action(
     question: str,
     conversation: str,
@@ -415,6 +431,7 @@ def _decide_next_action(
             "question": question,
             "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
             "current_local_time": _current_local_time(),
+            "user_location_capability": _user_location_capability(agent),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
             "mcp_registry": json.dumps(mcp_registry, indent=2),
         },
@@ -636,7 +653,11 @@ def _execute_tool(
                 arguments=arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {},
             )
         elif tool == "remember":
-            if not memory.write_is_allowed(question, history or []):
+            if agent is None:
+                result = {"remembered": False, "error": "Agent is required to write memory."}
+            elif not agent.settings.memory_enabled:
+                result = {"remembered": False, "error": "Memory is disabled in Settings."}
+            elif agent.settings.memory_require_approval and not memory.write_is_allowed(question, history or []):
                 result = {
                     "remembered": False,
                     "error": (

@@ -20,43 +20,79 @@
         </nav>
       </section>
 
+      <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button type="button" class="settings-tab active" role="tab" aria-selected="true" aria-controls="models-panel" data-panel="models-panel">Models</button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="general-panel" data-panel="general-panel">General</button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="memory-panel" data-panel="memory-panel">Memory</button>
+      </div>
+
       <form class="query-card settings-form" id="settings-form">
-        <fieldset>
-          <legend>chat model</legend>
-          <label for="llm-provider">Provider</label>
-          <select id="llm-provider" name="llm_provider">
-            <option value="llamacpp">Local llama.cpp-compatible server</option>
-            <option value="openai">OpenAI</option>
-          </select>
+        <section id="models-panel" class="settings-panel" role="tabpanel">
+          <fieldset>
+            <legend>chat model</legend>
+            <label for="llm-provider">Provider</label>
+            <select id="llm-provider" name="llm_provider">
+              <option value="llamacpp">Local llama.cpp-compatible server</option>
+              <option value="openai">OpenAI</option>
+            </select>
+            <label for="llamacpp-base-url">Local model URL</label>
+            <input id="llamacpp-base-url" name="llamacpp_base_url" type="url" required />
+            <label for="llamacpp-chat-model">Local model name</label>
+            <input id="llamacpp-chat-model" name="llamacpp_chat_model" type="text" required />
+            <label for="openai-chat-model">OpenAI model name</label>
+            <input id="openai-chat-model" name="openai_chat_model" type="text" required />
+          </fieldset>
 
-          <label for="llamacpp-base-url">Local model URL</label>
-          <input id="llamacpp-base-url" name="llamacpp_base_url" type="url" required />
+          <fieldset>
+            <legend>embedding model</legend>
+            <p class="field-help">Used for document indexing and semantic search.</p>
+            <label for="embedding-provider">Provider</label>
+            <select id="embedding-provider" name="embedding_provider">
+              <option value="llamacpp">Local llama.cpp-compatible server</option>
+              <option value="openai">OpenAI</option>
+            </select>
+            <label for="embedding-llamacpp-base-url">Local model URL</label>
+            <input id="embedding-llamacpp-base-url" name="embedding_llamacpp_base_url" type="url" required />
+            <label for="embedding-llamacpp-model">Local model name</label>
+            <input id="embedding-llamacpp-model" name="embedding_llamacpp_model" type="text" required />
+            <label for="openai-embedding-model">OpenAI model name</label>
+            <input id="openai-embedding-model" name="openai_embedding_model" type="text" required />
+          </fieldset>
+        </section>
 
-          <label for="llamacpp-chat-model">Local model name</label>
-          <input id="llamacpp-chat-model" name="llamacpp_chat_model" type="text" required />
+        <section id="memory-panel" class="settings-panel" role="tabpanel" hidden>
+          <fieldset>
+            <legend>memory behavior</legend>
+            <label class="checkbox-field" for="memory-enabled">
+              <input id="memory-enabled" name="memory_enabled" type="checkbox" />
+              Enable saved memory
+            </label>
+            <p class="field-help">When disabled, the agent will not read or write your personal memory file.</p>
+            <label class="checkbox-field" for="memory-require-approval">
+              <input id="memory-require-approval" name="memory_require_approval" type="checkbox" />
+              Require approval before saving memory
+            </label>
+            <p class="field-help">Keep this enabled unless you explicitly want the agent to save model-selected memories.</p>
+          </fieldset>
+        </section>
 
-          <label for="openai-chat-model">OpenAI model name</label>
-          <input id="openai-chat-model" name="openai_chat_model" type="text" required />
-        </fieldset>
-
-        <fieldset>
-          <legend>agent behavior</legend>
-          <label for="query-limit">Retrieval results per search</label>
-          <input id="query-limit" name="query_limit" type="number" min="1" max="100" required />
-
-          <label for="agent-max-steps">Maximum tool steps per chat</label>
-          <input id="agent-max-steps" name="agent_max_steps" type="number" min="1" max="12" required />
-        </fieldset>
-
-        <fieldset>
-          <legend>home location</legend>
-          <p class="field-help">Optional coordinates used for nearby transit queries.</p>
-          <label for="home-latitude">Latitude</label>
-          <input id="home-latitude" name="home_latitude" type="number" min="-90" max="90" step="any" />
-
-          <label for="home-longitude">Longitude</label>
-          <input id="home-longitude" name="home_longitude" type="number" min="-180" max="180" step="any" />
-        </fieldset>
+        <section id="general-panel" class="settings-panel" role="tabpanel" hidden>
+          <fieldset>
+            <legend>agent behavior</legend>
+            <label for="query-limit">Retrieval results per search</label>
+            <input id="query-limit" name="query_limit" type="number" min="1" max="100" required />
+            <label for="agent-max-steps">Maximum tool steps per chat</label>
+            <input id="agent-max-steps" name="agent_max_steps" type="number" min="1" max="12" required />
+          </fieldset>
+          <fieldset>
+            <legend>home location</legend>
+            <p class="field-help">Optional coordinates used for nearby transit queries.</p>
+            <label for="home-latitude">Latitude</label>
+            <input id="home-latitude" name="home_latitude" type="number" min="-90" max="90" step="any" />
+            <label for="home-longitude">Longitude</label>
+            <input id="home-longitude" name="home_longitude" type="number" min="-180" max="180" step="any" />
+          </fieldset>
+        </section>
 
         <div class="actions">
           <button type="submit" id="save-settings">Save settings</button>
