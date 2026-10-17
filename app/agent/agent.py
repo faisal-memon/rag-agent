@@ -414,7 +414,12 @@ def _forced_location_mcp_action(question: str, agent: Agent, registry: dict) -> 
                 "arguments": {
                     "server": "muni",
                     "tool": "muni_stops_nearby",
-                    "arguments": {"latitude": latitude, "longitude": longitude, "radius_meters": 1000, "operator_id": "SF"},
+                    "arguments": {
+                        "latitude": "{{user_latitude}}",
+                        "longitude": "{{user_longitude}}",
+                        "radius_meters": 1000,
+                        "operator_id": "SF",
+                    },
                 },
             }
         raise RuntimeError("The Muni MCP server is enabled but its nearby-stops tool is unavailable.")
@@ -428,7 +433,12 @@ def _current_local_time() -> str:
 def _user_location_capability(agent: Agent) -> str:
     """Describe location capability without exposing coordinates to the model."""
     if agent.settings.home_latitude is not None and agent.settings.home_longitude is not None:
-        return "User location is configured and available for location-aware tools."
+        return (
+            "User location is configured. For location-aware tools, the server will inject the saved "
+            "coordinates into the tool call. Use {{user_latitude}} and {{user_longitude}} as the coordinate "
+            "placeholders when a tool schema requires them. Do not ask the user for coordinates, claim they "
+            "are missing, search documents for coordinates, or include coordinate values in your response."
+        )
     return "User location is not configured."
 
 
@@ -620,6 +630,25 @@ def _identity_onboarding_response(detail: str | None = None) -> dict:
     }
 
 
+def _inject_user_location_placeholders(arguments: dict, agent: Agent) -> dict:
+    """Replace private location placeholders immediately before an MCP call."""
+    latitude = agent.settings.home_latitude
+    longitude = agent.settings.home_longitude
+
+    def replace(value):
+        if value == "{{user_latitude}}":
+            return latitude
+        if value == "{{user_longitude}}":
+            return longitude
+        if isinstance(value, dict):
+            return {key: replace(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [replace(item) for item in value]
+        return value
+
+    return replace(arguments)
+
+
 def _execute_tool(
     step: dict,
     question: str = "",
@@ -680,10 +709,13 @@ def _execute_tool(
         elif tool == "get_mcp_registry":
             result = tools.get_mcp_registry()
         elif tool == "call_mcp_tool":
+            mcp_arguments = _inject_user_location_placeholders(
+                arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {}, agent
+            )
             result = tools.call_mcp_tool(
                 server=str(arguments.get("server") or ""),
                 tool=str(arguments.get("tool") or ""),
-                arguments=arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {},
+                arguments=mcp_arguments,
             )
         elif tool == "remember":
             if agent is None:
