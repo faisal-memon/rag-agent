@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements-api.txt
 COPY app/__init__.py ./app/__init__.py
 COPY app/agent ./app/agent
 COPY app/core ./app/core
+COPY app/embed ./app/embed
 COPY sql ./sql
 RUN printf 'APP_VERSION = "%s"\n' "$RAG_AGENT_VERSION" > ./app/agent/_build_version.py
 
