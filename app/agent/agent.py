@@ -653,7 +653,9 @@ def _execute_tool(
                 arguments=arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {},
             )
         elif tool == "remember":
-            if not agent.settings.memory_enabled:
+            if agent is None:
+                result = {"remembered": False, "error": "Agent is required to write memory."}
+            elif not agent.settings.memory_enabled:
                 result = {"remembered": False, "error": "Memory is disabled in Settings."}
             elif agent.settings.memory_require_approval and not memory.write_is_allowed(question, history or []):
                 result = {

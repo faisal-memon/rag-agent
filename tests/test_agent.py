@@ -36,7 +36,9 @@ from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, ind
 
 
 def _settings_with_api(**api_values):
-    return SimpleNamespace(**api_values)
+    defaults = {"memory_enabled": True, "memory_require_approval": True}
+    defaults.update(api_values)
+    return SimpleNamespace(**defaults)
 
 
 def _answer(question: str, history: list[dict] | None = None) -> dict:
