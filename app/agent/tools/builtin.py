@@ -1,14 +1,12 @@
-import inspect
-import re
 from pathlib import Path
 from typing import Any
 
 from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, search_debug
-from app.agent.external_tools.school_lunch import get_school_lunch
-from app.agent.external_tools.city_sports import get_city_sports_schedule
-from app.agent.external_tools.weather import get_weather
-from app.agent.external_tools.mcp_registry import call_mcp_tool, get_mcp_registry
-from app.agent.external_tools.yoga_flow import get_noe_schedule, get_ocean_schedule, get_upcoming_yoga_classes
+from app.agent.tools.integrations.school_lunch import get_school_lunch
+from app.agent.tools.integrations.city_sports import get_city_sports_schedule
+from app.agent.tools.integrations.weather import get_weather
+from app.agent.tools.integrations.mcp_registry import call_mcp_tool, get_mcp_registry
+from app.agent.tools.integrations.yoga_flow import get_noe_schedule, get_ocean_schedule, get_upcoming_yoga_classes
 from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 
@@ -305,47 +303,6 @@ AGENT_TOOL_FUNCTIONS = {
     "get_weather": get_weather,
     "call_mcp_tool": call_mcp_tool,
 }
-
-
-def render_tool_descriptions() -> str:
-    descriptions = []
-    for tool_name in AGENT_TOOL_NAMES:
-        tool_function = AGENT_TOOL_FUNCTIONS[tool_name]
-        summary, argument_docs = _tool_doc_parts(tool_function)
-        descriptions.append(f"- {tool_name}: {summary}")
-        descriptions.append("  Arguments:")
-        for argument_name in inspect.signature(tool_function).parameters:
-            description = argument_docs.get(argument_name, "No description provided.")
-            descriptions.append(f"  - {argument_name}: {description}")
-    return "\n".join(descriptions)
-
-
-def _tool_doc_parts(tool_function: Any) -> tuple[str, dict[str, str]]:
-    doc = inspect.getdoc(tool_function) or ""
-    lines = doc.splitlines()
-    summary = lines[0].strip() if lines else "No description provided."
-    argument_docs: dict[str, str] = {}
-    current_argument: str | None = None
-    in_args = False
-
-    for raw_line in lines[1:]:
-        stripped = raw_line.strip()
-        if not stripped:
-            continue
-        if stripped == "Args:":
-            in_args = True
-            continue
-        if not in_args:
-            continue
-
-        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", stripped)
-        if match:
-            current_argument = match.group(1)
-            argument_docs[current_argument] = match.group(2).strip()
-        elif current_argument:
-            argument_docs[current_argument] = f"{argument_docs[current_argument]} {stripped}".strip()
-
-    return summary, argument_docs
 
 
 def _bounded_limit(limit: Any) -> int:

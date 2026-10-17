@@ -304,7 +304,7 @@ class AgentTest(unittest.TestCase):
                 }
             ]
 
-            with patch("app.agent.tools._normalized_documents", return_value=documents):
+            with patch("app.agent.tools.builtin._normalized_documents", return_value=documents):
                 matches = grep_documents("acme hardware", context_chars=40)
 
         self.assertEqual(1, len(matches))
@@ -317,7 +317,7 @@ class AgentTest(unittest.TestCase):
             markdown_path = Path(temp_dir) / "vehicle.md"
             markdown_path.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
 
-            with patch("app.agent.tools._markdown_path_for_document", return_value=markdown_path):
+            with patch("app.agent.tools.builtin._markdown_path_for_document", return_value=markdown_path):
                 result = read_document("/documents/vehicle.pdf", start_line=2, max_lines=2)
 
         self.assertEqual("two\nthree", result["content"])
@@ -369,8 +369,8 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
-            patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
-            patch("app.agent.agent.tools.read_document", return_value=document),
+            patch("app.agent.tools.builtin.semantic_search", return_value=[chunk]),
+            patch("app.agent.tools.builtin.read_document", return_value=document),
         ):
             result = _answer("What vehicle is recorded?")
 
@@ -465,7 +465,7 @@ class AgentTest(unittest.TestCase):
         self.assertFalse(memory_path.exists())
 
     def test_execute_tool_dispatches_hybrid_search(self) -> None:
-        with patch("app.agent.agent.tools.hybrid_search", return_value={"keyword_matches": [], "semantic_matches": []}) as hybrid_search:
+        with patch("app.agent.tools.builtin.hybrid_search", return_value={"keyword_matches": [], "semantic_matches": []}) as hybrid_search:
             result = _execute_tool({"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}})
 
         hybrid_search.assert_called_once_with(query="52 bus", limit=4)
@@ -488,7 +488,7 @@ class AgentTest(unittest.TestCase):
             with (
                 patch("app.agent.agent.get_llm_client") as get_llm_client,
                 patch("app.agent.agent._complete_text") as complete_text,
-                patch("app.agent.agent.tools.semantic_search") as semantic_search,
+                patch("app.agent.tools.builtin.semantic_search") as semantic_search,
             ):
                 result = Agent(settings).answer("yes", history=history)
 
@@ -679,8 +679,8 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
-            patch("app.agent.agent.tools.semantic_search", return_value=[]),
-            patch("app.agent.agent.tools.keyword_search", return_value=[]),
+            patch("app.agent.tools.builtin.semantic_search", return_value=[]),
+            patch("app.agent.tools.builtin.keyword_search", return_value=[]),
         ):
             result = _answer("What was the 2024 AGI?")
 
@@ -721,8 +721,8 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
-            patch("app.agent.agent.tools.search_documents", return_value=[]),
-            patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
+            patch("app.agent.tools.builtin.search_documents", return_value=[]),
+            patch("app.agent.tools.builtin.semantic_search", return_value=[chunk]),
         ):
             result = _answer("Which vehicle is recorded?")
 

@@ -621,55 +621,7 @@ def _execute_tool(
     tool = step["tool"]
     arguments = step.get("arguments", {})
     try:
-        if tool == "search_documents":
-            result = tools.search_documents(
-                query=str(arguments.get("query") or ""),
-                path_prefix=arguments.get("path_prefix"),
-                limit=int(arguments.get("limit") or tools.DEFAULT_DOCUMENT_LIMIT),
-            )
-        elif tool == "keyword_search":
-            result = tools.keyword_search(
-                query=str(arguments.get("query") or ""),
-                limit=int(arguments.get("limit") or tools.DEFAULT_CHUNK_LIMIT),
-            )
-        elif tool == "semantic_search":
-            result = tools.semantic_search(
-                query=str(arguments.get("query") or ""),
-                limit=int(arguments.get("limit") or tools.DEFAULT_CHUNK_LIMIT),
-            )
-        elif tool == "hybrid_search":
-            result = tools.hybrid_search(
-                query=str(arguments.get("query") or ""),
-                limit=int(arguments.get("limit") or tools.DEFAULT_CHUNK_LIMIT),
-            )
-        elif tool == "grep_documents":
-            result = tools.grep_documents(
-                query=str(arguments.get("query") or ""),
-                path=arguments.get("path"),
-                path_prefix=arguments.get("path_prefix"),
-                limit=int(arguments.get("limit") or tools.DEFAULT_GREP_LIMIT),
-                context_chars=int(arguments.get("context_chars") or tools.DEFAULT_GREP_CONTEXT_CHARS),
-            )
-        elif tool == "read_document":
-            result = tools.read_document(
-                path=str(arguments.get("path") or ""),
-                start_line=int(arguments.get("start_line") or 1),
-                max_lines=int(arguments.get("max_lines") or tools.DEFAULT_DOCUMENT_LINES),
-                max_chars=int(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
-            )
-        elif tool == "get_ocean_schedule":
-            result = tools.get_ocean_schedule(day=arguments.get("day"))
-        elif tool == "get_noe_schedule":
-            result = tools.get_noe_schedule(day=arguments.get("day"))
-        elif tool == "get_upcoming_yoga_classes":
-            result = tools.get_upcoming_yoga_classes()
-        elif tool == "get_school_lunch":
-            result = tools.get_school_lunch(day=arguments.get("day"))
-        elif tool == "get_city_sports_schedule":
-            result = tools.get_city_sports_schedule(day=arguments.get("day"))
-        elif tool == "get_weather":
-            result = tools.get_weather(day=arguments.get("day"))
-        elif tool == "get_mcp_registry":
+        if tool == "get_mcp_registry":
             result = tools.get_mcp_registry()
         elif tool == "call_mcp_tool":
             mcp_arguments = _inject_user_location_placeholders(
@@ -702,7 +654,7 @@ def _execute_tool(
                     section=str(arguments.get("section") or "Inbox"),
                 )
         else:
-            result = {"error": f"Unsupported tool: {tool}"}
+            result = tools.TOOL_CATALOG.execute(tool, arguments)
     except Exception as exc:
         result = {"error": str(exc)}
 

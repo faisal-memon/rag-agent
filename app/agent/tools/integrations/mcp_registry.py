@@ -118,7 +118,28 @@ def call_mcp_tool(server: str, tool: str, arguments: dict | None = None) -> dict
     for entry in registry.get("servers", []):
         if entry.get("name") == server:
             try:
-                result = anyio.run(_call_tool_with_timeout, str(entry["url"]), tool, arguments or {})
+                from app.agent.tools.mcp import MCPTool
+
+                available_tools = entry.get("tools", [])
+                if not isinstance(available_tools, list):
+                    available_tools = []
+                tool_definition = next(
+                    (
+                        item for item in available_tools
+                        if isinstance(item, dict) and item.get("name") == tool
+                    ),
+                    {},
+                )
+                mcp_tool = MCPTool(
+                    server=server,
+                    tool_name=tool,
+                    url=str(entry["url"]),
+                    tool_description=str(tool_definition.get("description") or ""),
+                    schema=tool_definition.get("inputSchema")
+                    or tool_definition.get("input_schema")
+                    or {},
+                )
+                result = mcp_tool.execute(arguments or {})
                 return {"server": server, "tool": tool, "result": result}
             except Exception as exc:  # pragma: no cover - network failures
                 return {"server": server, "tool": tool, "error": f"MCP tool call failed: {exc}"}

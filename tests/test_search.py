@@ -30,8 +30,8 @@ class SearchTest(unittest.TestCase):
             "vector_score": 0.9,
         }
         with (
-            patch("app.agent.tools.keyword_search", return_value=[keyword_chunk]),
-            patch("app.agent.tools.semantic_search", return_value=[semantic_chunk]),
+            patch("app.agent.tools.builtin.keyword_search", return_value=[keyword_chunk]),
+            patch("app.agent.tools.builtin.semantic_search", return_value=[semantic_chunk]),
         ):
             result = hybrid_search("income")
 

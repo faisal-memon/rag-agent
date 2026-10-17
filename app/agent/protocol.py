@@ -22,7 +22,7 @@ class ToolPlannerAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["tool"]
-    tool: str = Field(json_schema_extra={"enum": list(tools.AGENT_TOOL_FUNCTIONS)})
+    tool: str = Field(json_schema_extra={"enum": list(tools.TOOL_CATALOG.names)})
     arguments: dict[str, Any]
 
 
@@ -120,7 +120,7 @@ def sanitize_step(step: Any) -> dict | None:
     if not isinstance(step, dict):
         return None
     tool = step.get("tool")
-    if tool not in tools.AGENT_TOOL_FUNCTIONS:
+    if tool not in tools.TOOL_CATALOG.names:
         return None
     arguments = step.get("arguments")
     if not isinstance(arguments, dict):
@@ -241,6 +241,6 @@ def sanitize_planner_action(action: Any) -> dict | None:
         return sanitize_step(canonical.model_dump())
 
     tool = action.get("action")
-    if tool not in tools.AGENT_TOOL_FUNCTIONS:
+    if tool not in tools.TOOL_CATALOG.names:
         return None
     return sanitize_step({"tool": tool, "arguments": action.get("arguments")})
