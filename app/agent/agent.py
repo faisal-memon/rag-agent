@@ -396,6 +396,13 @@ def _current_local_time() -> str:
     return datetime.now().astimezone().isoformat(timespec="minutes")
 
 
+def _user_location_capability(agent: Agent) -> str:
+    """Describe location capability without exposing coordinates to the model."""
+    if agent.settings.home_latitude is not None and agent.settings.home_longitude is not None:
+        return "User location is configured and available for location-aware tools."
+    return "User location is not configured."
+
+
 def _decide_next_action(
     question: str,
     conversation: str,
@@ -424,6 +431,7 @@ def _decide_next_action(
             "question": question,
             "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
             "current_local_time": _current_local_time(),
+            "user_location_capability": _user_location_capability(agent),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
             "mcp_registry": json.dumps(mcp_registry, indent=2),
         },
