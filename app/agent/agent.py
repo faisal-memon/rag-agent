@@ -474,10 +474,14 @@ def _decide_next_action(
     profile_name: str | None = None,
 ) -> dict:
     mcp_registry = tools.get_mcp_registry()
-    forced_location_action = _forced_location_mcp_action(question, agent, mcp_registry)
-    if forced_location_action is not None:
-        _append_debug(debug, "controller_decision", phase="planning", decision="forced_location_mcp", parsed=forced_location_action)
-        return forced_location_action
+    # Force the location-aware MCP call only for the first action in a turn.
+    # After it returns, let the planner synthesize from that result instead of
+    # issuing the same controller action again.
+    if not tool_results:
+        forced_location_action = _forced_location_mcp_action(question, agent, mcp_registry)
+        if forced_location_action is not None:
+            _append_debug(debug, "controller_decision", phase="planning", decision="forced_location_mcp", parsed=forced_location_action)
+            return forced_location_action
     prompt = agent.render_prompt(
         "planner.md",
         {
