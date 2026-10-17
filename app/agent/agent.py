@@ -35,6 +35,9 @@ class Agent:
     def startup(self) -> str | None:
         """Load prompts and the durable memory file before serving requests."""
         self.prompts.load()
+        if not self.settings.memory_enabled:
+            self.memory.loaded = True
+            return None
         return self.memory.load()
 
     def answer(
