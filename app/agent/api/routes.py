@@ -83,6 +83,8 @@ def _runtime_settings() -> AgentRuntimeSettings:
         agent_max_steps=settings.agent_max_steps,
         home_latitude=settings.home_latitude,
         home_longitude=settings.home_longitude,
+        memory_enabled=settings.memory_enabled,
+        memory_require_approval=settings.memory_require_approval,
     )
 
 

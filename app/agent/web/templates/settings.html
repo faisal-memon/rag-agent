@@ -23,6 +23,7 @@
       <div class="settings-tabs" role="tablist" aria-label="Settings sections">
         <button type="button" class="settings-tab active" role="tab" aria-selected="true" aria-controls="models-panel" data-panel="models-panel">Models</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="general-panel" data-panel="general-panel">General</button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="memory-panel" data-panel="memory-panel">Memory</button>
       </div>
 
       <form class="query-card settings-form" id="settings-form">
@@ -56,6 +57,22 @@
             <input id="embedding-llamacpp-model" name="embedding_llamacpp_model" type="text" required />
             <label for="openai-embedding-model">OpenAI model name</label>
             <input id="openai-embedding-model" name="openai_embedding_model" type="text" required />
+          </fieldset>
+        </section>
+
+        <section id="memory-panel" class="settings-panel" role="tabpanel" hidden>
+          <fieldset>
+            <legend>memory behavior</legend>
+            <label class="checkbox-field" for="memory-enabled">
+              <input id="memory-enabled" name="memory_enabled" type="checkbox" />
+              Enable saved memory
+            </label>
+            <p class="field-help">When disabled, the agent will not read or write your personal memory file.</p>
+            <label class="checkbox-field" for="memory-require-approval">
+              <input id="memory-require-approval" name="memory_require_approval" type="checkbox" />
+              Require approval before saving memory
+            </label>
+            <p class="field-help">Keep this enabled unless you explicitly want the agent to save model-selected memories.</p>
           </fieldset>
         </section>
 

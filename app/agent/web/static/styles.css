@@ -1011,3 +1011,14 @@ body.agent-only .actions {
   display: grid;
   gap: 20px;
 }
+
+.checkbox-field {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkbox-field input {
+  width: auto;
+}

@@ -78,7 +78,11 @@ def _answer_with_agent(
     if onboarding_response:
         return onboarding_response
 
-    memory_approval_response = _handle_memory_approval(agent, question, history, on_progress, reasoning)
+    memory_approval_response = (
+        _handle_memory_approval(agent, question, history, on_progress, reasoning)
+        if agent.settings.memory_enabled and agent.settings.memory_require_approval
+        else None
+    )
     if memory_approval_response:
         return memory_approval_response
 
@@ -315,6 +319,8 @@ def _prepare_question_and_memory(
     debug: list[dict],
 ) -> tuple[str, dict, dict | None]:
     """Load memory and complete the profile-name onboarding flow when needed."""
+    if not agent.settings.memory_enabled:
+        return question, {"path": "(disabled)", "content": "", "exists": False, "truncated": False, "error": None}, None
     memory_state = agent.memory.read()
     original_question = _identity_question_from_history(history)
     if profile_name or memory.profile_name(memory_state):
@@ -636,7 +642,9 @@ def _execute_tool(
                 arguments=arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {},
             )
         elif tool == "remember":
-            if not memory.write_is_allowed(question, history or []):
+            if not agent.settings.memory_enabled:
+                result = {"remembered": False, "error": "Memory is disabled in Settings."}
+            elif agent.settings.memory_require_approval and not memory.write_is_allowed(question, history or []):
                 result = {
                     "remembered": False,
                     "error": (

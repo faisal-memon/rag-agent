@@ -80,6 +80,8 @@ class AgentRuntimeSettings(BaseModel):
     agent_max_steps: int = Field(ge=1, le=12)
     home_latitude: float | None = Field(default=None, ge=-90, le=90)
     home_longitude: float | None = Field(default=None, ge=-180, le=180)
+    memory_enabled: bool = True
+    memory_require_approval: bool = True
 
 
 class RetrievalDebugResponse(BaseModel):
