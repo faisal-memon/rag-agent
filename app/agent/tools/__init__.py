@@ -6,16 +6,53 @@ from app.agent.tools.catalog import ToolCatalog
 from app.agent.tools.mcp import MCPTool
 from app.agent.tools.static import StaticTool
 
-TOOL_CATALOG = ToolCatalog()
-for _tool_name, _tool_function in builtin.AGENT_TOOL_FUNCTIONS.items():
-    TOOL_CATALOG.register(StaticTool(_tool_function))
 
-# Keep the function-oriented names available while callers migrate to the catalog.
-AGENT_TOOL_NAMES = builtin.AGENT_TOOL_NAMES
-AGENT_TOOL_FUNCTIONS = builtin.AGENT_TOOL_FUNCTIONS
-RETRIEVAL_TOOL_NAMES = builtin.RETRIEVAL_TOOL_NAMES
+def _static_tool_catalog() -> ToolCatalog:
+    catalog = ToolCatalog()
+    for function in builtin.STATIC_TOOL_FUNCTIONS.values():
+        catalog.register(StaticTool(function))
+    return catalog
 
-for _name in AGENT_TOOL_FUNCTIONS:
+
+STATIC_TOOL_CATALOG = _static_tool_catalog()
+
+
+def build_tool_catalog(registry: dict | None = None) -> ToolCatalog:
+    """Build the tools available for one agent turn from built-ins and MCP discovery."""
+    if registry is None:
+        from app.agent.tools.integrations.mcp_registry import get_mcp_registry
+
+        registry = get_mcp_registry()
+
+    catalog = _static_tool_catalog()
+    servers = registry.get("servers", []) if isinstance(registry, dict) else []
+    for server in servers:
+        if not isinstance(server, dict) or not server.get("name") or not server.get("url"):
+            continue
+        definitions = server.get("tools", [])
+        if not isinstance(definitions, list):
+            continue
+        for definition in definitions:
+            if not isinstance(definition, dict) or not definition.get("name"):
+                continue
+            catalog.register(
+                MCPTool(
+                    server=str(server["name"]),
+                    tool_name=str(definition["name"]),
+                    url=str(server["url"]),
+                    tool_description=str(definition.get("description") or ""),
+                    schema=definition.get("inputSchema") or definition.get("input_schema") or {},
+                )
+            )
+    return catalog
+
+
+def render_tool_descriptions(catalog: ToolCatalog | None = None) -> str:
+    """Render the planner's tool list from registered tool interfaces."""
+    return (catalog or STATIC_TOOL_CATALOG).render_descriptions()
+
+
+for _name in builtin.STATIC_TOOL_FUNCTIONS:
     globals()[_name] = getattr(builtin, _name)
 
 for _name in (
@@ -35,15 +72,7 @@ for _name in (
     globals()[_name] = getattr(builtin, _name)
 
 
-def render_tool_descriptions() -> str:
-    """Render planner instructions from the registered tool interfaces."""
-    return TOOL_CATALOG.render_descriptions()
-
-from app.agent.tools.integrations.mcp_registry import call_mcp_tool, get_mcp_registry
-
 __all__ = [
-    "Tool", "StaticTool", "MCPTool", "ToolCatalog", "TOOL_CATALOG",
-    "AGENT_TOOL_NAMES", "AGENT_TOOL_FUNCTIONS", "RETRIEVAL_TOOL_NAMES",
-    "call_mcp_tool", "get_mcp_registry", "render_tool_descriptions",
-    *AGENT_TOOL_NAMES,
+    "Tool", "StaticTool", "MCPTool", "ToolCatalog", "STATIC_TOOL_CATALOG",
+    "build_tool_catalog", "render_tool_descriptions", *builtin.STATIC_TOOL_FUNCTIONS,
 ]

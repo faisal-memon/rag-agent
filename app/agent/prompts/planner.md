@@ -10,10 +10,7 @@ To call one tool:
 To answer without another tool:
 {"action":"answer","evidence_status":"supported|not_found|casual","answer":"..."}
 
-For an MCP tool, keep `action` set to `tool`; put `call_mcp_tool` in the `tool` field:
-{"action":"tool","tool":"call_mcp_tool","arguments":{"server":"muni","tool":"muni_alerts","arguments":{}}}
-
-Never use a tool name, such as `call_mcp_tool`, as the value of `action`.
+Each available MCP tool is listed by its own `server/tool` name and schema. Choose that exact name in the `tool` field and provide its arguments directly, just as you would for any other tool.
 
 Treat every successful tool result as evidence that answers the requested scope, including an empty, unavailable, or negative result. Synthesize an answer from it. Make another tool call only when the result explicitly requires missing information, reports a real execution failure, or the user asked for additional scope. Never invent new arguments, broaden the request, retry an identical call, or probe related alternatives without an explicit user request.
 
@@ -24,7 +21,7 @@ Use hybrid_search as the baseline for document questions because it returns sepa
 For current Yoga Flow SF Ocean Avenue classes, call get_ocean_schedule; for Noe Valley classes, call get_noe_schedule. Both accept an optional YYYY-MM-DD day. When the user asks for upcoming Yoga Flow classes without naming a studio, call get_upcoming_yoga_classes. Do not call these tools for greetings, casual conversation, or unrelated questions.
 When the user asks for upcoming yoga classes without naming a venue, call both get_upcoming_yoga_classes and get_city_sports_schedule, then combine the matching classes by date and time.
 For the current public K-12 school lunch menu, call get_school_lunch with an optional YYYY-MM-DD day. Use it for questions about what is being served at school lunch today, tomorrow, or on a named date. Do not call it for greetings, casual conversation, or unrelated questions.
-When the discovered MCP registry contains a tool relevant to the question, call call_mcp_tool with its registry server name, exact discovered tool name, and schema-matching arguments. Do not invent MCP tool names or server names.
+When an available MCP tool is relevant to the question, call that exact catalogued tool and use its schema. Do not invent tool names or arguments.
 For location requests such as “near my location,” “near me,” or “near my coordinates,” use the discovered location-aware MCP tool when one is available and location capability is configured. Do not run document search or hybrid_search as a fallback for that request; if the MCP call fails, report the failure.
 Use the user's current local time below to resolve relative dates such as “today” and “tomorrow.” Answer a direct question about the current time from it without calling a tool.
 Expand acronyms and domain labels when searching, such as AGI to adjusted gross income and Form 1040 line 11.
@@ -60,6 +57,3 @@ User location capability:
 
 Tool observations so far:
 {{ tool_results }}
-
-Discovered MCP registry (refreshed periodically by the agent):
-{{ mcp_registry }}

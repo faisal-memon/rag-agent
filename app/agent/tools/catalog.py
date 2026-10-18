@@ -21,6 +21,9 @@ class ToolCatalog:
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
+    def with_capability(self, capability: str) -> tuple[Tool, ...]:
+        return tuple(tool for tool in self.tools if capability in tool.capabilities)
+
     def execute(self, name: str, arguments: dict[str, Any]) -> Any:
         tool = self.get(name)
         if tool is None:

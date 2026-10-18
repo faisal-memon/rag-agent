@@ -89,6 +89,7 @@ def _answer_with_agent(
     if memory_approval_response:
         return memory_approval_response
 
+    catalog = tools.build_tool_catalog()
     client, model = get_llm_client(agent.settings)
 
     answer = _run_agent_loop(
@@ -104,6 +105,7 @@ def _answer_with_agent(
         reasoning,
         debug,
         seen_calls,
+        catalog,
         on_progress,
         client,
         model,
@@ -148,6 +150,7 @@ def _run_agent_loop(
     reasoning: list[dict],
     debug: list[dict],
     seen_calls: set[str],
+    catalog: tools.ToolCatalog,
     on_progress: ProgressCallback | None,
     client: OpenAI,
     model: str,
@@ -174,12 +177,14 @@ def _run_agent_loop(
             debug,
             agent,
             profile_name,
+            catalog,
         )
         answer, decision_feedback, should_stop = _handle_planner_decision(
             decision,
             plan,
             tool_results,
             debug,
+            catalog,
         )
         if should_stop:
             break
@@ -194,14 +199,21 @@ def _run_agent_loop(
             tool_results,
             debug,
             seen_calls,
+            catalog,
             on_progress,
         )
-        if decision["tool"] == "call_mcp_tool":
-            result = tool_result.get("result") or {}
-            if isinstance(result, dict) and result.get("error"):
-                server = decision["arguments"].get("server", "unknown")
-                tool = decision["arguments"].get("tool", "unknown")
-                raise RuntimeError(f"MCP tool {server}/{tool} failed: {result['error']}")
+        selected_tool = catalog.get(decision["tool"])
+        result = tool_result.get("result") or {}
+        if isinstance(selected_tool, tools.MCPTool) and isinstance(result, dict):
+            error = result.get("error")
+            if result.get("isError"):
+                content = result.get("content") or []
+                error = "; ".join(
+                    str(item.get("text")) for item in content
+                    if isinstance(item, dict) and item.get("text")
+                ) or "MCP server reported a tool error."
+            if error:
+                raise RuntimeError(f"MCP tool {decision['tool']} failed: {error}")
 
     return answer or ""
 
@@ -211,6 +223,7 @@ def _handle_planner_decision(
     plan: list[dict],
     tool_results: list[dict],
     debug: list[dict],
+    catalog: tools.ToolCatalog,
 ) -> tuple[str | None, str, bool]:
     """Apply a planner decision that does not execute a tool."""
     if decision["action"] == "synthesize":
@@ -220,10 +233,10 @@ def _handle_planner_decision(
     if decision["action"] != "answer":
         return None, "", False
 
-    if decision["evidence_status"] == "not_found" and not _absence_search_complete(plan):
+    if decision["evidence_status"] == "not_found" and not _absence_search_complete(plan, catalog):
         feedback = (
             "The not-found conclusion was rejected. Before claiming absence, use at least two different "
-            "retrieval tools, including keyword_search or grep_documents."
+            "document-retrieval tools, including one exact-search tool."
         )
         _append_debug(
             debug,
@@ -254,6 +267,7 @@ def _execute_planned_tool(
     tool_results: list[dict],
     debug: list[dict],
     seen_calls: set[str],
+    catalog: tools.ToolCatalog,
     on_progress: ProgressCallback | None,
 ) -> dict:
     """Execute one planner-selected tool and record its trace events."""
@@ -295,7 +309,7 @@ def _execute_planned_tool(
         tool=step["tool"],
         arguments=step["arguments"],
     )
-    tool_result = _execute_tool(step, question, history, agent)
+    tool_result = _execute_tool(step, question, history, agent, catalog)
     tool_results.append(tool_result)
     _emit_progress(
         on_progress,
@@ -422,8 +436,9 @@ def _decide_next_action(
     debug: list[dict],
     agent: Agent,
     profile_name: str | None = None,
+    catalog: tools.ToolCatalog | None = None,
 ) -> dict:
-    mcp_registry = tools.get_mcp_registry()
+    catalog = catalog or tools.STATIC_TOOL_CATALOG
     prompt = agent.render_prompt(
         "planner.md",
         {
@@ -431,15 +446,14 @@ def _decide_next_action(
             "decision_feedback": decision_feedback or "(none)",
             "memory_path": memory_state.get("path") or "not configured",
             "memory": memory.prompt_content(memory_state),
-            "tool_descriptions": tools.render_tool_descriptions(),
-            "planner_action_schema": protocol.planner_action_schema(),
+            "tool_descriptions": tools.render_tool_descriptions(catalog),
+            "planner_action_schema": protocol.planner_action_schema(catalog),
             "conversation": conversation or "(none)",
             "question": question,
             "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
             "current_local_time": _current_local_time(),
             "user_location_capability": _user_location_capability(agent),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
-            "mcp_registry": json.dumps(mcp_registry, indent=2),
         },
     )
     text = _complete_text(
@@ -452,7 +466,7 @@ def _decide_next_action(
         phase="planning",
     )
     _append_debug(debug, "model_response", phase="planning", raw_text=text)
-    native_step = protocol.extract_native_tool_call(text)
+    native_step = protocol.extract_native_tool_call(text, catalog)
     if native_step:
         _append_debug(
             debug,
@@ -479,8 +493,8 @@ def _decide_next_action(
                     "evidence_status": evidence_status,
                     "answer": answer,
                 }
-        if parsed.get("action") == "tool" or parsed.get("action") in tools.AGENT_TOOL_FUNCTIONS:
-            step = protocol.sanitize_planner_action(parsed)
+        if parsed.get("action") == "tool" or catalog.get(str(parsed.get("action") or "")):
+            step = protocol.sanitize_planner_action(parsed, catalog)
             if step:
                 return {"action": "tool", **step}
             _append_debug(
@@ -617,22 +631,14 @@ def _execute_tool(
     question: str = "",
     history: list[dict] | None = None,
     agent: Agent | None = None,
+    catalog: tools.ToolCatalog | None = None,
 ) -> dict:
     tool = step["tool"]
     arguments = step.get("arguments", {})
+    recorded_arguments = arguments
+    catalog = catalog or tools.STATIC_TOOL_CATALOG
     try:
-        if tool == "get_mcp_registry":
-            result = tools.get_mcp_registry()
-        elif tool == "call_mcp_tool":
-            mcp_arguments = _inject_user_location_placeholders(
-                arguments.get("arguments") if isinstance(arguments.get("arguments"), dict) else {}, agent
-            )
-            result = tools.call_mcp_tool(
-                server=str(arguments.get("server") or ""),
-                tool=str(arguments.get("tool") or ""),
-                arguments=mcp_arguments,
-            )
-        elif tool == "remember":
+        if tool == "remember":
             if agent is None:
                 result = {"remembered": False, "error": "Agent is required to write memory."}
             elif not agent.settings.memory_enabled:
@@ -654,11 +660,16 @@ def _execute_tool(
                     section=str(arguments.get("section") or "Inbox"),
                 )
         else:
-            result = tools.TOOL_CATALOG.execute(tool, arguments)
+            selected_tool = catalog.get(tool)
+            if isinstance(selected_tool, tools.MCPTool):
+                execution_arguments = _inject_user_location_placeholders(arguments, agent)
+            else:
+                execution_arguments = arguments
+            result = catalog.execute(tool, execution_arguments)
     except Exception as exc:
         result = {"error": str(exc)}
 
-    return {"tool": tool, "arguments": arguments, "result": result}
+    return {"tool": tool, "arguments": recorded_arguments, "result": result}
 
 
 def _synthesize_answer(
@@ -823,10 +834,17 @@ def _conversation_context(history: list[dict]) -> str:
     return "\n".join(reversed(messages))
 
 
-def _absence_search_complete(plan: list[dict]) -> bool:
+def _absence_search_complete(plan: list[dict], catalog: tools.ToolCatalog) -> bool:
     used_tools = {step.get("tool") for step in plan}
-    retrieval_tools = used_tools & set(tools.RETRIEVAL_TOOL_NAMES)
-    used_exact_search = bool(used_tools & {"keyword_search", "grep_documents"})
+    retrieval_tools = {
+        name for name in used_tools
+        if (tool := catalog.get(str(name or "")))
+        and "document_retrieval" in tool.capabilities
+    }
+    used_exact_search = any(
+        (tool := catalog.get(str(name or ""))) and "exact_search" in tool.capabilities
+        for name in used_tools
+    )
     return len(retrieval_tools) >= 2 and used_exact_search
 
 

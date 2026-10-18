@@ -5,8 +5,8 @@ from app.agent.search import RETRIEVAL_MODE_KEYWORD, RETRIEVAL_MODE_SEMANTIC, se
 from app.agent.tools.integrations.school_lunch import get_school_lunch
 from app.agent.tools.integrations.city_sports import get_city_sports_schedule
 from app.agent.tools.integrations.weather import get_weather
-from app.agent.tools.integrations.mcp_registry import call_mcp_tool, get_mcp_registry
 from app.agent.tools.integrations.yoga_flow import get_noe_schedule, get_ocean_schedule, get_upcoming_yoga_classes
+from app.agent.tools.base import with_capabilities
 from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 
@@ -16,30 +16,6 @@ DEFAULT_DOCUMENT_CHARS = 12000
 DEFAULT_DOCUMENT_LINES = 200
 DEFAULT_GREP_LIMIT = 12
 DEFAULT_GREP_CONTEXT_CHARS = 240
-
-AGENT_TOOL_NAMES = (
-    "search_documents",
-    "keyword_search",
-    "semantic_search",
-    "hybrid_search",
-    "grep_documents",
-    "read_document",
-    "remember",
-    "get_ocean_schedule",
-    "get_noe_schedule",
-    "get_upcoming_yoga_classes",
-    "get_school_lunch",
-    "get_city_sports_schedule",
-    "get_weather",
-    "call_mcp_tool",
-)
-RETRIEVAL_TOOL_NAMES = (
-    "search_documents",
-    "keyword_search",
-    "semantic_search",
-    "grep_documents",
-)
-
 
 def remember(entry: str, section: str = "Inbox") -> None:
     """Append a concise Markdown bullet to the personal RAG memory file.
@@ -54,6 +30,7 @@ def remember(entry: str, section: str = "Inbox") -> None:
     raise RuntimeError("The remember tool must be executed by the agent controller.")
 
 
+@with_capabilities("document_retrieval")
 def search_documents(
     query: str = "",
     path_prefix: str | None = None,
@@ -126,6 +103,7 @@ def search_documents(
     ]
 
 
+@with_capabilities("document_retrieval", "exact_search")
 def keyword_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
     """Search indexed chunks with PostgreSQL full-text search for exact language.
 
@@ -138,6 +116,7 @@ def keyword_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
     return result["chunks"]
 
 
+@with_capabilities("document_retrieval")
 def semantic_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
     """Search indexed chunks with vector similarity for meaning and paraphrases.
 
@@ -150,6 +129,7 @@ def semantic_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> list[dict]:
     return result["chunks"]
 
 
+@with_capabilities("document_retrieval", "exact_search")
 def hybrid_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> dict[str, list[dict]]:
     """Search with both full-text and vector retrieval and preserve both rankings.
 
@@ -164,6 +144,7 @@ def hybrid_search(query: str, limit: int = DEFAULT_CHUNK_LIMIT) -> dict[str, lis
     }
 
 
+@with_capabilities("document_retrieval")
 def read_document(
     path: str,
     start_line: int = 1,
@@ -227,6 +208,7 @@ def read_document(
     }
 
 
+@with_capabilities("document_retrieval", "exact_search")
 def grep_documents(
     query: str,
     path: str | None = None,
@@ -287,7 +269,7 @@ def grep_documents(
     return matches
 
 
-AGENT_TOOL_FUNCTIONS = {
+STATIC_TOOL_FUNCTIONS = {
     "search_documents": search_documents,
     "keyword_search": keyword_search,
     "semantic_search": semantic_search,
@@ -301,7 +283,6 @@ AGENT_TOOL_FUNCTIONS = {
     "get_school_lunch": get_school_lunch,
     "get_city_sports_schedule": get_city_sports_schedule,
     "get_weather": get_weather,
-    "call_mcp_tool": call_mcp_tool,
 }
 
 

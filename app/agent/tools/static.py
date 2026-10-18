@@ -62,6 +62,10 @@ class StaticTool(Tool):
     function: Callable[..., Any]
 
     @property
+    def capabilities(self) -> frozenset[str]:
+        return getattr(self.function, "__tool_capabilities__", frozenset())
+
+    @property
     def name(self) -> str:
         return self.function.__name__
 

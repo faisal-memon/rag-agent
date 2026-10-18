@@ -25,6 +25,7 @@ from app.agent.agent import (
     _execute_tool,
 )
 from app.agent.config import get_api_settings
+from app.agent import tools
 from app.agent.tools import (
     _bounded_limit,
     grep_documents,
@@ -110,56 +111,52 @@ class AgentTest(unittest.TestCase):
             _sanitize_step({"tool": "get_upcoming_yoga_classes", "arguments": {"ignored": "value"}}),
         )
 
-    def test_sanitize_step_accepts_mcp_tool_arguments(self) -> None:
+    def test_sanitize_step_accepts_discovered_mcp_tool_arguments(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "muni_alerts", "description": "Transit alerts.",
+                "inputSchema": {"type": "object", "properties": {"route": {"type": "string"}}},
+            }],
+        }]})
         self.assertEqual(
             {
-                "tool": "call_mcp_tool",
-                "arguments": {
-                    "server": "muni",
-                    "tool": "muni_alerts",
-                    "arguments": {"route": "N Judah"},
-                },
+                "tool": "muni/muni_alerts",
+                "arguments": {"route": "N Judah"},
             },
             _sanitize_step(
                 {
-                    "tool": "call_mcp_tool",
-                    "arguments": {
-                        "server": "muni",
-                        "tool": "muni_alerts",
-                        "args": {"route": "N Judah"},
-                    },
-                }
+                    "tool": "muni/muni_alerts", "arguments": {"route": "N Judah"},
+                }, catalog,
             ),
         )
 
     def test_sanitize_planner_action_accepts_direct_mcp_tool_action(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "muni_alerts", "description": "Transit alerts.",
+                "inputSchema": {"type": "object", "properties": {"route": {"type": "string"}}},
+            }],
+        }]})
         self.assertEqual(
-            {
-                "tool": "call_mcp_tool",
-                "arguments": {
-                    "server": "muni",
-                    "tool": "muni_alerts",
-                    "arguments": {"route": "N Judah"},
-                },
-            },
+            {"tool": "muni/muni_alerts", "arguments": {"route": "N Judah"}},
             _sanitize_planner_action(
                 {
-                    "action": "call_mcp_tool",
-                    "arguments": {
-                        "server": "muni",
-                        "tool": "muni_alerts",
-                        "args": {"route": "N Judah"},
-                    },
-                }
+                    "action": "tool", "tool": "muni/muni_alerts", "arguments": {"route": "N Judah"},
+                }, catalog,
             ),
         )
 
-    def test_sanitize_step_rejects_incomplete_mcp_tool_call(self) -> None:
-        self.assertIsNone(
-            _sanitize_step(
-                {"tool": "call_mcp_tool", "arguments": {"server": "muni", "tool": "muni_alerts"}}
-            )
-        )
+    def test_planner_schema_includes_each_discovered_mcp_tool(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "muni_alerts", "inputSchema": {"type": "object"},
+            }],
+        }]})
+        schema = json.loads(_planner_action_schema(catalog))
+        enum = schema["$defs"]["ToolPlannerAction"]["properties"]["tool"]["enum"]
+
+        self.assertIn("muni/muni_alerts", enum)
+        self.assertNotIn("call_mcp_tool", enum)
 
     def test_sanitize_step_preserves_school_lunch_day(self) -> None:
         self.assertEqual(
@@ -264,7 +261,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Do not call these tools for greetings", prompt)
         self.assertIn("Response schema: choose exactly one object allowed by this JSON Schema", prompt)
         self.assertIn('"const": "tool"', prompt)
-        self.assertIn('"action":"tool","tool":"call_mcp_tool"', prompt)
+        self.assertIn('"action":"tool","tool":"semantic_search"', prompt)
         self.assertIn("Treat every successful tool result as evidence", prompt)
         self.assertIn("Never invent new arguments", prompt)
         self.assertIn("get_ocean_schedule", prompt)
@@ -470,6 +467,25 @@ class AgentTest(unittest.TestCase):
 
         hybrid_search.assert_called_once_with(query="52 bus", limit=4)
         self.assertEqual({"keyword_matches": [], "semantic_matches": []}, result["result"])
+
+    def test_execute_mcp_tool_injects_location_without_recording_coordinates(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "find_nearby_stops", "description": "Find nearby stops.",
+                "inputSchema": {"type": "object", "properties": {"latitude": {"type": "number"}}},
+            }],
+        }]})
+        args = {"latitude": "{{user_latitude}}", "longitude": "{{user_longitude}}"}
+        agent = SimpleNamespace(settings=_settings_with_api(home_latitude=37.7, home_longitude=-122.4))
+
+        with patch.object(tools.MCPTool, "execute", return_value={"content": []}) as execute:
+            result = _execute_tool(
+                {"tool": "muni/find_nearby_stops", "arguments": args}, agent=agent, catalog=catalog
+            )
+
+        execute.assert_called_once_with({"latitude": 37.7, "longitude": -122.4})
+        self.assertEqual(args, result["arguments"])
+        self.assertNotIn("37.7", json.dumps(result))
 
     def test_agent_can_remember_after_approval_reply(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

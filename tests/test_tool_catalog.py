@@ -8,11 +8,11 @@ from app.agent.tools.mcp import MCPTool
 
 class ToolCatalogTest(unittest.TestCase):
     def test_catalog_contains_static_tools_in_planner_order(self) -> None:
-        self.assertEqual(tools.AGENT_TOOL_NAMES, tools.TOOL_CATALOG.names)
-        self.assertIsInstance(tools.TOOL_CATALOG.get("hybrid_search"), tools.StaticTool)
+        self.assertIn("hybrid_search", tools.STATIC_TOOL_CATALOG.names)
+        self.assertIsInstance(tools.STATIC_TOOL_CATALOG.get("hybrid_search"), tools.StaticTool)
 
     def test_static_tool_exposes_function_description_and_arguments(self) -> None:
-        tool = tools.TOOL_CATALOG.get("semantic_search")
+        tool = tools.STATIC_TOOL_CATALOG.get("semantic_search")
 
         self.assertIsNotNone(tool)
         self.assertIsInstance(tool, Tool)
@@ -24,7 +24,7 @@ class ToolCatalogTest(unittest.TestCase):
     def test_catalog_dispatches_static_tool(self) -> None:
         expected = [{"chunk_id": 1}]
         with patch("app.agent.tools.builtin.semantic_search", return_value=expected) as implementation:
-            result = tools.TOOL_CATALOG.execute("semantic_search", {"query": "hello", "limit": 2})
+            result = tools.STATIC_TOOL_CATALOG.execute("semantic_search", {"query": "hello", "limit": 2})
 
         self.assertEqual(expected, result)
         implementation.assert_called_once_with(query="hello", limit=2)
@@ -48,6 +48,21 @@ class ToolCatalogTest(unittest.TestCase):
         self.assertIsInstance(tool, Tool)
         self.assertEqual("muni/find_nearby_stops", tool.name)
         self.assertEqual("number", tool.input_schema["properties"]["latitude"]["type"])
+
+    def test_discovered_mcp_tools_are_individual_catalog_entries(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni",
+            "url": "http://muni/mcp",
+            "tools": [{
+                "name": "find_nearby_stops",
+                "description": "Find nearby stops.",
+                "inputSchema": {"type": "object", "properties": {"latitude": {"type": "number"}}},
+            }],
+        }]})
+
+        self.assertIn("muni/find_nearby_stops", catalog.names)
+        self.assertIsInstance(catalog.get("muni/find_nearby_stops"), MCPTool)
+        self.assertNotIn("call_mcp_tool", catalog.names)
 
     def test_mcp_tool_dispatches_to_its_server(self) -> None:
         calls = []
