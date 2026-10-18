@@ -94,6 +94,7 @@ def _reload_agent(request: Request) -> None:
     agent = Agent(get_api_settings())
     request.app.state.agent = agent
     agent.startup()
+    agent.refresh_tool_catalog()
 
 
 @router.get("/", include_in_schema=False)

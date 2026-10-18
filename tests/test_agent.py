@@ -66,10 +66,27 @@ class AgentTest(unittest.TestCase):
             with patch(
                 "app.agent.tools.integrations.mcp_registry.get_mcp_registry", return_value=updated_registry
             ):
-                updated = agent.tool_catalog()
+                self.assertIs(first, agent.tool_catalog())
+                updated = agent.refresh_tool_catalog()
 
         self.assertIsNot(first, updated)
         self.assertIn("muni/nearby_stops", updated.names)
+
+    def test_agent_keeps_last_catalog_when_registry_refresh_fails(self) -> None:
+        registry = {"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{"name": "nearby_stops"}],
+        }]}
+        agent = Agent(get_api_settings())
+
+        with patch(
+            "app.agent.tools.integrations.mcp_registry.get_mcp_registry",
+            side_effect=[registry, {"error": "registry unavailable"}],
+        ):
+            catalog = agent.refresh_tool_catalog()
+            after_failure = agent.refresh_tool_catalog()
+
+        self.assertIs(catalog, after_failure)
+        self.assertIn("muni/nearby_stops", after_failure.names)
 
     def test_memory_store_refreshes_after_append(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

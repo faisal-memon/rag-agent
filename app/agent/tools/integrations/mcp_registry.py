@@ -11,7 +11,7 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from app.agent.config import get_api_settings
 
-_CACHE_TTL_SECONDS = 300.0
+MCP_REGISTRY_CACHE_TTL_SECONDS = 300.0
 _registry_cache: dict | None = None
 _registry_cached_at = 0.0
 
@@ -43,7 +43,10 @@ class MCPRegistry(BaseModel):
 def get_mcp_registry() -> dict:
     """List approved MCP servers from the configured registry URL."""
     global _registry_cache, _registry_cached_at
-    if _registry_cache is not None and time.monotonic() - _registry_cached_at < _CACHE_TTL_SECONDS:
+    if (
+        _registry_cache is not None
+        and time.monotonic() - _registry_cached_at < MCP_REGISTRY_CACHE_TTL_SECONDS
+    ):
         return _registry_cache
     try:
         request = Request(get_api_settings().mcp_registry_url, headers={"Accept": "application/json"})
