@@ -47,6 +47,30 @@ def _answer(question: str, history: list[dict] | None = None) -> dict:
 
 
 class AgentTest(unittest.TestCase):
+    def test_agent_reuses_catalog_until_mcp_discovery_changes(self) -> None:
+        registry = {"servers": []}
+        agent = Agent(get_api_settings())
+
+        with (
+            patch("app.agent.tools.integrations.mcp_registry.get_mcp_registry", return_value=registry),
+            patch("app.agent.tools.build_tool_catalog", wraps=tools.build_tool_catalog) as build_catalog,
+        ):
+            first = agent.tool_catalog()
+            second = agent.tool_catalog()
+            self.assertIs(first, second)
+            build_catalog.assert_called_once_with(registry)
+
+            updated_registry = {"servers": [{
+                "name": "muni", "url": "http://muni/mcp", "tools": [{"name": "nearby_stops"}],
+            }]}
+            with patch(
+                "app.agent.tools.integrations.mcp_registry.get_mcp_registry", return_value=updated_registry
+            ):
+                updated = agent.tool_catalog()
+
+        self.assertIsNot(first, updated)
+        self.assertIn("muni/nearby_stops", updated.names)
+
     def test_memory_store_refreshes_after_append(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory = MemoryStore(Path(temp_dir) / "MEMORY.md")

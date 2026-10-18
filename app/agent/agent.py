@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable
 
 from openai import OpenAI
@@ -31,6 +32,20 @@ class Agent:
         self.settings = settings
         self.memory = MemoryStore(settings.memory_path)
         self.prompts = PromptRegistry()
+        self._tool_catalog: tools.ToolCatalog | None = None
+        self._tool_catalog_registry: dict | None = None
+        self._tool_catalog_lock = Lock()
+
+    def tool_catalog(self) -> tools.ToolCatalog:
+        """Reuse this agent's catalog until MCP discovery changes."""
+        from app.agent.tools.integrations.mcp_registry import get_mcp_registry
+
+        registry = get_mcp_registry()
+        with self._tool_catalog_lock:
+            if self._tool_catalog is None or registry != self._tool_catalog_registry:
+                self._tool_catalog = tools.build_tool_catalog(registry)
+                self._tool_catalog_registry = registry
+            return self._tool_catalog
 
     def startup(self) -> str | None:
         """Load prompts and the durable memory file before serving requests."""
@@ -89,7 +104,7 @@ def _answer_with_agent(
     if memory_approval_response:
         return memory_approval_response
 
-    catalog = tools.build_tool_catalog()
+    catalog = agent.tool_catalog()
     client, model = get_llm_client(agent.settings)
 
     answer = _run_agent_loop(
