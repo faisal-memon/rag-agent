@@ -71,17 +71,18 @@ class ToolCatalogManager:
         self._refresh_interval = refresh_interval
         self._registry_loader = registry_loader
         self._catalog_builder = catalog_builder
-        self._catalog: ToolCatalog | None = None
+        from app.agent.tools import STATIC_TOOL_CATALOG
+
+        self._catalog = STATIC_TOOL_CATALOG
         self._registry: dict | None = None
         self._catalog_lock = Lock()
         self._refresh_lock = Lock()
         self._refresh_task: asyncio.Task | None = None
 
     def current(self) -> ToolCatalog:
-        """Return the current catalog, loading discovery on first access if needed."""
+        """Return the current catalog snapshot."""
         with self._catalog_lock:
-            catalog = self._catalog
-        return catalog if catalog is not None else self.refresh()
+            return self._catalog
 
     def refresh(self) -> ToolCatalog:
         """Fetch MCP discovery and replace the catalog only when it changes."""
@@ -101,33 +102,19 @@ class ToolCatalogManager:
                 registry = registry_loader()
             except Exception:
                 logger.exception("Could not refresh MCP tool catalog")
-                return self._current_or_static()
+                return self.current()
             if registry.get("error"):
                 logger.warning("Could not refresh MCP tool catalog: %s", registry["error"])
-                return self._current_or_static()
+                return self.current()
             with self._catalog_lock:
-                if self._catalog is None or registry != self._registry:
+                if registry != self._registry:
                     try:
                         self._catalog = catalog_builder(registry)
                     except Exception:
                         logger.exception("Could not build MCP tool catalog")
-                        if self._catalog is None:
-                            self._catalog = self._static_catalog()
                         return self._catalog
                     self._registry = registry
                 return self._catalog
-
-    def _current_or_static(self) -> ToolCatalog:
-        with self._catalog_lock:
-            if self._catalog is None:
-                self._catalog = self._static_catalog()
-            return self._catalog
-
-    @staticmethod
-    def _static_catalog() -> ToolCatalog:
-        from app.agent.tools import STATIC_TOOL_CATALOG
-
-        return STATIC_TOOL_CATALOG
 
     async def start(self) -> ToolCatalog:
         """Load once, then keep the catalog current until :meth:`stop` is called."""

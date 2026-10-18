@@ -87,6 +87,19 @@ class ToolCatalogTest(unittest.TestCase):
 
 
 class ToolCatalogManagerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_current_returns_builtin_snapshot_without_discovery(self) -> None:
+        registry_calls = 0
+
+        def load_registry() -> dict:
+            nonlocal registry_calls
+            registry_calls += 1
+            return {"servers": []}
+
+        manager = tools.ToolCatalogManager(registry_loader=load_registry)
+
+        self.assertIs(manager.current(), tools.STATIC_TOOL_CATALOG)
+        self.assertEqual(0, registry_calls)
+
     async def test_manager_refreshes_until_stopped(self) -> None:
         registry_calls = 0
 

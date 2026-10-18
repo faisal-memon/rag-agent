@@ -55,7 +55,7 @@ class AgentTest(unittest.TestCase):
             patch("app.agent.tools.integrations.mcp_registry.get_mcp_registry", return_value=registry),
             patch("app.agent.tools.build_tool_catalog", wraps=tools.build_tool_catalog) as build_catalog,
         ):
-            first = agent.tool_catalog()
+            first = agent.refresh_tool_catalog()
             second = agent.tool_catalog()
             self.assertIs(first, second)
             build_catalog.assert_called_once_with(registry)
