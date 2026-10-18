@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from app.agent.api import routes
 from app.agent.api.schemas import AgentQueryRequest, AgentRuntimeSettings
@@ -22,7 +22,8 @@ class SettingsApiTest(unittest.TestCase):
             path = Path(temp_dir) / "runtime-settings.json"
             os.environ["RAG_SETTINGS_PATH"] = str(path)
             write_runtime_settings({"normalize": {"backend": "docling"}})
-            request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+            previous_agent = SimpleNamespace(tool_catalog_manager=SimpleNamespace(stop=AsyncMock()))
+            request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(agent=previous_agent)))
             payload = AgentRuntimeSettings(
                 llm_provider="llamacpp",
                 openai_chat_model="gpt-4.1-mini",
@@ -37,7 +38,8 @@ class SettingsApiTest(unittest.TestCase):
             )
 
             with patch("app.agent.api.routes.Agent") as agent_class:
-                result = routes.update_settings(request, payload)
+                agent_class.return_value.tool_catalog_manager.start = AsyncMock()
+                result = asyncio.run(routes.update_settings(request, payload))
 
             saved_settings = read_runtime_settings()
 
@@ -46,6 +48,8 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
         agent_class.return_value.startup.assert_called_once()
+        agent_class.return_value.tool_catalog_manager.start.assert_awaited_once()
+        previous_agent.tool_catalog_manager.stop.assert_awaited_once()
 
     def test_agent_stream_emits_progress_before_the_final_response(self) -> None:
         class StreamingAgent:

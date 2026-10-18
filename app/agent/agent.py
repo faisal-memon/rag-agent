@@ -3,7 +3,6 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
 from typing import Any, Callable
 
 from openai import OpenAI
@@ -34,34 +33,15 @@ class Agent:
         self.settings = settings
         self.memory = MemoryStore(settings.memory_path)
         self.prompts = PromptRegistry()
-        self._tool_catalog: tools.ToolCatalog | None = None
-        self._tool_catalog_registry: dict | None = None
-        self._tool_catalog_lock = Lock()
-        self._tool_catalog_refresh_lock = Lock()
+        self.tool_catalog_manager = tools.ToolCatalogManager()
 
     def tool_catalog(self) -> tools.ToolCatalog:
-        """Return the initialized in-memory catalog, loading it on first use."""
-        with self._tool_catalog_lock:
-            catalog = self._tool_catalog
-        return catalog if catalog is not None else self.refresh_tool_catalog()
+        """Return the catalog currently managed for this agent."""
+        return self.tool_catalog_manager.current()
 
     def refresh_tool_catalog(self) -> tools.ToolCatalog:
-        """Refresh MCP discovery and rebuild the catalog only when its contents change."""
-        from app.agent.tools.integrations.mcp_registry import get_mcp_registry
-
-        with self._tool_catalog_refresh_lock:
-            registry = get_mcp_registry()
-            if registry.get("error"):
-                logger.warning("Could not refresh MCP tool catalog: %s", registry["error"])
-                with self._tool_catalog_lock:
-                    if self._tool_catalog is None:
-                        self._tool_catalog = tools.STATIC_TOOL_CATALOG
-                    return self._tool_catalog
-            with self._tool_catalog_lock:
-                if self._tool_catalog is None or registry != self._tool_catalog_registry:
-                    self._tool_catalog = tools.build_tool_catalog(registry)
-                    self._tool_catalog_registry = registry
-                return self._tool_catalog
+        """Refresh MCP discovery through the catalog manager."""
+        return self.tool_catalog_manager.refresh()
 
     def startup(self) -> str | None:
         """Load prompts and the durable memory file before serving requests."""

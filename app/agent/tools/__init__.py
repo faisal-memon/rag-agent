@@ -2,7 +2,7 @@
 
 from app.agent.tools import builtin
 from app.agent.tools.base import Tool
-from app.agent.tools.catalog import ToolCatalog
+from app.agent.tools.catalog import ToolCatalog, ToolCatalogManager
 from app.agent.tools.mcp import MCPTool
 from app.agent.tools.static import StaticTool
 
@@ -73,6 +73,6 @@ for _name in (
 
 
 __all__ = [
-    "Tool", "StaticTool", "MCPTool", "ToolCatalog", "STATIC_TOOL_CATALOG",
+    "Tool", "StaticTool", "MCPTool", "ToolCatalog", "ToolCatalogManager", "STATIC_TOOL_CATALOG",
     "build_tool_catalog", "render_tool_descriptions", *builtin.STATIC_TOOL_FUNCTIONS,
 ]

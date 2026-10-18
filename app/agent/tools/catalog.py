@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+import logging
+from contextlib import suppress
+from threading import Lock
+from typing import Any, Callable
 
 from app.agent.tools.base import Tool
+
+logger = logging.getLogger(__name__)
 
 
 class ToolCatalog:
@@ -47,3 +53,103 @@ class ToolCatalog:
     @property
     def tools(self) -> tuple[Tool, ...]:
         return tuple(self._tools.values())
+
+
+class ToolCatalogManager:
+    """Own the current tool catalog and its asynchronous refresh lifecycle."""
+
+    def __init__(
+        self,
+        refresh_interval: float | None = None,
+        registry_loader: Callable[[], dict] | None = None,
+        catalog_builder: Callable[[dict], ToolCatalog] | None = None,
+    ) -> None:
+        if refresh_interval is None:
+            from app.agent.tools.integrations.mcp_registry import MCP_REGISTRY_CACHE_TTL_SECONDS
+
+            refresh_interval = MCP_REGISTRY_CACHE_TTL_SECONDS
+        self._refresh_interval = refresh_interval
+        self._registry_loader = registry_loader
+        self._catalog_builder = catalog_builder
+        self._catalog: ToolCatalog | None = None
+        self._registry: dict | None = None
+        self._catalog_lock = Lock()
+        self._refresh_lock = Lock()
+        self._refresh_task: asyncio.Task | None = None
+
+    def current(self) -> ToolCatalog:
+        """Return the current catalog, loading discovery on first access if needed."""
+        with self._catalog_lock:
+            catalog = self._catalog
+        return catalog if catalog is not None else self.refresh()
+
+    def refresh(self) -> ToolCatalog:
+        """Fetch MCP discovery and replace the catalog only when it changes."""
+        registry_loader = self._registry_loader
+        if registry_loader is None:
+            from app.agent.tools.integrations.mcp_registry import get_mcp_registry
+
+            registry_loader = get_mcp_registry
+        catalog_builder = self._catalog_builder
+        if catalog_builder is None:
+            from app.agent.tools import build_tool_catalog
+
+            catalog_builder = build_tool_catalog
+
+        with self._refresh_lock:
+            try:
+                registry = registry_loader()
+            except Exception:
+                logger.exception("Could not refresh MCP tool catalog")
+                return self._current_or_static()
+            if registry.get("error"):
+                logger.warning("Could not refresh MCP tool catalog: %s", registry["error"])
+                return self._current_or_static()
+            with self._catalog_lock:
+                if self._catalog is None or registry != self._registry:
+                    try:
+                        self._catalog = catalog_builder(registry)
+                    except Exception:
+                        logger.exception("Could not build MCP tool catalog")
+                        if self._catalog is None:
+                            self._catalog = self._static_catalog()
+                        return self._catalog
+                    self._registry = registry
+                return self._catalog
+
+    def _current_or_static(self) -> ToolCatalog:
+        with self._catalog_lock:
+            if self._catalog is None:
+                self._catalog = self._static_catalog()
+            return self._catalog
+
+    @staticmethod
+    def _static_catalog() -> ToolCatalog:
+        from app.agent.tools import STATIC_TOOL_CATALOG
+
+        return STATIC_TOOL_CATALOG
+
+    async def start(self) -> ToolCatalog:
+        """Load once, then keep the catalog current until :meth:`stop` is called."""
+        if self._refresh_task is not None and not self._refresh_task.done():
+            return self.current()
+        await asyncio.to_thread(self.refresh)
+        self._refresh_task = asyncio.create_task(self._refresh_periodically())
+        return self.current()
+
+    async def stop(self) -> None:
+        """Cancel and await the periodic refresh task."""
+        task = self._refresh_task
+        self._refresh_task = None
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+    async def _refresh_periodically(self) -> None:
+        while True:
+            await asyncio.sleep(self._refresh_interval)
+            try:
+                await asyncio.to_thread(self.refresh)
+            except Exception:
+                logger.exception("Could not refresh MCP tool catalog")

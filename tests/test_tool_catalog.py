@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import patch
 
@@ -83,6 +84,56 @@ class ToolCatalogTest(unittest.TestCase):
 
         self.assertEqual({"content": [{"text": "stops"}]}, result)
         self.assertEqual([("http://muni/mcp", "find_nearby_stops", {"limit": 3})], calls)
+
+
+class ToolCatalogManagerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_manager_refreshes_until_stopped(self) -> None:
+        registry_calls = 0
+
+        def load_registry() -> dict:
+            nonlocal registry_calls
+            registry_calls += 1
+            return {"servers": []}
+
+        manager = tools.ToolCatalogManager(
+            refresh_interval=0.01,
+            registry_loader=load_registry,
+            catalog_builder=lambda _registry: tools.ToolCatalog(),
+        )
+
+        initial_catalog = await manager.start()
+        await asyncio.sleep(0.035)
+        await manager.stop()
+        calls_after_stop = registry_calls
+        await asyncio.sleep(0.02)
+
+        self.assertGreaterEqual(calls_after_stop, 2)
+        self.assertEqual(calls_after_stop, registry_calls)
+        self.assertIs(initial_catalog, manager.current())
+
+    async def test_manager_keeps_builtin_tools_and_retries_after_startup_failure(self) -> None:
+        registry_calls = 0
+
+        def load_registry() -> dict:
+            nonlocal registry_calls
+            registry_calls += 1
+            if registry_calls == 1:
+                raise TimeoutError("registry timed out")
+            return {"servers": []}
+
+        manager = tools.ToolCatalogManager(
+            refresh_interval=0.01,
+            registry_loader=load_registry,
+            catalog_builder=lambda _registry: tools.ToolCatalog(),
+        )
+
+        initial_catalog = await manager.start()
+        await asyncio.sleep(0.03)
+        await manager.stop()
+
+        self.assertIs(initial_catalog, tools.STATIC_TOOL_CATALOG)
+        self.assertGreaterEqual(registry_calls, 2)
+        self.assertIsNot(manager.current(), tools.STATIC_TOOL_CATALOG)
 
 
 if __name__ == "__main__":
