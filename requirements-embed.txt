@@ -3,7 +3,7 @@ pgvector==0.5.1
 python-dotenv==1.2.4
 openai==3.35.1
 pydantic==2.14.1
-pydantic-settings==2.16.0
+pydantic-settings==2.16.1
 tiktoken==0.14.0
 transformers==5.20.2
 watchfiles==1.3.0
