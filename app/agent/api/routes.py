@@ -6,7 +6,7 @@ from queue import Empty, Queue
 from threading import Thread
 from typing import Iterator
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, WebSocket
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -28,10 +28,17 @@ from app.agent.pipeline import pipeline_status
 from app.agent.search import search_debug
 from app.agent.web.routes import debug_page, index_page, settings_page
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
+from app.agent.api.voice import stream_voice
 from app.core.config import read_runtime_settings, write_runtime_settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.websocket("/agent/voice/stream")
+async def voice_stream(websocket: WebSocket) -> None:
+    """Temporary direct-device audio transport endpoint; no agent call yet."""
+    await stream_voice(websocket)
 
 
 def _agent_exception_message(exc: Exception) -> str:
