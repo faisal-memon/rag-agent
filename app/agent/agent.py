@@ -29,19 +29,15 @@ logger = logging.getLogger(__name__)
 class Agent:
     """Long-lived personal document agent and its process-owned state."""
 
-    def __init__(self, settings: ApiSettings) -> None:
+    def __init__(self, settings: ApiSettings, tool_catalog_manager: tools.ToolCatalogManager) -> None:
         self.settings = settings
         self.memory = MemoryStore(settings.memory_path)
         self.prompts = PromptRegistry()
-        self.tool_catalog_manager = tools.ToolCatalogManager()
+        self.tool_catalog_manager = tool_catalog_manager
 
     def tool_catalog(self) -> tools.ToolCatalog:
         """Return the catalog currently managed for this agent."""
         return self.tool_catalog_manager.current()
-
-    def refresh_tool_catalog(self) -> tools.ToolCatalog:
-        """Refresh MCP discovery through the catalog manager."""
-        return self.tool_catalog_manager.refresh()
 
     def startup(self) -> str | None:
         """Load prompts and the durable memory file before serving requests."""

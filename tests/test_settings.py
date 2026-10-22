@@ -37,8 +37,11 @@ class SettingsApiTest(unittest.TestCase):
                 agent_max_steps=5,
             )
 
-            with patch("app.agent.api.routes.Agent") as agent_class:
-                agent_class.return_value.tool_catalog_manager.start = AsyncMock()
+            with (
+                patch("app.agent.api.routes.Agent") as agent_class,
+                patch("app.agent.api.routes.tools.ToolCatalogManager") as catalog_manager_class,
+            ):
+                catalog_manager_class.return_value.start = AsyncMock()
                 result = asyncio.run(routes.update_settings(request, payload))
 
             saved_settings = read_runtime_settings()
@@ -47,8 +50,9 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(10, result.query_limit)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
+        catalog_manager_class.return_value.start.assert_awaited_once()
+        agent_class.assert_called_once_with(get_api_settings(), catalog_manager_class.return_value)
         agent_class.return_value.startup.assert_called_once()
-        agent_class.return_value.tool_catalog_manager.start.assert_awaited_once()
         previous_agent.tool_catalog_manager.stop.assert_awaited_once()
 
     def test_agent_stream_emits_progress_before_the_final_response(self) -> None:

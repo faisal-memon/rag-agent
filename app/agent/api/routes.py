@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.agent import tools
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
 from app.embed.config import get_embed_settings
@@ -91,9 +92,10 @@ def _runtime_settings() -> AgentRuntimeSettings:
 async def _reload_agent(request: Request) -> None:
     get_api_settings.cache_clear()
     get_embed_settings.cache_clear()
-    agent = Agent(get_api_settings())
+    tool_catalog_manager = tools.ToolCatalogManager()
+    await tool_catalog_manager.start()
+    agent = Agent(get_api_settings(), tool_catalog_manager)
     agent.startup()
-    await agent.tool_catalog_manager.start()
     previous_agent = getattr(request.app.state, "agent", None)
     request.app.state.agent = agent
     if previous_agent is not None:

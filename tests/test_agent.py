@@ -43,50 +43,23 @@ def _settings_with_api(**api_values):
 
 
 def _answer(question: str, history: list[dict] | None = None) -> dict:
-    return Agent(get_api_settings()).answer(question, history)
+    return _agent(get_api_settings()).answer(question, history)
+
+
+def _agent(settings) -> Agent:
+    """Create an agent with a catalog manager, as the application does at startup."""
+    return Agent(settings, tools.ToolCatalogManager())
 
 
 class AgentTest(unittest.TestCase):
-    def test_agent_reuses_catalog_until_mcp_discovery_changes(self) -> None:
-        registry = {"servers": []}
-        agent = Agent(get_api_settings())
+    def test_agent_reads_the_catalog_manager_provided_at_startup(self) -> None:
+        catalog_manager = MagicMock()
+        catalog_manager.current.return_value = tools.STATIC_TOOL_CATALOG
 
-        with (
-            patch("app.agent.tools.integrations.mcp_registry.get_mcp_registry", return_value=registry),
-            patch("app.agent.tools.build_tool_catalog", wraps=tools.build_tool_catalog) as build_catalog,
-        ):
-            first = agent.refresh_tool_catalog()
-            second = agent.tool_catalog()
-            self.assertIs(first, second)
-            build_catalog.assert_called_once_with(registry)
+        agent = Agent(get_api_settings(), catalog_manager)
 
-            updated_registry = {"servers": [{
-                "name": "muni", "url": "http://muni/mcp", "tools": [{"name": "nearby_stops"}],
-            }]}
-            with patch(
-                "app.agent.tools.integrations.mcp_registry.get_mcp_registry", return_value=updated_registry
-            ):
-                self.assertIs(first, agent.tool_catalog())
-                updated = agent.refresh_tool_catalog()
-
-        self.assertIsNot(first, updated)
-        self.assertIn("muni/nearby_stops", updated.names)
-
-    def test_agent_keeps_last_catalog_when_registry_refresh_fails(self) -> None:
-        registry = {"servers": [{
-            "name": "muni", "url": "http://muni/mcp", "tools": [{"name": "nearby_stops"}],
-        }]}
-        agent = Agent(get_api_settings())
-
-        with patch(
-            "app.agent.tools.integrations.mcp_registry.get_mcp_registry",
-            side_effect=[registry, {"error": "registry unavailable"}],
-        ):
-            catalog = agent.refresh_tool_catalog()
-            after_failure = agent.refresh_tool_catalog()
-
-        self.assertIs(catalog, after_failure)
-        self.assertIn("muni/nearby_stops", after_failure.names)
+        self.assertIs(tools.STATIC_TOOL_CATALOG, agent.tool_catalog())
+        catalog_manager.current.assert_called_once_with()
 
     def test_memory_store_refreshes_after_append(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -547,7 +520,7 @@ class AgentTest(unittest.TestCase):
                 patch("app.agent.agent._complete_text") as complete_text,
                 patch("app.agent.tools.builtin.semantic_search") as semantic_search,
             ):
-                result = Agent(settings).answer("yes", history=history)
+                result = _agent(settings).answer("yes", history=history)
 
             content = memory_path.read_text(encoding="utf-8")
 
@@ -564,7 +537,7 @@ class AgentTest(unittest.TestCase):
             settings = _settings_with_api(agent_max_steps=3, memory_path=Path(temp_dir) / "MEMORY.md")
 
             with patch("app.agent.agent.get_llm_client") as get_llm_client:
-                result = Agent(settings).answer("What car do I have?")
+                result = _agent(settings).answer("What car do I have?")
 
         self.assertEqual(
             "Before I search your documents, what name should I use to identify your records?",
@@ -595,7 +568,7 @@ class AgentTest(unittest.TestCase):
                 patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
                 patch("app.agent.agent._complete_text", side_effect=complete_text),
             ):
-                result = Agent(settings).answer("My name is Example User", history=history)
+                result = _agent(settings).answer("My name is Example User", history=history)
 
             content = memory_path.read_text(encoding="utf-8")
 
@@ -682,7 +655,7 @@ class AgentTest(unittest.TestCase):
                 return_value={"tool": "get_school_lunch", "arguments": {}, "result": {"choices": ["Pasta"]}},
             ),
         ):
-            Agent(settings).answer("What is school lunch today?", on_progress=events.append)
+            _agent(settings).answer("What is school lunch today?", on_progress=events.append)
 
         self.assertEqual(["thinking", "tool_call", "tool_result", "thinking"], [event["type"] for event in events])
         self.assertEqual("get_school_lunch", events[1]["tool"])
