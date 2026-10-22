@@ -92,7 +92,7 @@ class StaticTool(Tool):
             result["required"] = required
         return result
 
-    def execute(self, arguments: dict[str, Any]) -> Any:
+    def _execute(self, arguments: dict[str, Any]) -> Any:
         # Resolve by name at call time so instrumentation and test patches on the
         # implementation module remain effective after catalog construction.
         from app.agent.tools import builtin

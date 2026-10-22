@@ -492,7 +492,7 @@ class AgentTest(unittest.TestCase):
         args = {"latitude": "{{user_latitude}}", "longitude": "{{user_longitude}}"}
         agent = SimpleNamespace(settings=_settings_with_api(home_latitude=37.7, home_longitude=-122.4))
 
-        with patch.object(tools.MCPTool, "execute", return_value={"content": []}) as execute:
+        with patch.object(tools.MCPTool, "_execute", return_value={"content": []}) as execute:
             result = _execute_tool(
                 {"tool": "muni/find_nearby_stops", "arguments": args}, agent=agent, catalog=catalog
             )

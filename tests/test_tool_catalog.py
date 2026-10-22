@@ -30,6 +30,25 @@ class ToolCatalogTest(unittest.TestCase):
         self.assertEqual(expected, result)
         implementation.assert_called_once_with(query="hello", limit=2)
 
+    def test_tool_resolves_private_location_without_mutating_planner_arguments(self) -> None:
+        tool = MCPTool(
+            server="muni",
+            tool_name="find_nearby_stops",
+            url="http://muni/mcp",
+            tool_description="Find nearby transit stops.",
+            schema={"type": "object"},
+        )
+        arguments = {"location": {"latitude": "{{user_latitude}}", "longitude": "{{user_longitude}}"}}
+        context = tools.ToolExecutionContext(tools.UserLocation(37.7, -122.4))
+        with patch.object(MCPTool, "_execute", return_value={"content": []}) as execute:
+            result = tool.execute(arguments, context)
+
+        self.assertEqual({"content": []}, result)
+        execute.assert_called_once_with({"location": {"latitude": 37.7, "longitude": -122.4}})
+        self.assertEqual(
+            {"location": {"latitude": "{{user_latitude}}", "longitude": "{{user_longitude}}"}}, arguments
+        )
+
     def test_duplicate_tool_names_are_rejected(self) -> None:
         catalog = tools.ToolCatalog()
         catalog.register(tools.StaticTool(tools.builtin.semantic_search))
@@ -84,6 +103,22 @@ class ToolCatalogTest(unittest.TestCase):
 
         self.assertEqual({"content": [{"text": "stops"}]}, result)
         self.assertEqual([("http://muni/mcp", "find_nearby_stops", {"limit": 3})], calls)
+
+    def test_mcp_tool_normalizes_mcp_error_response(self) -> None:
+        async def call_server(_url, _name, _arguments):
+            return {"isError": True, "content": [{"text": "Transit service is unavailable."}]}
+
+        tool = MCPTool(
+            server="muni",
+            tool_name="find_nearby_stops",
+            url="http://muni/mcp",
+            tool_description="Find nearby transit stops.",
+            schema={"type": "object"},
+        )
+        with patch("app.agent.tools.integrations.mcp_registry._call_tool_with_timeout", call_server):
+            result = tool.execute({})
+
+        self.assertEqual({"error": "Transit service is unavailable."}, result)
 
 
 class ToolCatalogManagerTest(unittest.IsolatedAsyncioTestCase):

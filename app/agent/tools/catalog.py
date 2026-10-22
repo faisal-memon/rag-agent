@@ -8,7 +8,7 @@ from contextlib import suppress
 from threading import Lock
 from typing import Any, Callable
 
-from app.agent.tools.base import Tool
+from app.agent.tools.base import Tool, ToolExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +30,13 @@ class ToolCatalog:
     def with_capability(self, capability: str) -> tuple[Tool, ...]:
         return tuple(tool for tool in self.tools if capability in tool.capabilities)
 
-    def execute(self, name: str, arguments: dict[str, Any]) -> Any:
+    def execute(
+        self, name: str, arguments: dict[str, Any], context: ToolExecutionContext | None = None
+    ) -> Any:
         tool = self.get(name)
         if tool is None:
             raise KeyError(f"Unknown tool: {name}")
-        return tool.execute(arguments)
+        return tool.execute(arguments, context)
 
     def render_descriptions(self) -> str:
         """Build the planner's tool list from the registered tool interfaces."""

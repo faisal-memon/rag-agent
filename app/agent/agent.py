@@ -209,18 +209,9 @@ def _run_agent_loop(
             catalog,
             on_progress,
         )
-        selected_tool = catalog.get(decision["tool"])
         result = tool_result.get("result") or {}
-        if isinstance(selected_tool, tools.MCPTool) and isinstance(result, dict):
-            error = result.get("error")
-            if result.get("isError"):
-                content = result.get("content") or []
-                error = "; ".join(
-                    str(item.get("text")) for item in content
-                    if isinstance(item, dict) and item.get("text")
-                ) or "MCP server reported a tool error."
-            if error:
-                raise RuntimeError(f"MCP tool {decision['tool']} failed: {error}")
+        if isinstance(result, dict) and result.get("error"):
+            raise RuntimeError(f"Tool {decision['tool']} failed: {result['error']}")
 
     return answer or ""
 
@@ -614,23 +605,15 @@ def _identity_onboarding_response(detail: str | None = None) -> dict:
     }
 
 
-def _inject_user_location_placeholders(arguments: dict, agent: Agent) -> dict:
-    """Replace private location placeholders immediately before an MCP call."""
+def _tool_execution_context(agent: Agent | None) -> tools.ToolExecutionContext:
+    """Build private request context without including it in planner traces."""
+    if agent is None:
+        return tools.ToolExecutionContext()
     latitude = agent.settings.home_latitude
     longitude = agent.settings.home_longitude
-
-    def replace(value):
-        if value == "{{user_latitude}}":
-            return latitude
-        if value == "{{user_longitude}}":
-            return longitude
-        if isinstance(value, dict):
-            return {key: replace(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [replace(item) for item in value]
-        return value
-
-    return replace(arguments)
+    if latitude is None or longitude is None:
+        return tools.ToolExecutionContext()
+    return tools.ToolExecutionContext(tools.UserLocation(latitude, longitude))
 
 
 def _execute_tool(
@@ -667,12 +650,7 @@ def _execute_tool(
                     section=str(arguments.get("section") or "Inbox"),
                 )
         else:
-            selected_tool = catalog.get(tool)
-            if isinstance(selected_tool, tools.MCPTool):
-                execution_arguments = _inject_user_location_placeholders(arguments, agent)
-            else:
-                execution_arguments = arguments
-            result = catalog.execute(tool, execution_arguments)
+            result = catalog.execute(tool, arguments, _tool_execution_context(agent))
     except Exception as exc:
         result = {"error": str(exc)}
 

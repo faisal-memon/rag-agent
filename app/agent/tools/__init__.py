@@ -1,7 +1,7 @@
 """Agent tool implementations, adapters, integrations, and catalog."""
 
 from app.agent.tools import builtin
-from app.agent.tools.base import Tool
+from app.agent.tools.base import Tool, ToolExecutionContext, UserLocation
 from app.agent.tools.catalog import ToolCatalog, ToolCatalogManager
 from app.agent.tools.mcp import MCPTool
 from app.agent.tools.static import StaticTool
@@ -73,6 +73,7 @@ for _name in (
 
 
 __all__ = [
-    "Tool", "StaticTool", "MCPTool", "ToolCatalog", "ToolCatalogManager", "STATIC_TOOL_CATALOG",
+    "Tool", "ToolExecutionContext", "UserLocation", "StaticTool", "MCPTool", "ToolCatalog",
+    "ToolCatalogManager", "STATIC_TOOL_CATALOG",
     "build_tool_catalog", "render_tool_descriptions", *builtin.STATIC_TOOL_FUNCTIONS,
 ]

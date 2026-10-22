@@ -30,8 +30,15 @@ class MCPTool(Tool):
     def input_schema(self) -> dict[str, Any]:
         return self.schema
 
-    def execute(self, arguments: dict[str, Any]) -> Any:
+    def _execute(self, arguments: dict[str, Any]) -> Any:
         import anyio
         from app.agent.tools.integrations.mcp_registry import _call_tool_with_timeout
 
-        return anyio.run(_call_tool_with_timeout, self.url, self.tool_name, arguments)
+        result = anyio.run(_call_tool_with_timeout, self.url, self.tool_name, arguments)
+        if not isinstance(result, dict) or not result.get("isError"):
+            return result
+        content = result.get("content") or []
+        error = "; ".join(
+            str(item.get("text")) for item in content if isinstance(item, dict) and item.get("text")
+        ) or "MCP server reported a tool error."
+        return {"error": error}
