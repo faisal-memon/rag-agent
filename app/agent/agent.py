@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 from openai import OpenAI
 
@@ -437,9 +438,9 @@ def _handle_memory_approval(
     }
 
 
-def _current_local_time() -> str:
-    """Return the current time in the host's local time zone."""
-    return datetime.now().astimezone().isoformat(timespec="minutes")
+def _current_local_time(time_zone: str) -> str:
+    """Return the current time in the configured IANA time zone."""
+    return datetime.now(ZoneInfo(time_zone)).isoformat(timespec="minutes")
 
 
 def _user_location_capability(agent: Agent) -> str:
@@ -482,7 +483,7 @@ def _decide_next_action(
             "conversation": conversation or "(none)",
             "question": question,
             "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
-            "current_local_time": _current_local_time(),
+            "current_local_time": _current_local_time(agent.settings.time_zone),
             "user_location_capability": _user_location_capability(agent),
             "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
         },

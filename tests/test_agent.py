@@ -20,6 +20,7 @@ from app.agent.memory import (
 )
 from app.agent.agent import (
     Agent,
+    _current_local_time,
     _conversation_context,
     _complete_text,
 )
@@ -36,7 +37,7 @@ from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, ind
 
 
 def _settings_with_api(**api_values):
-    defaults = {"memory_enabled": True, "memory_require_approval": True, "home_latitude": None, "home_longitude": None}
+    defaults = {"memory_enabled": True, "memory_require_approval": True, "home_latitude": None, "home_longitude": None, "time_zone": "UTC"}
     defaults.update(api_values)
     return SimpleNamespace(**defaults)
 
@@ -51,6 +52,15 @@ def _agent(settings) -> Agent:
 
 
 class AgentTest(unittest.TestCase):
+    def test_current_local_time_uses_configured_time_zone(self) -> None:
+        with patch("app.agent.agent.datetime") as mocked_datetime:
+            mocked_datetime.now.return_value.isoformat.return_value = "2026-10-22T23:08-07:00"
+
+            current_time = _current_local_time("America/Los_Angeles")
+
+        self.assertEqual("2026-10-22T23:08-07:00", current_time)
+        self.assertEqual("America/Los_Angeles", mocked_datetime.now.call_args.args[0].key)
+
     def test_agent_reads_the_catalog_manager_provided_at_startup(self) -> None:
         catalog_manager = MagicMock()
         catalog_manager.current.return_value = tools.STATIC_TOOL_CATALOG

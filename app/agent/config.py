@@ -32,6 +32,7 @@ class ApiSettings(ConfiguredSettings):
     embedding_llamacpp_model: str = Field(default="local-embedding-model", alias="LLAMACPP_EMBEDDING_MODEL")
     embedding_query_prefix: str = Field(default="", alias="EMBEDDING_QUERY_PREFIX")
     embedding_document_prefix: str = Field(default="", alias="EMBEDDING_DOCUMENT_PREFIX")
+    time_zone: str = Field(default="UTC", alias="TIME_ZONE")
     mcp_registry_url: str = Field(default="http://mcp-registry/registry.json", alias="MCP_REGISTRY_URL")
     mcp_registry_refresh_interval: float = Field(
         default=300.0, gt=0, alias="MCP_REGISTRY_REFRESH_INTERVAL"

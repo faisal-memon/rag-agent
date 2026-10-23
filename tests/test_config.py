@@ -19,6 +19,7 @@ class ConfigTest(unittest.TestCase):
         os.environ.pop("POSTGRES_HOST", None)
         os.environ.pop("RAG_AGENT_MAX_STEPS", None)
         os.environ.pop("MCP_REGISTRY_REFRESH_INTERVAL", None)
+        os.environ.pop("TIME_ZONE", None)
         os.environ.pop("RAG_ENABLED_SUFFIXES", None)
         os.environ.pop("RAG_MEMORY_PATH", None)
         os.environ.pop("RAG_SETTINGS_PATH", None)
@@ -36,6 +37,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual("rag", api.database.db)
         self.assertEqual(Path("/data/nextcloud"), normalize.nextcloud_source_dir)
         self.assertEqual(6, api.agent_max_steps)
+        self.assertEqual("UTC", api.time_zone)
         self.assertEqual(Path("/memory/MEMORY.md"), api.memory_path)
         self.assertEqual(500, embed.chunk_size)
         self.assertEqual("mixedbread-ai/mxbai-embed-large-v1", embed.tokenizer_model_id)
@@ -50,12 +52,14 @@ class ConfigTest(unittest.TestCase):
         os.environ["NORMALIZE_WATCH_STABILITY_CHECKS"] = "2"
         os.environ["POSTGRES_HOST"] = "postgres"
         os.environ["RAG_MEMORY_PATH"] = "/tmp/rag-memory.md"
+        os.environ["TIME_ZONE"] = "America/Los_Angeles"
         get_api_settings.cache_clear(); get_normalize_settings.cache_clear()
         api = get_api_settings(); normalize = get_normalize_settings()
         self.assertEqual(4, api.agent_max_steps)
         self.assertEqual(2, normalize.stability_checks)
         self.assertEqual("postgres", api.database.host)
         self.assertEqual(Path("/tmp/rag-memory.md"), api.memory_path)
+        self.assertEqual("America/Los_Angeles", api.time_zone)
 
     def test_enabled_suffixes_accept_comma_separated_env_value(self) -> None:
         os.environ["RAG_ENABLED_SUFFIXES"] = ".pdf,docx, TXT , .jpg"
