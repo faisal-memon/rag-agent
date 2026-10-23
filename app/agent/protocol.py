@@ -22,7 +22,7 @@ class ToolPlannerAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["tool"]
-    tool: str = Field(json_schema_extra={"enum": list(tools.AGENT_TOOL_FUNCTIONS)})
+    tool: str
     arguments: dict[str, Any]
 
 
@@ -40,9 +40,12 @@ PlannerAction = Annotated[ToolPlannerAction | AnswerPlannerAction, Field(discrim
 _PLANNER_ACTION_ADAPTER = TypeAdapter(PlannerAction)
 
 
-def planner_action_schema() -> str:
+def planner_action_schema(catalog: tools.ToolCatalog | None = None) -> str:
     """Return JSON Schema generated from the planner's Python action models."""
-    return json.dumps(_PLANNER_ACTION_ADAPTER.json_schema(), indent=2)
+    schema = _PLANNER_ACTION_ADAPTER.json_schema()
+    tool_schema = schema["$defs"]["ToolPlannerAction"]["properties"]["tool"]
+    tool_schema["enum"] = list((catalog or tools.STATIC_TOOL_CATALOG).names)
+    return json.dumps(schema, indent=2)
 
 
 def extract_json_object(text: str) -> str:
@@ -78,10 +81,10 @@ def _recover_answer_object(candidate: str) -> str | None:
     return json.dumps({"action": action_match.group(1), "evidence_status": evidence_match.group(1), "answer": answer})
 
 
-def extract_native_tool_call(text: str) -> dict | None:
+def extract_native_tool_call(text: str, catalog: tools.ToolCatalog | None = None) -> dict | None:
     """Parse llama.cpp's native tool-call text when a model emits it."""
     match = re.search(
-        r"<\|tool_call\>\s*call:(?P<tool>\w+)\s*(?P<args>\{.*?\})\s*<tool_call\|>",
+        r"<\|tool_call\>\s*call:(?P<tool>[\w./-]+)\s*(?P<args>\{.*?\})\s*<tool_call\|>",
         text,
         flags=re.DOTALL,
     )
@@ -92,7 +95,8 @@ def extract_native_tool_call(text: str) -> dict | None:
         {
             "tool": match.group("tool"),
             "arguments": parse_native_tool_arguments(match.group("args")),
-        }
+        },
+        catalog,
     )
 
 
@@ -115,16 +119,21 @@ def parse_native_tool_arguments(text: str) -> dict[str, Any]:
     return arguments
 
 
-def sanitize_step(step: Any) -> dict | None:
+def sanitize_step(step: Any, catalog: tools.ToolCatalog | None = None) -> dict | None:
     """Allowlist a model-selected tool and bound each of its arguments."""
     if not isinstance(step, dict):
         return None
     tool = step.get("tool")
-    if tool not in tools.AGENT_TOOL_FUNCTIONS:
+    catalog = catalog or tools.STATIC_TOOL_CATALOG
+    tool_definition = catalog.get(tool) if isinstance(tool, str) else None
+    if tool_definition is None:
         return None
     arguments = step.get("arguments")
     if not isinstance(arguments, dict):
         arguments = {}
+
+    if isinstance(tool_definition, tools.MCPTool):
+        return {"tool": tool, "arguments": arguments}
 
     if tool in {"keyword_search", "semantic_search", "hybrid_search"}:
         return {
@@ -192,38 +201,24 @@ def sanitize_step(step: Any) -> dict | None:
     if tool == "get_upcoming_yoga_classes":
         return {"tool": tool, "arguments": {}}
 
-    if tool == "call_mcp_tool":
-        server = str(arguments.get("server") or "").strip()
-        mcp_tool = str(arguments.get("tool") or "").strip()
-        mcp_arguments = arguments.get("arguments")
-        if mcp_arguments is None:
-            mcp_arguments = arguments.get("args")
-        if not server or not mcp_tool or not isinstance(mcp_arguments, dict):
-            return None
+    if tool == "read_document":
         return {
             "tool": tool,
             "arguments": {
-                "server": server[:128],
-                "tool": mcp_tool[:128],
-                "arguments": mcp_arguments,
+                "path": str(arguments.get("path") or ""),
+                "start_line": tools._bounded_positive_int(arguments.get("start_line") or 1, maximum=1_000_000),
+                "max_lines": tools._bounded_positive_int(
+                    arguments.get("max_lines") or tools.DEFAULT_DOCUMENT_LINES,
+                    maximum=1000,
+                ),
+                "max_chars": tools._bounded_max_chars(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
             },
         }
 
-    return {
-        "tool": tool,
-        "arguments": {
-            "path": str(arguments.get("path") or ""),
-            "start_line": tools._bounded_positive_int(arguments.get("start_line") or 1, maximum=1_000_000),
-            "max_lines": tools._bounded_positive_int(
-                arguments.get("max_lines") or tools.DEFAULT_DOCUMENT_LINES,
-                maximum=1000,
-            ),
-            "max_chars": tools._bounded_max_chars(arguments.get("max_chars") or tools.DEFAULT_DOCUMENT_CHARS),
-        },
-    }
+    return {"tool": tool, "arguments": arguments}
 
 
-def sanitize_planner_action(action: Any) -> dict | None:
+def sanitize_planner_action(action: Any, catalog: tools.ToolCatalog | None = None) -> dict | None:
     """Normalize either supported planner spelling of a tool action.
 
     The canonical planner response has ``action: tool`` and a separate ``tool``
@@ -238,9 +233,10 @@ def sanitize_planner_action(action: Any) -> dict | None:
             canonical = ToolPlannerAction.model_validate(action)
         except ValidationError:
             return None
-        return sanitize_step(canonical.model_dump())
+        return sanitize_step(canonical.model_dump(), catalog)
 
     tool = action.get("action")
-    if tool not in tools.AGENT_TOOL_FUNCTIONS:
+    catalog = catalog or tools.STATIC_TOOL_CATALOG
+    if not isinstance(tool, str) or catalog.get(tool) is None:
         return None
-    return sanitize_step({"tool": tool, "arguments": action.get("arguments")})
+    return sanitize_step({"tool": tool, "arguments": action.get("arguments")}, catalog)

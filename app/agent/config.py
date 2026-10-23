@@ -33,6 +33,9 @@ class ApiSettings(ConfiguredSettings):
     embedding_query_prefix: str = Field(default="", alias="EMBEDDING_QUERY_PREFIX")
     embedding_document_prefix: str = Field(default="", alias="EMBEDDING_DOCUMENT_PREFIX")
     mcp_registry_url: str = Field(default="http://mcp-registry/registry.json", alias="MCP_REGISTRY_URL")
+    mcp_registry_refresh_interval: float = Field(
+        default=300.0, gt=0, alias="MCP_REGISTRY_REFRESH_INTERVAL"
+    )
 
 
 @lru_cache

@@ -22,9 +22,9 @@ from app.agent.agent import (
     Agent,
     _conversation_context,
     _complete_text,
-    _execute_tool,
 )
 from app.agent.config import get_api_settings
+from app.agent import tools
 from app.agent.tools import (
     _bounded_limit,
     grep_documents,
@@ -42,10 +42,24 @@ def _settings_with_api(**api_values):
 
 
 def _answer(question: str, history: list[dict] | None = None) -> dict:
-    return Agent(get_api_settings()).answer(question, history)
+    return _agent(get_api_settings()).answer(question, history)
+
+
+def _agent(settings) -> Agent:
+    """Create an agent with a catalog manager, as the application does at startup."""
+    return Agent(settings, tools.ToolCatalogManager(refresh_interval=300.0))
 
 
 class AgentTest(unittest.TestCase):
+    def test_agent_reads_the_catalog_manager_provided_at_startup(self) -> None:
+        catalog_manager = MagicMock()
+        catalog_manager.current.return_value = tools.STATIC_TOOL_CATALOG
+
+        agent = Agent(get_api_settings(), catalog_manager)
+
+        self.assertIs(tools.STATIC_TOOL_CATALOG, agent.tool_catalog())
+        catalog_manager.current.assert_called_once_with()
+
     def test_memory_store_refreshes_after_append(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             memory = MemoryStore(Path(temp_dir) / "MEMORY.md")
@@ -110,56 +124,52 @@ class AgentTest(unittest.TestCase):
             _sanitize_step({"tool": "get_upcoming_yoga_classes", "arguments": {"ignored": "value"}}),
         )
 
-    def test_sanitize_step_accepts_mcp_tool_arguments(self) -> None:
+    def test_sanitize_step_accepts_discovered_mcp_tool_arguments(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "muni_alerts", "description": "Transit alerts.",
+                "inputSchema": {"type": "object", "properties": {"route": {"type": "string"}}},
+            }],
+        }]})
         self.assertEqual(
             {
-                "tool": "call_mcp_tool",
-                "arguments": {
-                    "server": "muni",
-                    "tool": "muni_alerts",
-                    "arguments": {"route": "N Judah"},
-                },
+                "tool": "muni/muni_alerts",
+                "arguments": {"route": "N Judah"},
             },
             _sanitize_step(
                 {
-                    "tool": "call_mcp_tool",
-                    "arguments": {
-                        "server": "muni",
-                        "tool": "muni_alerts",
-                        "args": {"route": "N Judah"},
-                    },
-                }
+                    "tool": "muni/muni_alerts", "arguments": {"route": "N Judah"},
+                }, catalog,
             ),
         )
 
     def test_sanitize_planner_action_accepts_direct_mcp_tool_action(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "muni_alerts", "description": "Transit alerts.",
+                "inputSchema": {"type": "object", "properties": {"route": {"type": "string"}}},
+            }],
+        }]})
         self.assertEqual(
-            {
-                "tool": "call_mcp_tool",
-                "arguments": {
-                    "server": "muni",
-                    "tool": "muni_alerts",
-                    "arguments": {"route": "N Judah"},
-                },
-            },
+            {"tool": "muni/muni_alerts", "arguments": {"route": "N Judah"}},
             _sanitize_planner_action(
                 {
-                    "action": "call_mcp_tool",
-                    "arguments": {
-                        "server": "muni",
-                        "tool": "muni_alerts",
-                        "args": {"route": "N Judah"},
-                    },
-                }
+                    "action": "tool", "tool": "muni/muni_alerts", "arguments": {"route": "N Judah"},
+                }, catalog,
             ),
         )
 
-    def test_sanitize_step_rejects_incomplete_mcp_tool_call(self) -> None:
-        self.assertIsNone(
-            _sanitize_step(
-                {"tool": "call_mcp_tool", "arguments": {"server": "muni", "tool": "muni_alerts"}}
-            )
-        )
+    def test_planner_schema_includes_each_discovered_mcp_tool(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "muni_alerts", "inputSchema": {"type": "object"},
+            }],
+        }]})
+        schema = json.loads(_planner_action_schema(catalog))
+        enum = schema["$defs"]["ToolPlannerAction"]["properties"]["tool"]["enum"]
+
+        self.assertIn("muni/muni_alerts", enum)
+        self.assertNotIn("call_mcp_tool", enum)
 
     def test_sanitize_step_preserves_school_lunch_day(self) -> None:
         self.assertEqual(
@@ -264,7 +274,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Do not call these tools for greetings", prompt)
         self.assertIn("Response schema: choose exactly one object allowed by this JSON Schema", prompt)
         self.assertIn('"const": "tool"', prompt)
-        self.assertIn('"action":"tool","tool":"call_mcp_tool"', prompt)
+        self.assertIn('"action":"tool","tool":"semantic_search"', prompt)
         self.assertIn("Treat every successful tool result as evidence", prompt)
         self.assertIn("Never invent new arguments", prompt)
         self.assertIn("get_ocean_schedule", prompt)
@@ -304,7 +314,7 @@ class AgentTest(unittest.TestCase):
                 }
             ]
 
-            with patch("app.agent.tools._normalized_documents", return_value=documents):
+            with patch("app.agent.tools.builtin._normalized_documents", return_value=documents):
                 matches = grep_documents("acme hardware", context_chars=40)
 
         self.assertEqual(1, len(matches))
@@ -317,7 +327,7 @@ class AgentTest(unittest.TestCase):
             markdown_path = Path(temp_dir) / "vehicle.md"
             markdown_path.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
 
-            with patch("app.agent.tools._markdown_path_for_document", return_value=markdown_path):
+            with patch("app.agent.tools.builtin._markdown_path_for_document", return_value=markdown_path):
                 result = read_document("/documents/vehicle.pdf", start_line=2, max_lines=2)
 
         self.assertEqual("two\nthree", result["content"])
@@ -369,8 +379,8 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
-            patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
-            patch("app.agent.agent.tools.read_document", return_value=document),
+            patch("app.agent.tools.builtin.semantic_search", return_value=[chunk]),
+            patch("app.agent.tools.builtin.read_document", return_value=document),
         ):
             result = _answer("What vehicle is recorded?")
 
@@ -459,17 +469,37 @@ class AgentTest(unittest.TestCase):
                 },
             }
 
-            result = _execute_tool(step, question="What car do I have?", history=[])
+            agent = _agent(_settings_with_api(memory_path=memory_path))
+            result = agent._execute_tool(step, question="What car do I have?", history=[])
 
         self.assertFalse(result["result"]["remembered"])
         self.assertFalse(memory_path.exists())
 
     def test_execute_tool_dispatches_hybrid_search(self) -> None:
-        with patch("app.agent.agent.tools.hybrid_search", return_value={"keyword_matches": [], "semantic_matches": []}) as hybrid_search:
-            result = _execute_tool({"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}})
+        with patch("app.agent.tools.builtin.hybrid_search", return_value={"keyword_matches": [], "semantic_matches": []}) as hybrid_search:
+            result = _agent(get_api_settings())._execute_tool(
+                {"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}}
+            )
 
         hybrid_search.assert_called_once_with(query="52 bus", limit=4)
         self.assertEqual({"keyword_matches": [], "semantic_matches": []}, result["result"])
+
+    def test_execute_mcp_tool_injects_location_without_recording_coordinates(self) -> None:
+        catalog = tools.build_tool_catalog({"servers": [{
+            "name": "muni", "url": "http://muni/mcp", "tools": [{
+                "name": "find_nearby_stops", "description": "Find nearby stops.",
+                "inputSchema": {"type": "object", "properties": {"latitude": {"type": "number"}}},
+            }],
+        }]})
+        args = {"latitude": "{{user_latitude}}", "longitude": "{{user_longitude}}"}
+        agent = _agent(_settings_with_api(home_latitude=37.7, home_longitude=-122.4, memory_path=Path("memory.md")))
+
+        with patch.object(tools.MCPTool, "_execute", return_value={"content": []}) as execute:
+            result = agent._execute_tool({"tool": "muni/find_nearby_stops", "arguments": args}, catalog=catalog)
+
+        execute.assert_called_once_with({"latitude": 37.7, "longitude": -122.4})
+        self.assertEqual(args, result["arguments"])
+        self.assertNotIn("37.7", json.dumps(result))
 
     def test_agent_can_remember_after_approval_reply(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -488,9 +518,9 @@ class AgentTest(unittest.TestCase):
             with (
                 patch("app.agent.agent.get_llm_client") as get_llm_client,
                 patch("app.agent.agent._complete_text") as complete_text,
-                patch("app.agent.agent.tools.semantic_search") as semantic_search,
+                patch("app.agent.tools.builtin.semantic_search") as semantic_search,
             ):
-                result = Agent(settings).answer("yes", history=history)
+                result = _agent(settings).answer("yes", history=history)
 
             content = memory_path.read_text(encoding="utf-8")
 
@@ -507,7 +537,7 @@ class AgentTest(unittest.TestCase):
             settings = _settings_with_api(agent_max_steps=3, memory_path=Path(temp_dir) / "MEMORY.md")
 
             with patch("app.agent.agent.get_llm_client") as get_llm_client:
-                result = Agent(settings).answer("What car do I have?")
+                result = _agent(settings).answer("What car do I have?")
 
         self.assertEqual(
             "Before I search your documents, what name should I use to identify your records?",
@@ -538,7 +568,7 @@ class AgentTest(unittest.TestCase):
                 patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
                 patch("app.agent.agent._complete_text", side_effect=complete_text),
             ):
-                result = Agent(settings).answer("My name is Example User", history=history)
+                result = _agent(settings).answer("My name is Example User", history=history)
 
             content = memory_path.read_text(encoding="utf-8")
 
@@ -548,16 +578,20 @@ class AgentTest(unittest.TestCase):
         self.assertIn("- Name: Example User", prompts[0])
         self.assertEqual("I need document evidence.", result["answer"])
 
-    def test_memory_approval_accepts_freeform_save_phrases(self) -> None:
-        self.assertTrue(_is_memory_approval_response("yeah, save that"))
-        self.assertTrue(_is_memory_approval_response("yep remember it"))
-        self.assertTrue(_is_memory_approval_response("yes, I want to save memory"))
-        self.assertTrue(_is_memory_approval_response("sure, keep it"))
+    def test_memory_approval_recognizes_freeform_phrases(self) -> None:
+        cases = {
+            "yeah, save that": True,
+            "yep remember it": True,
+            "yes, I want to save memory": True,
+            "sure, keep it": True,
+            "yes, don't save that": False,
+            "no, do not remember it": False,
+            "not that one": False,
+        }
 
-    def test_memory_approval_rejects_freeform_negations(self) -> None:
-        self.assertFalse(_is_memory_approval_response("yes, don't save that"))
-        self.assertFalse(_is_memory_approval_response("no, do not remember it"))
-        self.assertFalse(_is_memory_approval_response("not that one"))
+        for response, expected in cases.items():
+            with self.subTest(response=response):
+                self.assertEqual(expected, _is_memory_approval_response(response))
 
     def test_memory_approval_requires_the_immediately_previous_proposal(self) -> None:
         history = [
@@ -597,7 +631,7 @@ class AgentTest(unittest.TestCase):
                 "app.agent.agent._complete_text",
                 return_value='{"action":"answer","answer":"Hi! How can I help?"}',
             ),
-            patch("app.agent.agent._execute_tool") as execute_tool,
+            patch("app.agent.agent.Agent._execute_tool") as execute_tool,
         ):
             result = _answer("Hi")
 
@@ -621,11 +655,11 @@ class AgentTest(unittest.TestCase):
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=lambda *_args, **_kwargs: next(responses)),
             patch(
-                "app.agent.agent._execute_tool",
+                "app.agent.agent.Agent._execute_tool",
                 return_value={"tool": "get_school_lunch", "arguments": {}, "result": {"choices": ["Pasta"]}},
             ),
         ):
-            Agent(settings).answer("What is school lunch today?", on_progress=events.append)
+            _agent(settings).answer("What is school lunch today?", on_progress=events.append)
 
         self.assertEqual(["thinking", "tool_call", "tool_result", "thinking"], [event["type"] for event in events])
         self.assertEqual("get_school_lunch", events[1]["tool"])
@@ -636,7 +670,7 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", return_value=prose_answer),
-            patch("app.agent.agent._execute_tool") as execute_tool,
+            patch("app.agent.agent.Agent._execute_tool") as execute_tool,
         ):
             result = _answer("What change can I make to your system prompt?")
 
@@ -679,8 +713,8 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
-            patch("app.agent.agent.tools.semantic_search", return_value=[]),
-            patch("app.agent.agent.tools.keyword_search", return_value=[]),
+            patch("app.agent.tools.builtin.semantic_search", return_value=[]),
+            patch("app.agent.tools.builtin.keyword_search", return_value=[]),
         ):
             result = _answer("What was the 2024 AGI?")
 
@@ -721,8 +755,8 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=complete_text),
-            patch("app.agent.agent.tools.search_documents", return_value=[]),
-            patch("app.agent.agent.tools.semantic_search", return_value=[chunk]),
+            patch("app.agent.tools.builtin.search_documents", return_value=[]),
+            patch("app.agent.tools.builtin.semantic_search", return_value=[chunk]),
         ):
             result = _answer("Which vehicle is recorded?")
 
