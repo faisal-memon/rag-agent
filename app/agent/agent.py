@@ -39,6 +39,50 @@ class Agent:
         """Return the catalog currently managed for this agent."""
         return self.tool_catalog_manager.current()
 
+    def _tool_execution_context(self) -> tools.ToolExecutionContext:
+        """Build private request context without including it in planner traces."""
+        latitude = self.settings.home_latitude
+        longitude = self.settings.home_longitude
+        if latitude is None or longitude is None:
+            return tools.ToolExecutionContext()
+        return tools.ToolExecutionContext(tools.UserLocation(latitude, longitude))
+
+    def _execute_tool(
+        self,
+        step: dict,
+        question: str = "",
+        history: list[dict] | None = None,
+        catalog: tools.ToolCatalog | None = None,
+    ) -> dict:
+        """Execute one tool without exposing execution context in its recorded arguments."""
+        tool = step["tool"]
+        arguments = step.get("arguments", {})
+        catalog = catalog or self.tool_catalog()
+        try:
+            if tool == "remember":
+                if not self.settings.memory_enabled:
+                    result = {"remembered": False, "error": "Memory is disabled in Settings."}
+                elif self.settings.memory_require_approval and not memory.write_is_allowed(question, history or []):
+                    result = {
+                        "remembered": False,
+                        "error": (
+                            "Memory write refused. The latest user message must explicitly ask to remember/save "
+                            "something or clearly approve a previous memory proposal."
+                        ),
+                    }
+                else:
+                    result = memory.remember(
+                        self.memory,
+                        entry=str(arguments.get("entry") or ""),
+                        section=str(arguments.get("section") or "Inbox"),
+                    )
+            else:
+                result = catalog.execute(tool, arguments, self._tool_execution_context())
+        except Exception as exc:
+            result = {"error": str(exc)}
+
+        return {"tool": tool, "arguments": arguments, "result": result}
+
     def startup(self) -> str | None:
         """Load prompts and the durable memory file before serving requests."""
         self.prompts.load()
@@ -307,7 +351,7 @@ def _execute_planned_tool(
         tool=step["tool"],
         arguments=step["arguments"],
     )
-    tool_result = _execute_tool(step, question, history, agent, catalog)
+    tool_result = agent._execute_tool(step, question, history, catalog)
     tool_results.append(tool_result)
     _emit_progress(
         on_progress,
@@ -382,7 +426,7 @@ def _handle_memory_approval(
 
     step = {"tool": "remember", "arguments": approved_memory}
     _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
-    tool_result = _execute_tool(step, question, history, agent)
+    tool_result = agent._execute_tool(step, question, history)
     result_summary = _summarize_tool_result(tool_result.get("result"))
     _emit_progress(on_progress, "tool_result", tool=step["tool"], result=result_summary)
     return {
@@ -603,58 +647,6 @@ def _identity_onboarding_response(detail: str | None = None) -> dict:
         ],
         "citations": [],
     }
-
-
-def _tool_execution_context(agent: Agent | None) -> tools.ToolExecutionContext:
-    """Build private request context without including it in planner traces."""
-    if agent is None:
-        return tools.ToolExecutionContext()
-    latitude = agent.settings.home_latitude
-    longitude = agent.settings.home_longitude
-    if latitude is None or longitude is None:
-        return tools.ToolExecutionContext()
-    return tools.ToolExecutionContext(tools.UserLocation(latitude, longitude))
-
-
-def _execute_tool(
-    step: dict,
-    question: str = "",
-    history: list[dict] | None = None,
-    agent: Agent | None = None,
-    catalog: tools.ToolCatalog | None = None,
-) -> dict:
-    tool = step["tool"]
-    arguments = step.get("arguments", {})
-    recorded_arguments = arguments
-    catalog = catalog or tools.STATIC_TOOL_CATALOG
-    try:
-        if tool == "remember":
-            if agent is None:
-                result = {"remembered": False, "error": "Agent is required to write memory."}
-            elif not agent.settings.memory_enabled:
-                result = {"remembered": False, "error": "Memory is disabled in Settings."}
-            elif agent.settings.memory_require_approval and not memory.write_is_allowed(question, history or []):
-                result = {
-                    "remembered": False,
-                    "error": (
-                        "Memory write refused. The latest user message must explicitly ask to remember/save "
-                        "something or clearly approve a previous memory proposal."
-                    ),
-                }
-            else:
-                if agent is None:
-                    raise RuntimeError("Agent is required to write memory.")
-                result = memory.remember(
-                    agent.memory,
-                    entry=str(arguments.get("entry") or ""),
-                    section=str(arguments.get("section") or "Inbox"),
-                )
-        else:
-            result = catalog.execute(tool, arguments, _tool_execution_context(agent))
-    except Exception as exc:
-        result = {"error": str(exc)}
-
-    return {"tool": tool, "arguments": recorded_arguments, "result": result}
 
 
 def _synthesize_answer(

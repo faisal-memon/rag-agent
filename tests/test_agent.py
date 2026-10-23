@@ -22,7 +22,6 @@ from app.agent.agent import (
     Agent,
     _conversation_context,
     _complete_text,
-    _execute_tool,
 )
 from app.agent.config import get_api_settings
 from app.agent import tools
@@ -470,14 +469,17 @@ class AgentTest(unittest.TestCase):
                 },
             }
 
-            result = _execute_tool(step, question="What car do I have?", history=[])
+            agent = _agent(_settings_with_api(memory_path=memory_path))
+            result = agent._execute_tool(step, question="What car do I have?", history=[])
 
         self.assertFalse(result["result"]["remembered"])
         self.assertFalse(memory_path.exists())
 
     def test_execute_tool_dispatches_hybrid_search(self) -> None:
         with patch("app.agent.tools.builtin.hybrid_search", return_value={"keyword_matches": [], "semantic_matches": []}) as hybrid_search:
-            result = _execute_tool({"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}})
+            result = _agent(get_api_settings())._execute_tool(
+                {"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}}
+            )
 
         hybrid_search.assert_called_once_with(query="52 bus", limit=4)
         self.assertEqual({"keyword_matches": [], "semantic_matches": []}, result["result"])
@@ -490,12 +492,10 @@ class AgentTest(unittest.TestCase):
             }],
         }]})
         args = {"latitude": "{{user_latitude}}", "longitude": "{{user_longitude}}"}
-        agent = SimpleNamespace(settings=_settings_with_api(home_latitude=37.7, home_longitude=-122.4))
+        agent = _agent(_settings_with_api(home_latitude=37.7, home_longitude=-122.4, memory_path=Path("memory.md")))
 
         with patch.object(tools.MCPTool, "_execute", return_value={"content": []}) as execute:
-            result = _execute_tool(
-                {"tool": "muni/find_nearby_stops", "arguments": args}, agent=agent, catalog=catalog
-            )
+            result = agent._execute_tool({"tool": "muni/find_nearby_stops", "arguments": args}, catalog=catalog)
 
         execute.assert_called_once_with({"latitude": 37.7, "longitude": -122.4})
         self.assertEqual(args, result["arguments"])
@@ -627,7 +627,7 @@ class AgentTest(unittest.TestCase):
                 "app.agent.agent._complete_text",
                 return_value='{"action":"answer","answer":"Hi! How can I help?"}',
             ),
-            patch("app.agent.agent._execute_tool") as execute_tool,
+            patch("app.agent.agent.Agent._execute_tool") as execute_tool,
         ):
             result = _answer("Hi")
 
@@ -651,7 +651,7 @@ class AgentTest(unittest.TestCase):
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", side_effect=lambda *_args, **_kwargs: next(responses)),
             patch(
-                "app.agent.agent._execute_tool",
+                "app.agent.agent.Agent._execute_tool",
                 return_value={"tool": "get_school_lunch", "arguments": {}, "result": {"choices": ["Pasta"]}},
             ),
         ):
@@ -666,7 +666,7 @@ class AgentTest(unittest.TestCase):
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
             patch("app.agent.agent._complete_text", return_value=prose_answer),
-            patch("app.agent.agent._execute_tool") as execute_tool,
+            patch("app.agent.agent.Agent._execute_tool") as execute_tool,
         ):
             result = _answer("What change can I make to your system prompt?")
 
