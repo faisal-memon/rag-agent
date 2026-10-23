@@ -50,6 +50,7 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(10, result.query_limit)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
+        catalog_manager_class.assert_called_once_with(get_api_settings().mcp_registry_refresh_interval)
         catalog_manager_class.return_value.start.assert_awaited_once()
         agent_class.assert_called_once_with(get_api_settings(), catalog_manager_class.return_value)
         agent_class.return_value.startup.assert_called_once()

@@ -14,11 +14,12 @@ from app.agent.web.routes import STATIC_DIR
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # The catalog manager owns MCP discovery and its background refresh task.
-    tool_catalog_manager = tools.ToolCatalogManager()
+    settings = get_api_settings()
+    tool_catalog_manager = tools.ToolCatalogManager(settings.mcp_registry_refresh_interval)
     await tool_catalog_manager.start()
 
     # Requests share this agent and its initialized tool catalog manager.
-    agent = Agent(get_api_settings(), tool_catalog_manager)
+    agent = Agent(settings, tool_catalog_manager)
     app.state.agent = agent
     error = agent.startup()
     if error:

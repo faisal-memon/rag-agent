@@ -62,14 +62,10 @@ class ToolCatalogManager:
 
     def __init__(
         self,
-        refresh_interval: float | None = None,
+        refresh_interval: float,
         registry_loader: Callable[[], dict] | None = None,
         catalog_builder: Callable[[dict], ToolCatalog] | None = None,
     ) -> None:
-        if refresh_interval is None:
-            from app.agent.tools.integrations.mcp_registry import MCP_REGISTRY_CACHE_TTL_SECONDS
-
-            refresh_interval = MCP_REGISTRY_CACHE_TTL_SECONDS
         self._refresh_interval = refresh_interval
         self._registry_loader = registry_loader
         self._catalog_builder = catalog_builder

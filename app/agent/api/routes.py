@@ -92,9 +92,10 @@ def _runtime_settings() -> AgentRuntimeSettings:
 async def _reload_agent(request: Request) -> None:
     get_api_settings.cache_clear()
     get_embed_settings.cache_clear()
-    tool_catalog_manager = tools.ToolCatalogManager()
+    settings = get_api_settings()
+    tool_catalog_manager = tools.ToolCatalogManager(settings.mcp_registry_refresh_interval)
     await tool_catalog_manager.start()
-    agent = Agent(get_api_settings(), tool_catalog_manager)
+    agent = Agent(settings, tool_catalog_manager)
     agent.startup()
     previous_agent = getattr(request.app.state, "agent", None)
     request.app.state.agent = agent

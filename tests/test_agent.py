@@ -47,7 +47,7 @@ def _answer(question: str, history: list[dict] | None = None) -> dict:
 
 def _agent(settings) -> Agent:
     """Create an agent with a catalog manager, as the application does at startup."""
-    return Agent(settings, tools.ToolCatalogManager())
+    return Agent(settings, tools.ToolCatalogManager(refresh_interval=300.0))
 
 
 class AgentTest(unittest.TestCase):

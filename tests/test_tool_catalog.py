@@ -130,7 +130,7 @@ class ToolCatalogManagerTest(unittest.IsolatedAsyncioTestCase):
             registry_calls += 1
             return {"servers": []}
 
-        manager = tools.ToolCatalogManager(registry_loader=load_registry)
+        manager = tools.ToolCatalogManager(refresh_interval=300.0, registry_loader=load_registry)
 
         self.assertIs(manager.current(), tools.STATIC_TOOL_CATALOG)
         self.assertEqual(0, registry_calls)
