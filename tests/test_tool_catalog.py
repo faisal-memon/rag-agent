@@ -120,6 +120,24 @@ class ToolCatalogTest(unittest.TestCase):
 
         self.assertEqual({"error": "Transit service is unavailable."}, result)
 
+    def test_mcp_tool_exposes_nested_transport_error(self) -> None:
+        async def call_server(_url, _name, _arguments):
+            raise ExceptionGroup("request failed", [TimeoutError("upstream did not respond")])
+
+        tool = MCPTool(
+            server="news",
+            tool_name="get_news",
+            url="http://news/mcp",
+            tool_description="Get news.",
+            schema={"type": "object"},
+        )
+        with patch("app.agent.tools.integrations.mcp_registry._call_tool_with_timeout", call_server):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "MCP transport failed: TimeoutError: upstream did not respond",
+            ):
+                tool.execute({})
+
 
 class ToolCatalogManagerTest(unittest.IsolatedAsyncioTestCase):
     async def test_current_returns_builtin_snapshot_without_discovery(self) -> None:
