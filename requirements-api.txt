@@ -1,4 +1,4 @@
-fastapi==0.161.0
+fastapi==0.161.1
 uvicorn[standard]==0.54.0
 psycopg[binary]==3.3.6
 pgvector==0.5.1
@@ -7,6 +7,6 @@ openai==3.36.1
 pydantic==2.14.1
 pydantic-settings==2.16.1
 python-multipart==0.0.32
-liteparse==2.16.0
+liteparse==2.17.0
 
 mcp==2.3.0
