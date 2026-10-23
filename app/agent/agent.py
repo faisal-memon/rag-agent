@@ -53,7 +53,75 @@ class Agent:
         """Answer one user question using bounded model-selected tools."""
         if not self.memory.loaded:
             self.startup()
-        return _answer_with_agent(self, question, history, on_progress, profile_name)
+        history = history or []
+        max_steps = self.settings.agent_max_steps
+        conversation = _conversation_context(history)
+        plan: list[dict] = []
+        tool_results: list[dict] = []
+        reasoning: list[dict] = []
+        debug: list[dict] = []
+        seen_calls: set[str] = set()
+
+        question, memory_state, onboarding_response = _prepare_question_and_memory(
+            self, question, history, profile_name, debug
+        )
+        if onboarding_response:
+            return onboarding_response
+
+        memory_approval_response = (
+            _handle_memory_approval(self, question, history, on_progress, reasoning)
+            if self.settings.memory_enabled and self.settings.memory_require_approval
+            else None
+        )
+        if memory_approval_response:
+            return memory_approval_response
+
+        catalog = self.tool_catalog()
+        client, model = get_llm_client(self.settings)
+
+        answer = _run_agent_loop(
+            self,
+            question,
+            history,
+            conversation,
+            memory_state,
+            profile_name,
+            max_steps,
+            plan,
+            tool_results,
+            reasoning,
+            debug,
+            seen_calls,
+            catalog,
+            on_progress,
+            client,
+            model,
+        )
+
+        if not answer:
+            _emit_progress(on_progress, "thinking", message="Preparing answer")
+            answer = _synthesize_answer(
+                question,
+                conversation,
+                memory_state,
+                plan,
+                tool_results,
+                reasoning,
+                client,
+                model,
+                debug,
+                self,
+            )
+        citations = _citations_from_tool_results(tool_results)
+
+        return {
+            "answer": answer,
+            "plan": plan,
+            "tool_results": tool_results,
+            "reasoning": reasoning,
+            "debug": debug,
+            "citations": citations,
+        }
 
     def tool_catalog(self) -> tools.ToolCatalog:
         """Return the catalog currently managed for this agent."""
@@ -107,84 +175,6 @@ class Agent:
             result = {"error": str(exc)}
 
         return {"tool": tool, "arguments": arguments, "result": result}
-
-
-def _answer_with_agent(
-    agent: Agent,
-    question: str,
-    history: list[dict] | None = None,
-    on_progress: ProgressCallback | None = None,
-    profile_name: str | None = None,
-) -> dict:
-    history = history or []
-    max_steps = agent.settings.agent_max_steps
-    conversation = _conversation_context(history)
-    plan: list[dict] = []
-    tool_results: list[dict] = []
-    reasoning: list[dict] = []
-    debug: list[dict] = []
-    seen_calls: set[str] = set()
-
-    question, memory_state, onboarding_response = _prepare_question_and_memory(
-        agent, question, history, profile_name, debug
-    )
-    if onboarding_response:
-        return onboarding_response
-
-    memory_approval_response = (
-        _handle_memory_approval(agent, question, history, on_progress, reasoning)
-        if agent.settings.memory_enabled and agent.settings.memory_require_approval
-        else None
-    )
-    if memory_approval_response:
-        return memory_approval_response
-
-    catalog = agent.tool_catalog()
-    client, model = get_llm_client(agent.settings)
-
-    answer = _run_agent_loop(
-        agent,
-        question,
-        history,
-        conversation,
-        memory_state,
-        profile_name,
-        max_steps,
-        plan,
-        tool_results,
-        reasoning,
-        debug,
-        seen_calls,
-        catalog,
-        on_progress,
-        client,
-        model,
-    )
-
-    if not answer:
-        _emit_progress(on_progress, "thinking", message="Preparing answer")
-        answer = _synthesize_answer(
-            question,
-            conversation,
-            memory_state,
-            plan,
-            tool_results,
-            reasoning,
-            client,
-            model,
-            debug,
-            agent,
-        )
-    citations = _citations_from_tool_results(tool_results)
-
-    return {
-        "answer": answer,
-        "plan": plan,
-        "tool_results": tool_results,
-        "reasoning": reasoning,
-        "debug": debug,
-        "citations": citations,
-    }
 
 
 def _run_agent_loop(
