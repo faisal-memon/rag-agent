@@ -65,14 +65,6 @@ class Agent:
     def render_system_prompt(self) -> str:
         return self.render_prompt("system.md", {})
 
-    def _tool_execution_context(self) -> tools.ToolExecutionContext:
-        """Build private request context without including it in planner traces."""
-        latitude = self.settings.home_latitude
-        longitude = self.settings.home_longitude
-        if latitude is None or longitude is None:
-            return tools.ToolExecutionContext()
-        return tools.ToolExecutionContext(tools.UserLocation(latitude, longitude))
-
     def _execute_tool(
         self,
         step: dict,
@@ -84,6 +76,13 @@ class Agent:
         tool = step["tool"]
         arguments = step.get("arguments", {})
         catalog = catalog or self.tool_catalog()
+        latitude = self.settings.home_latitude
+        longitude = self.settings.home_longitude
+        context = (
+            tools.ToolExecutionContext(tools.UserLocation(latitude, longitude))
+            if latitude is not None and longitude is not None
+            else tools.ToolExecutionContext()
+        )
         try:
             if tool == "remember":
                 if not self.settings.memory_enabled:
@@ -103,7 +102,7 @@ class Agent:
                         section=str(arguments.get("section") or "Inbox"),
                     )
             else:
-                result = catalog.execute(tool, arguments, self._tool_execution_context())
+                result = catalog.execute(tool, arguments, context)
         except Exception as exc:
             result = {"error": str(exc)}
 
