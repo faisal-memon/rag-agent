@@ -578,16 +578,20 @@ class AgentTest(unittest.TestCase):
         self.assertIn("- Name: Example User", prompts[0])
         self.assertEqual("I need document evidence.", result["answer"])
 
-    def test_memory_approval_accepts_freeform_save_phrases(self) -> None:
-        self.assertTrue(_is_memory_approval_response("yeah, save that"))
-        self.assertTrue(_is_memory_approval_response("yep remember it"))
-        self.assertTrue(_is_memory_approval_response("yes, I want to save memory"))
-        self.assertTrue(_is_memory_approval_response("sure, keep it"))
+    def test_memory_approval_recognizes_freeform_phrases(self) -> None:
+        cases = {
+            "yeah, save that": True,
+            "yep remember it": True,
+            "yes, I want to save memory": True,
+            "sure, keep it": True,
+            "yes, don't save that": False,
+            "no, do not remember it": False,
+            "not that one": False,
+        }
 
-    def test_memory_approval_rejects_freeform_negations(self) -> None:
-        self.assertFalse(_is_memory_approval_response("yes, don't save that"))
-        self.assertFalse(_is_memory_approval_response("no, do not remember it"))
-        self.assertFalse(_is_memory_approval_response("not that one"))
+        for response, expected in cases.items():
+            with self.subTest(response=response):
+                self.assertEqual(expected, _is_memory_approval_response(response))
 
     def test_memory_approval_requires_the_immediately_previous_proposal(self) -> None:
         history = [
