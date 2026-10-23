@@ -35,9 +35,35 @@ class Agent:
         self.prompts = PromptRegistry()
         self.tool_catalog_manager = tool_catalog_manager
 
+    def startup(self) -> str | None:
+        """Load prompts and the durable memory file before serving requests."""
+        self.prompts.load()
+        if not self.settings.memory_enabled:
+            self.memory.loaded = True
+            return None
+        return self.memory.load()
+
+    def answer(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        on_progress: ProgressCallback | None = None,
+        profile_name: str | None = None,
+    ) -> dict:
+        """Answer one user question using bounded model-selected tools."""
+        if not self.memory.loaded:
+            self.startup()
+        return _answer_with_agent(self, question, history, on_progress, profile_name)
+
     def tool_catalog(self) -> tools.ToolCatalog:
         """Return the catalog currently managed for this agent."""
         return self.tool_catalog_manager.current()
+
+    def render_prompt(self, name: str, values: dict[str, object]) -> str:
+        return self.prompts.render(name, values)
+
+    def render_system_prompt(self) -> str:
+        return self.render_prompt("system.md", {})
 
     def _tool_execution_context(self) -> tools.ToolExecutionContext:
         """Build private request context without including it in planner traces."""
@@ -82,32 +108,6 @@ class Agent:
             result = {"error": str(exc)}
 
         return {"tool": tool, "arguments": arguments, "result": result}
-
-    def startup(self) -> str | None:
-        """Load prompts and the durable memory file before serving requests."""
-        self.prompts.load()
-        if not self.settings.memory_enabled:
-            self.memory.loaded = True
-            return None
-        return self.memory.load()
-
-    def answer(
-        self,
-        question: str,
-        history: list[dict] | None = None,
-        on_progress: ProgressCallback | None = None,
-        profile_name: str | None = None,
-    ) -> dict:
-        """Answer one user question using bounded model-selected tools."""
-        if not self.memory.loaded:
-            self.startup()
-        return _answer_with_agent(self, question, history, on_progress, profile_name)
-
-    def render_prompt(self, name: str, values: dict[str, object]) -> str:
-        return self.prompts.render(name, values)
-
-    def render_system_prompt(self) -> str:
-        return self.render_prompt("system.md", {})
 
 
 def _answer_with_agent(
