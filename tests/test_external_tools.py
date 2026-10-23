@@ -4,14 +4,14 @@ from unittest.mock import patch
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from app.agent.external_tools.yoga_flow import (
+from app.agent.tools.integrations.yoga_flow import (
     _extract_action_state,
     _mindbody_date_range,
     _mindbody_request_body,
     _select_upcoming_classes,
     parse_mindbody_schedule,
 )
-from app.agent.external_tools.school_lunch import (
+from app.agent.tools.integrations.school_lunch import (
     _TextItem,
     _google_drive_download_url,
     _resolve_lunchmaster_menu_url,
@@ -97,7 +97,7 @@ class SchoolLunchTest(unittest.TestCase):
         """
 
         with patch(
-            "app.agent.external_tools.school_lunch._download_menu_page", return_value=menu_page
+            "app.agent.tools.integrations.school_lunch._download_menu_page", return_value=menu_page
         ):
             self.assertEqual(
                 "https://drive.google.com/file/d/october/view",
@@ -118,7 +118,7 @@ class SchoolLunchTest(unittest.TestCase):
         """
 
         with patch(
-            "app.agent.external_tools.school_lunch._download_menu_page", return_value=menu_page
+            "app.agent.tools.integrations.school_lunch._download_menu_page", return_value=menu_page
         ):
             lunch = get_school_lunch("2026-11-01")
 
@@ -174,7 +174,7 @@ def _school_lunch_items() -> list[_TextItem]:
 
 class CitySportsScheduleTest(unittest.TestCase):
     def test_parses_classes_and_hours_for_requested_day(self) -> None:
-        from app.agent.external_tools.city_sports import _parse_city_sports_schedule
+        from app.agent.tools.integrations.city_sports import _parse_city_sports_schedule
 
         html = """
         <table id="tblSchedule"><tr><th>Time</th><th>Sunday</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th><th>Saturday</th></tr>
@@ -191,13 +191,13 @@ class CitySportsScheduleTest(unittest.TestCase):
 class WeatherTest(unittest.TestCase):
     def test_weather_normalizes_daily_forecast(self) -> None:
         from io import BytesIO
-        from app.agent.external_tools.weather import get_weather
+        from app.agent.tools.integrations.weather import get_weather
 
         payload = {"daily": {"time": ["2026-10-02"], "weather_code": [61], "temperature_2m_max": [68], "temperature_2m_min": [52], "precipitation_probability_max": [40], "precipitation_sum": [0.12], "sunrise": ["2026-10-02T07:10"], "sunset": ["2026-10-02T18:45"]}}
         class Response(BytesIO):
             def __enter__(self): return self
             def __exit__(self, *args): return False
-        with patch("app.agent.external_tools.weather.urlopen", return_value=Response(json.dumps(payload).encode())):
+        with patch("app.agent.tools.integrations.weather.urlopen", return_value=Response(json.dumps(payload).encode())):
             result = get_weather("2026-10-02")
         self.assertEqual("slight rain", result["condition"])
         self.assertEqual(68, result["temperature_high_f"])

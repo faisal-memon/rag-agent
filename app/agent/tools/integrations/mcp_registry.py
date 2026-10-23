@@ -11,7 +11,6 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from app.agent.config import get_api_settings
 
-_CACHE_TTL_SECONDS = 300.0
 _registry_cache: dict | None = None
 _registry_cached_at = 0.0
 
@@ -43,7 +42,10 @@ class MCPRegistry(BaseModel):
 def get_mcp_registry() -> dict:
     """List approved MCP servers from the configured registry URL."""
     global _registry_cache, _registry_cached_at
-    if _registry_cache is not None and time.monotonic() - _registry_cached_at < _CACHE_TTL_SECONDS:
+    if (
+        _registry_cache is not None
+        and time.monotonic() - _registry_cached_at < get_api_settings().mcp_registry_refresh_interval
+    ):
         return _registry_cache
     try:
         request = Request(get_api_settings().mcp_registry_url, headers={"Accept": "application/json"})
@@ -104,22 +106,3 @@ async def _call_tool_async(url: str, name: str, arguments: dict) -> object:
 async def _call_tool_with_timeout(url: str, name: str, arguments: dict) -> object:
     with anyio.fail_after(10):
         return await _call_tool_async(url, name, arguments)
-
-
-def call_mcp_tool(server: str, tool: str, arguments: dict | None = None) -> dict:
-    """Call an approved MCP tool by registry server name after discovery.
-
-    Args:
-        server: The registry name of the approved MCP server.
-        tool: The exact tool name returned by get_mcp_registry.
-        arguments: JSON arguments matching the discovered tool schema.
-    """
-    registry = get_mcp_registry()
-    for entry in registry.get("servers", []):
-        if entry.get("name") == server:
-            try:
-                result = anyio.run(_call_tool_with_timeout, str(entry["url"]), tool, arguments or {})
-                return {"server": server, "tool": tool, "result": result}
-            except Exception as exc:  # pragma: no cover - network failures
-                return {"server": server, "tool": tool, "error": f"MCP tool call failed: {exc}"}
-    return {"error": f"Unknown or disabled MCP server: {server}"}

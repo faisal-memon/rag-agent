@@ -18,6 +18,7 @@ class ConfigTest(unittest.TestCase):
         os.environ.pop("NORMALIZE_WATCH_STABILITY_CHECKS", None)
         os.environ.pop("POSTGRES_HOST", None)
         os.environ.pop("RAG_AGENT_MAX_STEPS", None)
+        os.environ.pop("MCP_REGISTRY_REFRESH_INTERVAL", None)
         os.environ.pop("RAG_ENABLED_SUFFIXES", None)
         os.environ.pop("RAG_MEMORY_PATH", None)
         os.environ.pop("RAG_SETTINGS_PATH", None)
@@ -128,6 +129,12 @@ class ConfigTest(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             get_api_settings()
+
+    def test_mcp_registry_refresh_interval_comes_from_environment(self) -> None:
+        os.environ["MCP_REGISTRY_REFRESH_INTERVAL"] = "45"
+        get_api_settings.cache_clear()
+
+        self.assertEqual(45.0, get_api_settings().mcp_registry_refresh_interval)
 
 
 if __name__ == "__main__":

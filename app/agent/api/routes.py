@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.agent import tools
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
 from app.embed.config import get_embed_settings
@@ -88,12 +89,18 @@ def _runtime_settings() -> AgentRuntimeSettings:
     )
 
 
-def _reload_agent(request: Request) -> None:
+async def _reload_agent(request: Request) -> None:
     get_api_settings.cache_clear()
     get_embed_settings.cache_clear()
-    agent = Agent(get_api_settings())
-    request.app.state.agent = agent
+    settings = get_api_settings()
+    tool_catalog_manager = tools.ToolCatalogManager(settings.mcp_registry_refresh_interval)
+    await tool_catalog_manager.start()
+    agent = Agent(settings, tool_catalog_manager)
     agent.startup()
+    previous_agent = getattr(request.app.state, "agent", None)
+    request.app.state.agent = agent
+    if previous_agent is not None:
+        await previous_agent.tool_catalog_manager.stop()
 
 
 @router.get("/", include_in_schema=False)
@@ -122,7 +129,7 @@ def get_settings() -> AgentRuntimeSettings:
 
 
 @router.put("/api/settings", response_model=AgentRuntimeSettings)
-def update_settings(request: Request, payload: AgentRuntimeSettings) -> AgentRuntimeSettings:
+async def update_settings(request: Request, payload: AgentRuntimeSettings) -> AgentRuntimeSettings:
     settings = read_runtime_settings()
     values = payload.model_dump()
     embed_values = {
@@ -134,7 +141,7 @@ def update_settings(request: Request, payload: AgentRuntimeSettings) -> AgentRun
     settings["api"] = {**settings.get("api", {}), **values}
     settings["embed"] = {**settings.get("embed", {}), **embed_values}
     write_runtime_settings(settings)
-    _reload_agent(request)
+    await _reload_agent(request)
     return _runtime_settings()
 
 

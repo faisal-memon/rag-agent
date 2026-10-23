@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from app.agent.api import routes
 from app.agent.api.schemas import AgentQueryRequest, AgentRuntimeSettings
@@ -22,7 +22,8 @@ class SettingsApiTest(unittest.TestCase):
             path = Path(temp_dir) / "runtime-settings.json"
             os.environ["RAG_SETTINGS_PATH"] = str(path)
             write_runtime_settings({"normalize": {"backend": "docling"}})
-            request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+            previous_agent = SimpleNamespace(tool_catalog_manager=SimpleNamespace(stop=AsyncMock()))
+            request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(agent=previous_agent)))
             payload = AgentRuntimeSettings(
                 llm_provider="llamacpp",
                 openai_chat_model="gpt-4.1-mini",
@@ -36,8 +37,12 @@ class SettingsApiTest(unittest.TestCase):
                 agent_max_steps=5,
             )
 
-            with patch("app.agent.api.routes.Agent") as agent_class:
-                result = routes.update_settings(request, payload)
+            with (
+                patch("app.agent.api.routes.Agent") as agent_class,
+                patch("app.agent.api.routes.tools.ToolCatalogManager") as catalog_manager_class,
+            ):
+                catalog_manager_class.return_value.start = AsyncMock()
+                result = asyncio.run(routes.update_settings(request, payload))
 
             saved_settings = read_runtime_settings()
 
@@ -45,7 +50,11 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(10, result.query_limit)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
+        catalog_manager_class.assert_called_once_with(get_api_settings().mcp_registry_refresh_interval)
+        catalog_manager_class.return_value.start.assert_awaited_once()
+        agent_class.assert_called_once_with(get_api_settings(), catalog_manager_class.return_value)
         agent_class.return_value.startup.assert_called_once()
+        previous_agent.tool_catalog_manager.stop.assert_awaited_once()
 
     def test_agent_stream_emits_progress_before_the_final_response(self) -> None:
         class StreamingAgent:
