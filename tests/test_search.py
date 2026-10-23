@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from pydantic import ValidationError
@@ -49,26 +50,38 @@ class SearchTest(unittest.TestCase):
         embed_texts.assert_not_called()
         self.assertEqual([], result["chunks"])
 
-    def test_semantic_search_generates_query_embedding(self) -> None:
+    def test_semantic_search_uses_shared_embedding_settings(self) -> None:
+        embedding_settings = SimpleNamespace(
+            provider="llamacpp",
+            llamacpp_base_url="http://embed.local/v1",
+            llamacpp_api_key="not-needed",
+            llamacpp_model="mxbai",
+            openai_api_key="",
+            openai_embedding_model="unused",
+            query_prefix="query: ",
+            document_prefix="document: ",
+        )
         with (
             patch("app.agent.search._semantic_rows", return_value=[]) as semantic_rows,
             patch("app.agent.search.embed_texts", return_value=[[0.1, 0.2]]) as embed_texts,
+            patch("app.agent.search.get_embed_settings", return_value=embedding_settings),
         ):
             search_debug("taxable income concept", mode="semantic")
 
-        settings = get_api_settings()
+        api_settings = get_api_settings()
         embed_texts.assert_called_once_with(
-            ["taxable income concept"], provider=settings.embedding_provider,
-            llamacpp_base_url=settings.embedding_llamacpp_base_url,
-            llamacpp_api_key=settings.embedding_llamacpp_api_key,
-            llamacpp_model=settings.embedding_llamacpp_model,
-            openai_api_key=settings.openai_api_key,
-            openai_embedding_model=settings.openai_embedding_model,
-            query_prefix=settings.embedding_query_prefix,
-            document_prefix=settings.embedding_document_prefix,
+            ["taxable income concept"],
+            provider="llamacpp",
+            llamacpp_base_url="http://embed.local/v1",
+            llamacpp_api_key="not-needed",
+            llamacpp_model="mxbai",
+            openai_api_key="",
+            openai_embedding_model="unused",
+            query_prefix="query: ",
+            document_prefix="document: ",
             input_type="query",
         )
-        semantic_rows.assert_called_once_with([0.1, 0.2], 8, 0, settings)
+        semantic_rows.assert_called_once_with([0.1, 0.2], 8, 0, api_settings)
 
     def test_search_schema_rejects_unsupported_auto_mode(self) -> None:
         with self.assertRaises(ValidationError):

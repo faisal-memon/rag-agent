@@ -279,6 +279,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Never invent new arguments", prompt)
         self.assertIn("get_ocean_schedule", prompt)
         self.assertIn("grep_documents", prompt)
+        self.assertIn("news/get_news", prompt)
+        self.assertIn("Do not use document retrieval for that request", prompt)
 
     def test_tool_descriptions_are_generated_from_docstrings(self) -> None:
         descriptions = render_tool_descriptions()
