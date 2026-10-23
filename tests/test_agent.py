@@ -20,6 +20,7 @@ from app.agent.memory import (
 )
 from app.agent.agent import (
     Agent,
+    TurnContext,
     _conversation_context,
     _complete_text,
 )
@@ -50,7 +51,33 @@ def _agent(settings) -> Agent:
     return Agent(settings, tools.ToolCatalogManager(refresh_interval=300.0))
 
 
+def _turn(
+    question: str = "",
+    history: list[dict] | None = None,
+    catalog: tools.ToolCatalog | None = None,
+) -> TurnContext:
+    return TurnContext(
+        question=question,
+        history=history or [],
+        on_progress=None,
+        profile_name=None,
+        max_steps=6,
+        conversation="",
+        catalog=catalog or tools.STATIC_TOOL_CATALOG,
+    )
+
+
 class AgentTest(unittest.TestCase):
+    def test_turn_context_keeps_mutable_request_state_isolated(self) -> None:
+        first = _turn("First question")
+        second = _turn("Second question")
+
+        first.plan.append({"tool": "semantic_search"})
+        first.debug.append({"event": "model_response"})
+
+        self.assertEqual([], second.plan)
+        self.assertEqual([], second.debug)
+
     def test_agent_reads_the_catalog_manager_provided_at_startup(self) -> None:
         catalog_manager = MagicMock()
         catalog_manager.current.return_value = tools.STATIC_TOOL_CATALOG
@@ -472,7 +499,7 @@ class AgentTest(unittest.TestCase):
             }
 
             agent = _agent(_settings_with_api(memory_path=memory_path))
-            result = agent._execute_tool(step, question="What car do I have?", history=[])
+            result = agent._execute_tool(step, _turn("What car do I have?"))
 
         self.assertFalse(result["result"]["remembered"])
         self.assertFalse(memory_path.exists())
@@ -480,7 +507,7 @@ class AgentTest(unittest.TestCase):
     def test_execute_tool_dispatches_hybrid_search(self) -> None:
         with patch("app.agent.tools.builtin.hybrid_search", return_value={"keyword_matches": [], "semantic_matches": []}) as hybrid_search:
             result = _agent(get_api_settings())._execute_tool(
-                {"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}}
+                {"tool": "hybrid_search", "arguments": {"query": "52 bus", "limit": 4}}, _turn()
             )
 
         hybrid_search.assert_called_once_with(query="52 bus", limit=4)
@@ -497,7 +524,9 @@ class AgentTest(unittest.TestCase):
         agent = _agent(_settings_with_api(home_latitude=37.7, home_longitude=-122.4, memory_path=Path("memory.md")))
 
         with patch.object(tools.MCPTool, "_execute", return_value={"content": []}) as execute:
-            result = agent._execute_tool({"tool": "muni/find_nearby_stops", "arguments": args}, catalog=catalog)
+            result = agent._execute_tool(
+                {"tool": "muni/find_nearby_stops", "arguments": args}, _turn(catalog=catalog)
+            )
 
         execute.assert_called_once_with({"latitude": 37.7, "longitude": -122.4})
         self.assertEqual(args, result["arguments"])
