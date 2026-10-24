@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -24,6 +25,27 @@ MAX_DEBUG_EVENTS = 80
 IDENTITY_ONBOARDING_QUESTION = "Before I search your documents, what name should I use to identify your records?"
 ProgressCallback = Callable[[dict], None]
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TurnContext:
+    """Mutable state for one call to :meth:`Agent.answer`."""
+
+    question: str
+    history: list[dict]
+    on_progress: ProgressCallback | None
+    profile_name: str | None
+    max_steps: int
+    conversation: str
+    memory_state: dict = field(default_factory=dict)
+    plan: list[dict] = field(default_factory=list)
+    tool_results: list[dict] = field(default_factory=list)
+    reasoning: list[dict] = field(default_factory=list)
+    debug: list[dict] = field(default_factory=list)
+    seen_calls: set[str] = field(default_factory=set)
+    catalog: tools.ToolCatalog | None = None
+    client: OpenAI | None = None
+    model: str = ""
 
 
 class Agent:
@@ -53,73 +75,42 @@ class Agent:
         """Answer one user question using bounded model-selected tools."""
         if not self.memory.loaded:
             self.startup()
-        history = history or []
-        max_steps = self.settings.agent_max_steps
-        conversation = _conversation_context(history)
-        plan: list[dict] = []
-        tool_results: list[dict] = []
-        reasoning: list[dict] = []
-        debug: list[dict] = []
-        seen_calls: set[str] = set()
-
-        question, memory_state, onboarding_response = _prepare_question_and_memory(
-            self, question, history, profile_name, debug
+        turn = TurnContext(
+            question=question,
+            history=history or [],
+            on_progress=on_progress,
+            profile_name=profile_name,
+            max_steps=self.settings.agent_max_steps,
+            conversation=_conversation_context(history or []),
+            catalog=self.tool_catalog(),
         )
+
+        onboarding_response = _prepare_question_and_memory(self, turn)
         if onboarding_response:
             return onboarding_response
 
         memory_approval_response = (
-            _handle_memory_approval(self, question, history, on_progress, reasoning)
+            _handle_memory_approval(self, turn)
             if self.settings.memory_enabled and self.settings.memory_require_approval
             else None
         )
         if memory_approval_response:
             return memory_approval_response
 
-        catalog = self.tool_catalog()
-        client, model = get_llm_client(self.settings)
-
-        answer = _run_agent_loop(
-            self,
-            question,
-            history,
-            conversation,
-            memory_state,
-            profile_name,
-            max_steps,
-            plan,
-            tool_results,
-            reasoning,
-            debug,
-            seen_calls,
-            catalog,
-            on_progress,
-            client,
-            model,
-        )
+        turn.client, turn.model = get_llm_client(self.settings)
+        answer = _run_agent_loop(self, turn)
 
         if not answer:
-            _emit_progress(on_progress, "thinking", message="Preparing answer")
-            answer = _synthesize_answer(
-                question,
-                conversation,
-                memory_state,
-                plan,
-                tool_results,
-                reasoning,
-                client,
-                model,
-                debug,
-                self,
-            )
-        citations = _citations_from_tool_results(tool_results)
+            _emit_progress(turn.on_progress, "thinking", message="Preparing answer")
+            answer = _synthesize_answer(self, turn)
+        citations = _citations_from_tool_results(turn.tool_results)
 
         return {
             "answer": answer,
-            "plan": plan,
-            "tool_results": tool_results,
-            "reasoning": reasoning,
-            "debug": debug,
+            "plan": turn.plan,
+            "tool_results": turn.tool_results,
+            "reasoning": turn.reasoning,
+            "debug": turn.debug,
             "citations": citations,
         }
 
@@ -136,14 +127,11 @@ class Agent:
     def _execute_tool(
         self,
         step: dict,
-        question: str = "",
-        history: list[dict] | None = None,
-        catalog: tools.ToolCatalog | None = None,
+        turn: TurnContext,
     ) -> dict:
         """Execute one tool without exposing execution context in its recorded arguments."""
         tool = step["tool"]
         arguments = step.get("arguments", {})
-        catalog = catalog or self.tool_catalog()
         latitude = self.settings.home_latitude
         longitude = self.settings.home_longitude
         context = (
@@ -155,7 +143,7 @@ class Agent:
             if tool == "remember":
                 if not self.settings.memory_enabled:
                     result = {"remembered": False, "error": "Memory is disabled in Settings."}
-                elif self.settings.memory_require_approval and not memory.write_is_allowed(question, history or []):
+                elif self.settings.memory_require_approval and not memory.write_is_allowed(turn.question, turn.history):
                     result = {
                         "remembered": False,
                         "error": (
@@ -169,79 +157,33 @@ class Agent:
                         entry=str(arguments.get("entry") or ""),
                         section=str(arguments.get("section") or "Inbox"),
                     )
+            elif turn.catalog is None:
+                result = {"error": "Tool catalog unavailable."}
             else:
-                result = catalog.execute(tool, arguments, context)
+                result = turn.catalog.execute(tool, arguments, context)
         except Exception as exc:
             result = {"error": str(exc)}
 
         return {"tool": tool, "arguments": arguments, "result": result}
 
 
-def _run_agent_loop(
-    agent: Agent,
-    question: str,
-    history: list[dict],
-    conversation: str,
-    memory_state: dict,
-    profile_name: str | None,
-    max_steps: int,
-    plan: list[dict],
-    tool_results: list[dict],
-    reasoning: list[dict],
-    debug: list[dict],
-    seen_calls: set[str],
-    catalog: tools.ToolCatalog,
-    on_progress: ProgressCallback | None,
-    client: OpenAI,
-    model: str,
-) -> str:
+def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
     """Run bounded planner and tool iterations, returning a direct answer if chosen."""
     decision_feedback = ""
 
-    for _ in range(max_steps):
+    for _ in range(turn.max_steps):
         _emit_progress(
-            on_progress,
+            turn.on_progress,
             "thinking",
-            message="Reviewing available information" if tool_results else "Thinking",
+            message="Reviewing available information" if turn.tool_results else "Thinking",
         )
-        decision = _decide_next_action(
-            question,
-            conversation,
-            memory_state,
-            tool_results,
-            max_steps - len(plan),
-            decision_feedback,
-            reasoning,
-            client,
-            model,
-            debug,
-            agent,
-            profile_name,
-            catalog,
-        )
-        answer, decision_feedback, should_stop = _handle_planner_decision(
-            decision,
-            plan,
-            tool_results,
-            debug,
-            catalog,
-        )
+        decision = _decide_next_action(agent, turn, decision_feedback)
+        answer, decision_feedback, should_stop = _handle_planner_decision(decision, turn)
         if should_stop:
             break
         if decision["action"] != "tool":
             continue
-        tool_result = _execute_planned_tool(
-            decision,
-            question,
-            history,
-            agent,
-            plan,
-            tool_results,
-            debug,
-            seen_calls,
-            catalog,
-            on_progress,
-        )
+        tool_result = _execute_planned_tool(agent, decision, turn)
         result = tool_result.get("result") or {}
         if isinstance(result, dict) and result.get("error"):
             raise RuntimeError(f"Tool {decision['tool']} failed: {result['error']}")
@@ -251,26 +193,23 @@ def _run_agent_loop(
 
 def _handle_planner_decision(
     decision: dict,
-    plan: list[dict],
-    tool_results: list[dict],
-    debug: list[dict],
-    catalog: tools.ToolCatalog,
+    turn: TurnContext,
 ) -> tuple[str | None, str, bool]:
     """Apply a planner decision that does not execute a tool."""
     if decision["action"] == "synthesize":
-        _append_debug(debug, "controller_decision", phase="planning", decision="synthesize")
+        _append_debug(turn.debug, "controller_decision", phase="planning", decision="synthesize")
         return None, "", True
 
     if decision["action"] != "answer":
         return None, "", False
 
-    if decision["evidence_status"] == "not_found" and not _absence_search_complete(plan, catalog):
+    if decision["evidence_status"] == "not_found" and not _absence_search_complete(turn.plan, turn.catalog):
         feedback = (
             "The not-found conclusion was rejected. Before claiming absence, use at least two different "
             "document-retrieval tools, including one exact-search tool."
         )
         _append_debug(
-            debug,
+            turn.debug,
             "controller_decision",
             phase="planning",
             decision="reject_answer",
@@ -280,7 +219,7 @@ def _handle_planner_decision(
         return None, feedback, False
 
     _append_debug(
-        debug,
+        turn.debug,
         "controller_decision",
         phase="planning",
         decision="return_answer",
@@ -290,31 +229,24 @@ def _handle_planner_decision(
 
 
 def _execute_planned_tool(
-    decision: dict,
-    question: str,
-    history: list[dict],
     agent: Agent,
-    plan: list[dict],
-    tool_results: list[dict],
-    debug: list[dict],
-    seen_calls: set[str],
-    catalog: tools.ToolCatalog,
-    on_progress: ProgressCallback | None,
+    decision: dict,
+    turn: TurnContext,
 ) -> dict:
     """Execute one planner-selected tool and record its trace events."""
     step = {"tool": decision["tool"], "arguments": decision["arguments"]}
     signature = json.dumps(step, sort_keys=True)
-    if signature in seen_calls:
+    if signature in turn.seen_calls:
         duplicate_result = {
             **step,
             "result": {
                 "error": "Planner repeated the same tool call with identical arguments in one turn."
             },
         }
-        plan.append(step)
-        tool_results.append(duplicate_result)
+        turn.plan.append(step)
+        turn.tool_results.append(duplicate_result)
         _append_debug(
-            debug,
+            turn.debug,
             "controller_decision",
             phase="tool",
             decision="reject_duplicate_tool_call",
@@ -322,34 +254,34 @@ def _execute_planned_tool(
             arguments=step["arguments"],
         )
         _emit_progress(
-            on_progress,
+            turn.on_progress,
             "tool_result",
             tool=step["tool"],
             result=_summarize_tool_result(duplicate_result["result"]),
         )
         return duplicate_result
 
-    seen_calls.add(signature)
-    plan.append(step)
-    _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
+    turn.seen_calls.add(signature)
+    turn.plan.append(step)
+    _emit_progress(turn.on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
     _append_debug(
-        debug,
+        turn.debug,
         "controller_decision",
         phase="planning",
         decision="execute_tool",
         tool=step["tool"],
         arguments=step["arguments"],
     )
-    tool_result = agent._execute_tool(step, question, history, catalog)
-    tool_results.append(tool_result)
+    tool_result = agent._execute_tool(step, turn)
+    turn.tool_results.append(tool_result)
     _emit_progress(
-        on_progress,
+        turn.on_progress,
         "tool_result",
         tool=step["tool"],
         result=_summarize_tool_result(tool_result.get("result")),
     )
     _append_debug(
-        debug,
+        turn.debug,
         "tool_result",
         phase="tool",
         tool=step["tool"],
@@ -361,68 +293,61 @@ def _execute_planned_tool(
 
 def _prepare_question_and_memory(
     agent: Agent,
-    question: str,
-    history: list[dict],
-    profile_name: str | None,
-    debug: list[dict],
-) -> tuple[str, dict, dict | None]:
+    turn: TurnContext,
+) -> dict | None:
     """Load memory and complete the profile-name onboarding flow when needed."""
     if not agent.settings.memory_enabled:
-        return question, {"path": "(disabled)", "content": "", "exists": False, "truncated": False, "error": None}, None
-    memory_state = agent.memory.read()
-    original_question = _identity_question_from_history(history)
-    if profile_name or memory.profile_name(memory_state):
-        return question, memory_state, None
+        turn.memory_state = {"path": "(disabled)", "content": "", "exists": False, "truncated": False, "error": None}
+        return None
+    turn.memory_state = agent.memory.read()
+    original_question = _identity_question_from_history(turn.history)
+    if turn.profile_name or memory.profile_name(turn.memory_state):
+        return None
 
     if not original_question:
-        if _needs_profile_name(question):
-            return question, memory_state, _identity_onboarding_response()
-        return question, memory_state, None
+        if _needs_profile_name(turn.question):
+            return _identity_onboarding_response()
+        return None
 
-    name = memory.profile_name_from_reply(question)
+    name = memory.profile_name_from_reply(turn.question)
     if not name:
-        return (
-            question,
-            memory_state,
-            _identity_onboarding_response("Please reply with the name you would like me to use for your records."),
-        )
+        return _identity_onboarding_response("Please reply with the name you would like me to use for your records.")
 
     remembered = memory.remember(agent.memory, f"{memory.PROFILE_NAME_PREFIX} {name}", "Profile")
     if remembered.get("error"):
-        return question, memory_state, _identity_onboarding_response(f"I could not save your name: {remembered['error']}")
+        return _identity_onboarding_response(f"I could not save your name: {remembered['error']}")
 
     _append_debug(
-        debug,
+        turn.debug,
         "controller_decision",
         phase="identity",
         decision="save_profile_name",
         profile_name=name,
     )
-    return original_question, agent.memory.read(), None
+    turn.question = original_question
+    turn.memory_state = agent.memory.read()
+    return None
 
 
 def _handle_memory_approval(
     agent: Agent,
-    question: str,
-    history: list[dict],
-    on_progress: ProgressCallback | None,
-    reasoning: list[dict],
+    turn: TurnContext,
 ) -> dict | None:
     """Persist an explicitly approved memory proposal without invoking the model."""
-    approved_memory = memory.approved_from_history(question, history)
+    approved_memory = memory.approved_from_history(turn.question, turn.history)
     if not approved_memory:
         return None
 
     step = {"tool": "remember", "arguments": approved_memory}
-    _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
-    tool_result = agent._execute_tool(step, question, history)
+    _emit_progress(turn.on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
+    tool_result = agent._execute_tool(step, turn)
     result_summary = _summarize_tool_result(tool_result.get("result"))
-    _emit_progress(on_progress, "tool_result", tool=step["tool"], result=result_summary)
+    _emit_progress(turn.on_progress, "tool_result", tool=step["tool"], result=result_summary)
     return {
         "answer": memory.result_answer(tool_result),
         "plan": [step],
         "tool_results": [tool_result],
-        "reasoning": reasoning,
+        "reasoning": turn.reasoning,
         "debug": [
             {
                 "event": "controller_decision",
@@ -455,52 +380,42 @@ def _user_location_capability(agent: Agent) -> str:
 
 
 def _decide_next_action(
-    question: str,
-    conversation: str,
-    memory_state: dict,
-    tool_results: list[dict],
-    remaining_steps: int,
-    decision_feedback: str,
-    reasoning: list[dict],
-    client: OpenAI,
-    model: str,
-    debug: list[dict],
     agent: Agent,
-    profile_name: str | None = None,
-    catalog: tools.ToolCatalog | None = None,
+    turn: TurnContext,
+    decision_feedback: str,
 ) -> dict:
-    catalog = catalog or tools.STATIC_TOOL_CATALOG
+    catalog = turn.catalog or tools.STATIC_TOOL_CATALOG
     prompt = agent.render_prompt(
         "planner.md",
         {
-            "remaining_steps": remaining_steps,
+            "remaining_steps": turn.max_steps - len(turn.plan),
             "decision_feedback": decision_feedback or "(none)",
-            "memory_path": memory_state.get("path") or "not configured",
-            "memory": memory.prompt_content(memory_state),
+            "memory_path": turn.memory_state.get("path") or "not configured",
+            "memory": memory.prompt_content(turn.memory_state),
             "tool_descriptions": tools.render_tool_descriptions(catalog),
             "planner_action_schema": protocol.planner_action_schema(catalog),
-            "conversation": conversation or "(none)",
-            "question": question,
-            "profile_name": profile_name or memory.profile_name(memory_state) or "(not provided)",
+            "conversation": turn.conversation or "(none)",
+            "question": turn.question,
+            "profile_name": turn.profile_name or memory.profile_name(turn.memory_state) or "(not provided)",
             "current_local_time": _current_local_time(),
             "user_location_capability": _user_location_capability(agent),
-            "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
+            "tool_results": json.dumps(_compact_tool_results(turn.tool_results), indent=2),
         },
     )
     text = _complete_text(
-        client,
-        model,
+        turn.client,
+        turn.model,
         system=f"{agent.render_system_prompt()}\n\nChoose one safe bounded action at a time. Return JSON only.",
         prompt=prompt,
         settings=agent.settings,
-        reasoning=reasoning,
+        reasoning=turn.reasoning,
         phase="planning",
     )
-    _append_debug(debug, "model_response", phase="planning", raw_text=text)
+    _append_debug(turn.debug, "model_response", phase="planning", raw_text=text)
     native_step = protocol.extract_native_tool_call(text, catalog)
     if native_step:
         _append_debug(
-            debug,
+            turn.debug,
             "parsed_action",
             phase="planning",
             parsed={"action": "tool", **native_step, "format": "native_tool_call"},
@@ -510,14 +425,14 @@ def _decide_next_action(
     try:
         raw_json = protocol.extract_json_object(text)
         parsed = json.loads(raw_json)
-        _append_debug(debug, "parsed_action", phase="planning", parsed=parsed)
+        _append_debug(turn.debug, "parsed_action", phase="planning", parsed=parsed)
         if parsed.get("action") == "answer":
             answer = str(parsed.get("answer") or "").strip()
             if answer:
                 evidence_status = str(parsed.get("evidence_status") or "").strip()
                 if evidence_status not in {"supported", "not_found", "casual"}:
                     evidence_status = "not_found" if _looks_like_not_found(answer) else "supported"
-                    if not tool_results:
+                    if not turn.tool_results:
                         evidence_status = "casual"
                 return {
                     "action": "answer",
@@ -529,7 +444,7 @@ def _decide_next_action(
             if step:
                 return {"action": "tool", **step}
             _append_debug(
-                debug,
+                turn.debug,
                 "controller_decision",
                 phase="planning",
                 decision="reject_tool",
@@ -537,9 +452,9 @@ def _decide_next_action(
                 parsed=parsed,
             )
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        if not tool_results and _is_agent_configuration_question(question) and text.strip():
+        if not turn.tool_results and _is_agent_configuration_question(turn.question) and text.strip():
             _append_debug(
-                debug,
+                turn.debug,
                 "controller_decision",
                 phase="planning",
                 decision="fallback_prose_answer",
@@ -551,18 +466,18 @@ def _decide_next_action(
                 "answer": text.strip(),
             }
         _append_debug(
-            debug,
+            turn.debug,
             "parse_error",
             phase="planning",
             reason=str(exc),
             raw_text=text,
         )
-        if not tool_results:
+        if not turn.tool_results:
             raise RuntimeError("Planner returned an invalid action; please try again.") from exc
 
-    if not tool_results:
+    if not turn.tool_results:
         _append_debug(
-            debug,
+            turn.debug,
             "controller_decision",
             phase="planning",
             decision="error",
@@ -573,7 +488,7 @@ def _decide_next_action(
             "The request could not be safely routed."
         )
     _append_debug(
-        debug,
+        turn.debug,
         "controller_decision",
         phase="planning",
         decision="fallback_synthesize",
@@ -638,39 +553,28 @@ def _identity_onboarding_response(detail: str | None = None) -> dict:
     }
 
 
-def _synthesize_answer(
-    question: str,
-    conversation: str,
-    memory_state: dict,
-    plan: list[dict],
-    tool_results: list[dict],
-    reasoning: list[dict],
-    client: OpenAI,
-    model: str,
-    debug: list[dict],
-    agent: Agent,
-) -> str:
+def _synthesize_answer(agent: Agent, turn: TurnContext) -> str:
     prompt = agent.render_prompt(
         "answer.md",
         {
-            "memory_path": memory_state.get("path") or "not configured",
-            "memory": memory.prompt_content(memory_state),
-            "conversation": conversation or "(none)",
-            "question": question,
-            "plan": json.dumps(plan, indent=2),
-            "tool_results": json.dumps(_compact_tool_results(tool_results), indent=2),
+            "memory_path": turn.memory_state.get("path") or "not configured",
+            "memory": memory.prompt_content(turn.memory_state),
+            "conversation": turn.conversation or "(none)",
+            "question": turn.question,
+            "plan": json.dumps(turn.plan, indent=2),
+            "tool_results": json.dumps(_compact_tool_results(turn.tool_results), indent=2),
         },
     )
     answer = _complete_text(
-        client,
-        model,
+        turn.client,
+        turn.model,
         system=agent.render_system_prompt(),
         prompt=prompt,
         settings=agent.settings,
-        reasoning=reasoning,
+        reasoning=turn.reasoning,
         phase="answer",
     )
-    _append_debug(debug, "model_response", phase="answer", raw_text=answer)
+    _append_debug(turn.debug, "model_response", phase="answer", raw_text=answer)
     return answer
 
 
