@@ -255,8 +255,8 @@ function progressToolTitle(tool, argumentsValue) {
 }
 
 function progressResultTitle(event) {
-  const summary = event.result || {};
-  if (summary.type === "error") return "Tool could not complete";
+  const summary = event.summary || {};
+  if (summary.type === "error" || event.result?.error) return "Tool could not complete";
   if (summary.type === "list") return `${summary.count} result${summary.count === 1 ? "" : "s"} found`;
   return "Tool completed";
 }
@@ -394,19 +394,35 @@ function buildAgentTraceEvents(message) {
     });
   }
 
-  // Keep the expandable trace useful when planning fails before the server
-  // can return reasoning/debug events. The progress events are still safe,
-  // user-facing status updates, and the error explains why the run stopped.
+  // A failed run has no final debug payload. Build the same expandable
+  // trace from the progress events already received by the browser.
   if (!traceEvents.length) {
     (message.progress || []).forEach((event) => {
-      traceEvents.push({
-        type: event.type === "error" ? "warning" : "thinking",
-        title: event.message || (event.type === "thinking" ? "Thinking" : "Agent update"),
-        detail: event.message || "",
-      });
+      if (event.type === "tool_call") {
+        traceEvents.push({
+          type: "tool-call",
+          title: `tool call · ${event.tool || "unknown"}`,
+          meta: summarizeArguments(event.arguments || {}),
+          detail: JSON.stringify(event.arguments || {}, null, 2),
+        });
+      } else if (event.type === "tool_result") {
+        const toolResult = event.result ?? null;
+        traceEvents.push({
+          type: toolResult && toolResult.error ? "tool-error" : "tool-result",
+          title: `tool result · ${event.tool || "unknown"}`,
+          meta: summarizeToolResult(toolResult),
+          detail: JSON.stringify(toolResult, null, 2),
+        });
+      } else {
+        traceEvents.push({
+          type: event.type === "error" ? "warning" : "thinking",
+          title: event.message || (event.type === "thinking" ? "Thinking" : "Agent update"),
+          detail: event.message || "",
+        });
+      }
     });
   }
-  if (message.error) {
+  if (message.error && !(message.progress || []).some((event) => event.type === "error")) {
     traceEvents.push({
       type: "warning",
       title: "agent error",
@@ -419,7 +435,7 @@ function buildAgentTraceEvents(message) {
 
 function agentTraceTimelineHtml(message) {
   const events = buildAgentTraceEvents(message);
-  const toolCount = (message.toolResults || []).length;
+  const toolCount = (message.toolResults || []).length || (message.progress || []).filter((event) => event.type === "tool_call").length;
   const rows = events.map((event, index) => `
     <details class="trace-event trace-${escapeHtml(event.type)}">
       <summary>
