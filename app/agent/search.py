@@ -1,4 +1,5 @@
 from app.agent.config import get_api_settings
+from app.embed.config import get_embed_settings
 from app.core.db import db_cursor
 from app.core.embeddings import embed_texts
 
@@ -13,19 +14,20 @@ def search_debug(
     offset: int = 0,
 ) -> dict:
     settings = get_api_settings()
+    embedding_settings = get_embed_settings()
     result_limit = limit or settings.query_limit
     if mode == RETRIEVAL_MODE_KEYWORD:
         rows = _keyword_rows(question, result_limit, offset, settings)
     elif mode == RETRIEVAL_MODE_SEMANTIC:
         question_embedding = embed_texts(
-            [question], provider=settings.embedding_provider,
-            llamacpp_base_url=settings.embedding_llamacpp_base_url,
-            llamacpp_api_key=settings.embedding_llamacpp_api_key,
-            llamacpp_model=settings.embedding_llamacpp_model,
-            openai_api_key=settings.openai_api_key,
-            openai_embedding_model=settings.openai_embedding_model,
-            query_prefix=settings.embedding_query_prefix,
-            document_prefix=settings.embedding_document_prefix,
+            [question], provider=embedding_settings.provider,
+            llamacpp_base_url=embedding_settings.llamacpp_base_url,
+            llamacpp_api_key=embedding_settings.llamacpp_api_key,
+            llamacpp_model=embedding_settings.llamacpp_model,
+            openai_api_key=embedding_settings.openai_api_key,
+            openai_embedding_model=embedding_settings.openai_embedding_model,
+            query_prefix=embedding_settings.query_prefix,
+            document_prefix=embedding_settings.document_prefix,
             input_type="query",
         )[0]
         rows = _semantic_rows(question_embedding, result_limit, offset, settings)
