@@ -285,18 +285,47 @@ function progressEventPresentation(event) {
   }
 }
 
-function agentProgressTimelineHtml(events, streaming = false) {
-  const normalizedEvents = [];
+function groupedProgressEvents(events, streaming) {
+  const items = [];
   (events || []).forEach((event) => {
-    // While streaming, the live indicator is the single source of truth for
-    // thinking state. Keep completed thinking entries for the final trace.
     if (streaming && event.type === "thinking") return;
-    // The stream can emit an initial thinking event immediately after the UI
-    // creates its placeholder. Keep one timeline entry per state transition.
-    if (event.type === "thinking" && normalizedEvents[normalizedEvents.length - 1]?.type === "thinking") return;
-    normalizedEvents.push(event);
+    if (event.type === "thinking" && items[items.length - 1]?.type === "thinking") return;
+    if (event.type === "tool_result") {
+      const toolCall = [...items].reverse().find((item) => item.type === "tool_call" && !item.result);
+      if (toolCall) {
+        toolCall.result = event;
+        return;
+      }
+    }
+    items.push({ ...event });
   });
-  const rows = normalizedEvents.map((event) => {
+  return items;
+}
+
+function toolProgressHtml(event) {
+  const result = event.result;
+  const completed = result ? progressResultTitle(result) : "Running";
+  const icon = result?.result?.error || result?.summary?.type === "error" ? "!" : "↗";
+  const resultDetail = result
+    ? `<div class="agent-progress-detail"><strong>Result</strong><pre>${escapeHtml(JSON.stringify(result.result ?? null, null, 2))}</pre></div>`
+    : '<div class="agent-progress-detail pending">Waiting for result…</div>';
+  return `<details class="agent-progress-tool${result ? " completed" : ""}">
+    <summary>
+      <span class="agent-progress-icon" aria-hidden="true">${icon}</span>
+      <span>${escapeHtml(progressToolTitle(event.tool, event.arguments))}</span>
+      <span class="agent-progress-tool-state">${escapeHtml(completed)}</span>
+    </summary>
+    <div class="agent-progress-tool-details">
+      <div class="agent-progress-detail"><strong>Arguments</strong><pre>${escapeHtml(JSON.stringify(event.arguments || {}, null, 2))}</pre></div>
+      ${resultDetail}
+    </div>
+  </details>`;
+}
+
+function agentProgressTimelineHtml(events, streaming = false) {
+  const items = groupedProgressEvents(events, streaming);
+  const rows = items.map((event) => {
+    if (event.type === "tool_call") return toolProgressHtml(event);
     const type = event.type || "thinking";
     const { icon, title } = progressEventPresentation({ ...event, type });
     return `<div class="agent-progress-event agent-progress-${escapeHtml(type)}">
@@ -305,9 +334,11 @@ function agentProgressTimelineHtml(events, streaming = false) {
     </div>`;
   }).join("");
   if (!rows && !streaming) return "";
+  const latestType = events?.[events.length - 1]?.type;
+  const showThinking = streaming && latestType !== "tool_call";
   return `<div class="agent-progress" aria-live="polite">
     ${rows}
-    ${streaming ? thinkingIndicatorHtml() : ""}
+    ${showThinking ? thinkingIndicatorHtml() : ""}
   </div>`;
 }
 
@@ -447,6 +478,9 @@ function buildAgentTraceEvents(message) {
 }
 
 function agentTraceTimelineHtml(message) {
+  if (message.streaming || !(message.debug?.length || message.reasoning?.length || message.toolResults?.length)) {
+    return "";
+  }
   const events = buildAgentTraceEvents(message);
   const toolCount = (message.toolResults || []).length || (message.progress || []).filter((event) => event.type === "tool_call").length;
   const rows = events.map((event, index) => `

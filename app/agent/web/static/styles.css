@@ -617,6 +617,66 @@ button:disabled {
   font-size: 13px;
 }
 
+.agent-progress-tool {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.agent-progress-tool > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 11px;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+}
+
+.agent-progress-tool > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-progress-tool-state {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-progress-tool-details {
+  border-top: 1px solid var(--line);
+  padding: 10px 11px;
+}
+
+.agent-progress-detail + .agent-progress-detail {
+  margin-top: 12px;
+}
+
+.agent-progress-detail strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-progress-detail pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  color: var(--ink);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-progress-detail.pending {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .agent-progress-icon {
   display: inline-grid;
   width: 17px;
