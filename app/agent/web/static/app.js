@@ -272,6 +272,19 @@ function thinkingIndicatorHtml() {
   </div>`;
 }
 
+function progressEventPresentation(event) {
+  switch (event.type) {
+    case "thinking":
+      return { icon: "…", title: event.message || "Thinking" };
+    case "tool_call":
+      return { icon: "↗", title: progressToolTitle(event.tool, event.arguments) };
+    case "tool_result":
+      return { icon: "✓", title: progressResultTitle(event) };
+    default:
+      return { icon: "!", title: event.message || "Agent update" };
+  }
+}
+
 function agentProgressTimelineHtml(events, streaming = false) {
   const normalizedEvents = [];
   (events || []).forEach((event) => {
@@ -285,14 +298,7 @@ function agentProgressTimelineHtml(events, streaming = false) {
   });
   const rows = normalizedEvents.map((event) => {
     const type = event.type || "thinking";
-    const title = type === "thinking"
-      ? event.message || "Thinking"
-      : type === "tool_call"
-        ? progressToolTitle(event.tool, event.arguments)
-        : type === "tool_result"
-          ? progressResultTitle(event)
-          : event.message || "Agent update";
-    const icon = type === "thinking" ? "…" : type === "tool_call" ? "↗" : type === "tool_result" ? "✓" : "!";
+    const { icon, title } = progressEventPresentation({ ...event, type });
     return `<div class="agent-progress-event agent-progress-${escapeHtml(type)}">
       <span class="agent-progress-icon" aria-hidden="true">${icon}</span>
       <span>${escapeHtml(title)}</span>
@@ -398,27 +404,34 @@ function buildAgentTraceEvents(message) {
   // trace from the progress events already received by the browser.
   if (!traceEvents.length) {
     (message.progress || []).forEach((event) => {
-      if (event.type === "tool_call") {
-        traceEvents.push({
-          type: "tool-call",
-          title: `tool call · ${event.tool || "unknown"}`,
-          meta: summarizeArguments(event.arguments || {}),
-          detail: JSON.stringify(event.arguments || {}, null, 2),
-        });
-      } else if (event.type === "tool_result") {
-        const toolResult = event.result ?? null;
-        traceEvents.push({
-          type: toolResult && toolResult.error ? "tool-error" : "tool-result",
-          title: `tool result · ${event.tool || "unknown"}`,
-          meta: summarizeToolResult(toolResult),
-          detail: JSON.stringify(toolResult, null, 2),
-        });
-      } else {
-        traceEvents.push({
-          type: event.type === "error" ? "warning" : "thinking",
-          title: event.message || (event.type === "thinking" ? "Thinking" : "Agent update"),
-          detail: event.message || "",
-        });
+      switch (event.type) {
+        case "tool_call":
+          traceEvents.push({
+            type: "tool-call",
+            title: `tool call · ${event.tool || "unknown"}`,
+            meta: summarizeArguments(event.arguments || {}),
+            detail: JSON.stringify(event.arguments || {}, null, 2),
+          });
+          break;
+        case "tool_result": {
+          const toolResult = event.result ?? null;
+          traceEvents.push({
+            type: toolResult && toolResult.error ? "tool-error" : "tool-result",
+            title: `tool result · ${event.tool || "unknown"}`,
+            meta: summarizeToolResult(toolResult),
+            detail: JSON.stringify(toolResult, null, 2),
+          });
+          break;
+        }
+        case "error":
+          traceEvents.push({ type: "warning", title: event.message || "Agent error", detail: event.message || "" });
+          break;
+        default:
+          traceEvents.push({
+            type: "thinking",
+            title: event.message || "Thinking",
+            detail: event.message || "",
+          });
       }
     });
   }
