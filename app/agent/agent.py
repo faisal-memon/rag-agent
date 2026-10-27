@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Any, Callable
 
@@ -370,9 +370,9 @@ def _handle_memory_approval(
     }
 
 
-def _current_local_time() -> str:
-    """Return the current time in the host's local time zone."""
-    return datetime.now().astimezone().isoformat(timespec="minutes")
+def _current_local_time(timezone: tzinfo) -> str:
+    """Return the current time in the configured application timezone."""
+    return datetime.now(timezone).isoformat(timespec="minutes")
 
 
 def _user_location_capability(agent: Agent) -> str:
@@ -405,7 +405,7 @@ def _decide_next_action(
             "conversation": turn.conversation or "(none)",
             "question": turn.question,
             "profile_name": turn.profile_name or memory.profile_name(turn.memory_state) or "(not provided)",
-            "current_local_time": _current_local_time(),
+            "current_local_time": _current_local_time(agent.settings.timezone),
             "user_location_capability": _user_location_capability(agent),
             "tool_results": json.dumps(_compact_tool_results(turn.tool_results), indent=2),
         },

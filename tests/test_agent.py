@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from app.agent.protocol import (
     extract_json_object as _extract_json_object,
@@ -37,7 +38,13 @@ from app.agent.web.routes import APP_JS, INDEX_HTML, STYLES_CSS, debug_page, ind
 
 
 def _settings_with_api(**api_values):
-    defaults = {"memory_enabled": True, "memory_require_approval": True, "home_latitude": None, "home_longitude": None}
+    defaults = {
+        "memory_enabled": True,
+        "memory_require_approval": True,
+        "home_latitude": None,
+        "home_longitude": None,
+        "timezone": ZoneInfo("UTC"),
+    }
     defaults.update(api_values)
     return SimpleNamespace(**defaults)
 
