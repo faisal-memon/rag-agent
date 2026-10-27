@@ -37,8 +37,13 @@
             <label for="mode-keyword">Keyword</label>
           </div>
           <button id="ask">Ask</button>
-          <button class="secondary" id="agent">Send</button>
-          <button class="secondary" id="record" type="button">Record</button>
+          <button class="secondary icon-button" id="agent" type="button" aria-label="Send message" title="Send message">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+          </button>
+          <button class="secondary icon-button" id="record" type="button" aria-label="Record message" title="Record message">
+            <svg class="record-mic-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0M12 17v4M8 21h8" /></svg>
+            <svg class="record-stop-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" /></svg>
+          </button>
           <button class="secondary" id="debug">Debug retrieval</button>
           <button class="secondary" id="pipeline">Pipeline status</button>
           <span class="status" id="status">Ready</span>
