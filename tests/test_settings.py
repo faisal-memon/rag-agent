@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import tempfile
 import unittest
@@ -87,3 +88,39 @@ class SettingsApiTest(unittest.TestCase):
         self.assertIn('"type":"thinking"', body)
         self.assertIn('"type":"tool_call"', body)
         self.assertIn('"type":"complete"', body)
+
+    def test_agent_stream_keeps_progress_when_the_agent_fails(self) -> None:
+        class FailingAgent:
+            def answer(self, _question, history=None, on_progress=None):
+                on_progress({"type": "thinking", "message": "Thinking"})
+                on_progress({"type": "tool_call", "tool": "get_school_lunch", "arguments": {"day": "today"}})
+                on_progress({
+                    "type": "tool_result",
+                    "tool": "get_school_lunch",
+                    "summary": {"type": "error", "error": "upstream timed out"},
+                    "result": {"error": "upstream timed out"},
+                })
+                raise RuntimeError("Tool get_school_lunch failed: upstream timed out")
+
+        request = SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(agent=FailingAgent())),
+            headers={"Remote-User": "test-user"},
+        )
+        with patch("app.agent.api.routes.load_or_create", return_value=("00000000-0000-0000-0000-000000000001", [])):
+            response = routes.stream_agent_query(request, AgentQueryRequest(question="What is lunch?"))
+
+            async def read_stream():
+                return [chunk async for chunk in response.body_iterator]
+
+            chunks = asyncio.run(read_stream())
+
+        events = [
+            json.loads(line.removeprefix("data: "))
+            for chunk in chunks
+            for line in (chunk.decode() if isinstance(chunk, bytes) else chunk).splitlines()
+            if line.startswith("data: ")
+        ]
+        self.assertEqual(["thinking", "tool_call", "tool_result", "error"], [event["type"] for event in events])
+        self.assertEqual({"day": "today"}, events[1]["arguments"])
+        self.assertEqual({"error": "upstream timed out"}, events[2]["result"])
+        self.assertIn("upstream timed out", events[3]["message"])

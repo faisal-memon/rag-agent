@@ -665,6 +665,8 @@ class AgentTest(unittest.TestCase):
 
         self.assertEqual(["thinking", "tool_call", "tool_result", "thinking"], [event["type"] for event in events])
         self.assertEqual("get_school_lunch", events[1]["tool"])
+        self.assertEqual({"type": "object", "keys": ["choices"]}, events[2]["summary"])
+        self.assertEqual({"choices": ["Pasta"]}, events[2]["result"])
 
     def test_agent_accepts_plain_prose_for_agent_configuration_question(self) -> None:
         prose_answer = "Add the rule to the planner prompt so candidate files are inspected."

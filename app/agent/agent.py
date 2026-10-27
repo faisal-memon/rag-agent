@@ -325,7 +325,8 @@ def _execute_planned_tool(
             on_progress,
             "tool_result",
             tool=step["tool"],
-            result=_summarize_tool_result(duplicate_result["result"]),
+            summary=_summarize_tool_result(duplicate_result["result"]),
+            result=_debug_safe_value(duplicate_result["result"]),
         )
         return duplicate_result
 
@@ -346,7 +347,8 @@ def _execute_planned_tool(
         on_progress,
         "tool_result",
         tool=step["tool"],
-        result=_summarize_tool_result(tool_result.get("result")),
+        summary=_summarize_tool_result(tool_result.get("result")),
+        result=_debug_safe_value(tool_result.get("result")),
     )
     _append_debug(
         debug,
@@ -417,7 +419,13 @@ def _handle_memory_approval(
     _emit_progress(on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
     tool_result = agent._execute_tool(step, question, history)
     result_summary = _summarize_tool_result(tool_result.get("result"))
-    _emit_progress(on_progress, "tool_result", tool=step["tool"], result=result_summary)
+    _emit_progress(
+        on_progress,
+        "tool_result",
+        tool=step["tool"],
+        summary=result_summary,
+        result=_debug_safe_value(tool_result.get("result")),
+    )
     return {
         "answer": memory.result_answer(tool_result),
         "plan": [step],
