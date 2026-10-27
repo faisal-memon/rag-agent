@@ -774,7 +774,8 @@ async function toggleRecording() {
       const audio = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
       mediaRecorder = null;
       recordButton.classList.remove("recording");
-      recordButton.textContent = "Record";
+      recordButton.setAttribute("aria-label", "Record message");
+      recordButton.title = "Record message";
       try {
         const form = new FormData();
         form.append("audio", audio, "recording.webm");
@@ -795,7 +796,8 @@ async function toggleRecording() {
     });
     mediaRecorder.start();
     recordButton.classList.add("recording");
-    recordButton.textContent = "Stop recording";
+    recordButton.setAttribute("aria-label", "Stop recording");
+    recordButton.title = "Stop recording";
     status.classList.remove("error");
     status.textContent = "Recording...";
   } catch (_error) {

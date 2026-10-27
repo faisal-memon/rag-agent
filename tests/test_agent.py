@@ -839,6 +839,9 @@ class AgentTest(unittest.TestCase):
 
     def test_web_ui_exposes_agent_tool_trace(self) -> None:
         self.assertIn('id="agent"', INDEX_HTML)
+        self.assertIn('aria-label="Send message"', INDEX_HTML)
+        self.assertIn('aria-label="Record message"', INDEX_HTML)
+        self.assertIn('class="secondary icon-button"', INDEX_HTML)
         self.assertIn('fetch("/agent/query/stream"', APP_JS)
         self.assertIn('id="agent-chat"', INDEX_HTML)
         self.assertIn("readAgentProgress(response", APP_JS)
@@ -846,6 +849,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn("agentTraceTimelineHtml(message)", APP_JS)
         self.assertIn("agentChat.scrollTop = agentChat.scrollHeight", APP_JS)
         self.assertIn("max-height: calc(100vh - 280px)", STYLES_CSS)
+        self.assertIn("body.agent-only .actions", STYLES_CSS)
+        self.assertIn("flex-wrap: nowrap", STYLES_CSS)
         self.assertIn("buildAgentTraceEvents(message)", APP_JS)
         self.assertIn('class="agent-trace"', APP_JS)
         self.assertIn('class="trace-event trace-${escapeHtml(event.type)}"', APP_JS)
