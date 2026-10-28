@@ -3,10 +3,11 @@ uvicorn[standard]==0.54.0
 psycopg[binary]==3.3.6
 pgvector==0.5.1
 python-dotenv==1.2.4
-openai==3.39.0
+openai==3.40.0
 pydantic==2.14.1
 pydantic-settings==2.16.1
 python-multipart==0.0.32
 liteparse==2.17.0
+dateparser==1.4.3
 
 mcp==2.3.0

@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from pydantic import Field
 
@@ -9,6 +10,7 @@ from app.core.config import ConfiguredSettings, DatabaseSettings, runtime_settin
 
 
 class ApiSettings(ConfiguredSettings):
+    timezone: ZoneInfo = Field(default=ZoneInfo("UTC"), alias="TZ")
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     normalized_output_dir: Path = Field(default=Path("/data/normalized"), alias="NORMALIZED_OUTPUT_DIR")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")

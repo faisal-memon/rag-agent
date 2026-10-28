@@ -22,6 +22,7 @@ class ConfigTest(unittest.TestCase):
         os.environ.pop("RAG_ENABLED_SUFFIXES", None)
         os.environ.pop("RAG_MEMORY_PATH", None)
         os.environ.pop("RAG_SETTINGS_PATH", None)
+        os.environ.pop("TZ", None)
         get_api_settings.cache_clear(); get_embed_settings.cache_clear(); get_normalize_settings.cache_clear()
 
     def test_stability_checks_must_be_positive(self) -> None:
@@ -135,6 +136,12 @@ class ConfigTest(unittest.TestCase):
         get_api_settings.cache_clear()
 
         self.assertEqual(45.0, get_api_settings().mcp_registry_refresh_interval)
+
+    def test_timezone_comes_from_standard_tz_environment_variable(self) -> None:
+        os.environ["TZ"] = "America/Los_Angeles"
+        get_api_settings.cache_clear()
+
+        self.assertEqual("America/Los_Angeles", str(get_api_settings().timezone))
 
 
 if __name__ == "__main__":
