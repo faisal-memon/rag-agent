@@ -70,6 +70,10 @@ main {
   gap: 10px;
 }
 
+.app-header {
+  display: none;
+}
+
 .mobile-menu-toggle {
   display: none;
 }
@@ -81,6 +85,10 @@ main {
   stroke: currentColor;
   stroke-linecap: round;
   stroke-width: 2;
+}
+
+.account-placeholder {
+  display: none;
 }
 
 .app-version {
@@ -1114,8 +1122,52 @@ body.agent-only .status {
     position: relative;
   }
 
+  .app-header {
+    position: sticky;
+    top: env(safe-area-inset-top);
+    z-index: 20;
+    display: flex;
+    width: 100vw;
+    min-height: 56px;
+    align-items: center;
+    gap: 12px;
+    margin-inline: calc(50% - 50vw);
+    border-bottom: 1px solid var(--line);
+    padding: 8px 14px;
+    background: var(--panel-strong);
+  }
+
+  .app-header-brand {
+    flex: 1;
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .account-placeholder {
+    display: inline-grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .account-placeholder svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-width: 2;
+  }
+
   .hero-topline {
-    min-height: 38px;
+    display: none;
   }
 
   .mobile-menu-toggle {
