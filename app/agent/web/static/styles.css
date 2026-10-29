@@ -1196,6 +1196,7 @@ body.agent-only .status {
 
 @media (max-width: 720px) {
   body.agent-only {
+    --mobile-composer-height: calc(64px + env(safe-area-inset-bottom));
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
@@ -1203,7 +1204,7 @@ body.agent-only .status {
 
   body.agent-only main {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     width: 100%;
     height: 100vh;
     height: 100dvh;
@@ -1232,15 +1233,23 @@ body.agent-only .status {
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior-y: contain;
+    padding-bottom: calc(16px + var(--mobile-composer-height));
   }
 
   body.agent-only .query-card {
-    position: static;
-    grid-row: 3;
+    position: fixed;
+    z-index: 15;
+    right: 0;
+    bottom: 0;
+    left: 0;
     width: 100%;
     margin: 0;
     border-radius: 0;
     padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .app-version {
+    bottom: calc(var(--mobile-composer-height, 0px) + 10px);
   }
 
   body.agent-only .agent-chat {
