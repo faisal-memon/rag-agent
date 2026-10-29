@@ -39,7 +39,7 @@ main {
   width: min(1120px, calc(100% - 28px));
   min-width: 0;
   margin: 0 auto;
-  padding: 28px 0;
+  padding: max(28px, env(safe-area-inset-top)) 0 max(28px, env(safe-area-inset-bottom));
 }
 
 .hero {
@@ -1157,7 +1157,7 @@ body.agent-only .status {
     text-align: left;
   }
 
-  .conversation-sidebar { left: 8px; top: 8px; width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
+  .conversation-sidebar { left: 8px; top: max(8px, env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
   body.agent-only main { margin-left: 0; }
   .pipeline-grid {
     grid-template-columns: 1fr;
