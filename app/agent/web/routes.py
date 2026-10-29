@@ -40,7 +40,7 @@ def debug_page() -> HTMLResponse:
 
 
 def settings_page() -> HTMLResponse:
-    return HTMLResponse(SETTINGS_HTML)
+    return HTMLResponse(SETTINGS_HTML.replace("__APP_VERSION__", escape(APP_VERSION, quote=True)))
 
 
 def _render_page(
