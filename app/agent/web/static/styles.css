@@ -7,10 +7,84 @@
   --muted: #7ea58c;
   --dim: #52705d;
   --accent: #4ee88a;
+  --accent-rgb: 78, 232, 138;
   --accent-2: #ffd166;
   --danger: #ff6b6b;
   --line: #24382d;
+  --card-bg: rgba(15, 23, 19, 0.92);
+  --input-bg: #080c0a;
+  --input-ink: var(--ink);
+  --code-bg: #050806;
+  --code-ink: #b4d8bf;
+  --button-ink: #061009;
+  --grid-line: rgba(var(--accent-rgb), 0.035);
+  --grid-line-vertical: rgba(var(--accent-rgb), 0.025);
+  --background-glow: rgba(var(--accent-rgb), 0.12);
   --shadow: 0 20px 70px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-theme="ocean"] {
+  color-scheme: dark;
+  --bg: #08111b;
+  --panel: #0d1d2c;
+  --panel-strong: #142a3c;
+  --ink: #deefff;
+  --muted: #8baec9;
+  --dim: #57738d;
+  --accent: #63c7ff;
+  --accent-rgb: 99, 199, 255;
+  --accent-2: #f3c969;
+  --danger: #ff7878;
+  --line: #29445a;
+  --card-bg: rgba(13, 29, 44, 0.94);
+  --input-bg: #07101a;
+  --code-bg: #050b12;
+  --code-ink: #c2dcf2;
+  --button-ink: #061019;
+}
+
+:root[data-theme="ember"] {
+  color-scheme: dark;
+  --bg: #17100e;
+  --panel: #211612;
+  --panel-strong: #322017;
+  --ink: #f7e5d6;
+  --muted: #c5a28e;
+  --dim: #8b6958;
+  --accent: #ff9b62;
+  --accent-rgb: 255, 155, 98;
+  --accent-2: #f4d06f;
+  --danger: #ff7777;
+  --line: #513528;
+  --card-bg: rgba(33, 22, 18, 0.95);
+  --input-bg: #120c0a;
+  --code-bg: #100a08;
+  --code-ink: #ead2c1;
+  --button-ink: #1a0b04;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f1e8;
+  --panel: #fffdf7;
+  --panel-strong: #e8e2d3;
+  --ink: #27302a;
+  --muted: #56665d;
+  --dim: #6c7a71;
+  --accent: #18794e;
+  --accent-rgb: 24, 121, 78;
+  --accent-2: #925700;
+  --danger: #b42318;
+  --line: #c9d0c8;
+  --card-bg: rgba(255, 253, 247, 0.96);
+  --input-bg: #fffefb;
+  --code-bg: #eef1ed;
+  --code-ink: #34423a;
+  --button-ink: #ffffff;
+  --grid-line: rgba(var(--accent-rgb), 0.055);
+  --grid-line-vertical: rgba(var(--accent-rgb), 0.04);
+  --background-glow: rgba(var(--accent-rgb), 0.08);
+  --shadow: 0 16px 42px rgba(34, 48, 39, 0.12);
 }
 
 * {
@@ -28,9 +102,9 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color: var(--ink);
   background:
-    linear-gradient(rgba(78, 232, 138, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(78, 232, 138, 0.025) 1px, transparent 1px),
-    radial-gradient(circle at 40% 0%, rgba(78, 232, 138, 0.12), transparent 32rem),
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-vertical) 1px, transparent 1px),
+    radial-gradient(circle at 40% 0%, var(--background-glow), transparent 32rem),
     var(--bg);
   background-size: 22px 22px, 22px 22px, auto, auto;
 }
@@ -99,7 +173,7 @@ main {
   padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(15, 23, 19, 0.92);
+  background: var(--card-bg);
   color: var(--accent);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   font-size: 11px;
@@ -148,7 +222,7 @@ body.settings-console .page-nav .settings-nav {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(15, 23, 19, 0.92);
+  background: var(--card-bg);
   box-shadow: var(--shadow);
 }
 
@@ -172,8 +246,8 @@ textarea {
   border-radius: 4px;
   padding: 13px 14px;
   color: var(--ink);
-  background: #080c0a;
-  background-color: #080c0a;
+  background: var(--input-bg);
+  background-color: var(--input-bg);
   opacity: 1;
   font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   outline: none;
@@ -181,7 +255,7 @@ textarea {
 
 textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(78, 232, 138, 0.12);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
 }
 
 .settings-form {
@@ -211,7 +285,7 @@ textarea:focus {
   border-radius: 4px;
   padding: 10px 12px;
   color: var(--ink);
-  background: #080c0a;
+  background: var(--input-bg);
   font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -233,7 +307,7 @@ button {
   border: 1px solid var(--accent);
   border-radius: 4px;
   padding: 10px 14px;
-  color: #061009;
+  color: var(--button-ink);
   background: var(--accent);
   font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   cursor: pointer;
@@ -325,7 +399,7 @@ button:disabled {
 }
 
 .mode-picker input:checked + label {
-  color: #061009;
+  color: var(--button-ink);
   background: var(--accent);
 }
 
@@ -394,7 +468,7 @@ button:disabled {
   margin-bottom: 18px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #080c0a;
+  background: var(--code-bg);
 }
 
 .tool-trace.visible {
@@ -477,8 +551,8 @@ button:disabled {
   overflow: auto;
   border-top: 1px solid var(--line);
   padding: 12px;
-  color: #b4d8bf;
-  background: #080c0a;
+  color: var(--code-ink);
+  background: var(--code-bg);
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-word;
@@ -553,7 +627,7 @@ button:disabled {
 .chat-message.user {
   max-width: 78%;
   margin-left: auto;
-  border-color: rgba(78, 232, 138, 0.4);
+  border-color: rgba(var(--accent-rgb), 0.4);
   background: var(--panel-strong);
 }
 
@@ -733,7 +807,7 @@ button:disabled {
   margin-bottom: 14px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #080c0a;
+  background: var(--code-bg);
 }
 
 .agent-trace > summary {
@@ -846,7 +920,7 @@ button:disabled {
 
 .trace-thinking .trace-kind,
 .trace-model .trace-kind {
-  color: #b4d8bf;
+  color: var(--code-ink);
 }
 
 .trace-tool-call .trace-kind {
@@ -868,8 +942,8 @@ button:disabled {
   overflow: auto;
   border-top: 1px solid var(--line);
   padding: 11px;
-  color: #b4d8bf;
-  background: #050806;
+  color: var(--code-ink);
+  background: var(--code-bg);
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-word;
@@ -927,7 +1001,7 @@ button:disabled {
   margin-bottom: 14px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #080c0a;
+  background: var(--code-bg);
 }
 
 .model-reasoning-title {
@@ -961,7 +1035,7 @@ button:disabled {
   overflow: auto;
   border-top: 1px solid var(--line);
   padding: 11px;
-  color: #a9cdb4;
+  color: var(--code-ink);
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1023,7 +1097,7 @@ button:disabled {
 
 .citation-content {
   margin-top: 10px;
-  color: #b4d8bf;
+  color: var(--code-ink);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -1096,7 +1170,7 @@ body.agent-only #pipeline {
 
 body.agent-only #agent {
   border-color: var(--accent);
-  color: #061009;
+  color: var(--button-ink);
   background: var(--accent);
 }
 
@@ -1172,6 +1246,24 @@ body.agent-only .status {
     max-height: none;
     overflow: visible;
     padding: 0;
+  }
+
+  .theme-picker-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .theme-picker-card label,
+  .theme-picker-card select {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .theme-picker-card select {
+    margin-top: 0;
+  }
+
+  .theme-picker-card .theme-status {
+    grid-column: 1;
   }
 
   .hero {
@@ -1313,6 +1405,56 @@ body.agent-only .status {
   margin: 20px 0 12px;
 }
 
+.theme-picker-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+  align-items: center;
+  gap: 8px 20px;
+  margin-bottom: 20px;
+}
+
+.theme-picker-card h2 {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.theme-picker-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.theme-picker-card label {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+}
+
+.theme-picker-card select {
+  grid-column: 2;
+  grid-row: 1;
+  margin-top: 26px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: var(--input-ink);
+  background: var(--input-bg);
+  font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.theme-picker-card select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.theme-picker-card .theme-status {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .settings-tab {
   border-color: var(--line);
   color: var(--ink);
@@ -1322,7 +1464,7 @@ body.agent-only .status {
 
 .settings-tab.active {
   border-color: var(--accent);
-  color: #061009;
+  color: var(--button-ink);
   background: var(--accent);
 }
 

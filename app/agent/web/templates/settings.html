@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>RAG Settings</title>
+    <script src="/static/theme.js"></script>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body class="settings-console">
@@ -29,6 +30,21 @@
           <a class="settings-nav" href="/settings">Settings</a>
           <a href="/docs">API</a>
         </nav>
+      </section>
+
+      <section class="theme-picker-card query-card" aria-labelledby="theme-picker-heading">
+        <div>
+          <h2 id="theme-picker-heading">Appearance</h2>
+          <p>Choose a color theme. Your choice is saved in this browser.</p>
+        </div>
+        <label for="theme-picker">Color theme</label>
+        <select id="theme-picker" aria-describedby="theme-status">
+          <option value="forest">Forest green</option>
+          <option value="ocean">Ocean blue</option>
+          <option value="ember">Warm amber</option>
+          <option value="light">Light</option>
+        </select>
+        <p class="theme-status" id="theme-status" aria-live="polite">Forest green theme selected.</p>
       </section>
 
       <div class="settings-tabs" role="tablist" aria-label="Settings sections">
