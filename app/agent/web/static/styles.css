@@ -1209,7 +1209,16 @@ body.agent-only .status {
     text-align: left;
   }
 
-  .conversation-sidebar { left: 8px; top: max(8px, env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
+  .conversation-sidebar {
+    z-index: 30;
+    left: 8px;
+    top: max(8px, env(safe-area-inset-top));
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);
+    overscroll-behavior-y: contain;
+  }
   body.agent-only main { margin-left: 0; }
   .pipeline-grid {
     grid-template-columns: 1fr;
