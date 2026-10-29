@@ -9,7 +9,7 @@ NORMALIZE_IMAGE ?= ghcr.io/$(GHCR_OWNER)/rag-normalize
 TAG ?= latest
 DOCKER_TARGET ?= api
 
-.PHONY: deps deps-test lint test build eval eval-init docker-build docker-build-api docker-build-embed docker-build-normalize docker-build-all docker-push docker-push-api docker-push-embed docker-push-normalize docker-push-all docker-run-worker docker-run-normalize docker-run-normalize-watch
+.PHONY: deps deps-test lint test test-components build eval eval-init docker-build docker-build-api docker-build-embed docker-build-normalize docker-build-all docker-push docker-push-api docker-push-embed docker-push-normalize docker-push-all docker-run-worker docker-run-normalize docker-run-normalize-watch
 
 $(VENV_PYTHON):
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -23,11 +23,13 @@ deps-test:
 	$(VENV_PYTHON) -m pip install -r requirements-test.txt
 
 lint: $(VENV_PYTHON)
-	$(VENV_PYTHON) -m compileall app
+	$(VENV_PYTHON) -m compileall app scripts
 
 test: $(VENV_PYTHON) deps-test
-	$(VENV_PYTHON) -m compileall app
 	$(VENV_PYTHON) -m unittest discover -s tests -v
+
+test-components: $(VENV_PYTHON) deps-test
+	$(VENV_PYTHON) scripts/run_component_tests.py $(COMPONENTS)
 
 build: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m compileall app
