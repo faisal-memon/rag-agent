@@ -894,7 +894,9 @@ class AgentTest(unittest.TestCase):
         page = index_page().body.decode()
 
         self.assertIn('<body class="agent-only">', page)
-        self.assertIn("<h1>your personal assistant</h1>", page)
+        self.assertNotIn("<h1>", page)
+        self.assertNotIn("Ask questions, get help with everyday tasks", page)
+        self.assertIn('<nav class="page-nav"', page)
         self.assertIn('<div class="app-version" aria-label="Application version">vdev</div>', page)
         self.assertIn("body.agent-only #ask", STYLES_CSS)
         self.assertIn('href="/debug">Debug</a>', page)

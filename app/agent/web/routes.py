@@ -19,8 +19,8 @@ def index_page() -> HTMLResponse:
     return HTMLResponse(
         _render_page(
             body_class="agent-only",
-            heading="your personal assistant",
-            subtitle="Ask questions, get help with everyday tasks, and inspect sources when you need them.",
+            heading=None,
+            subtitle=None,
             input_label="message",
             input_placeholder="Ask anything...",
         )
@@ -46,15 +46,19 @@ def settings_page() -> HTMLResponse:
 def _render_page(
     *,
     body_class: str,
-    heading: str,
-    subtitle: str,
+    heading: str | None,
+    subtitle: str | None,
     input_label: str,
     input_placeholder: str,
 ) -> str:
+    intro = ""
+    if heading is not None:
+        intro = f'<h1>{escape(heading, quote=True)}</h1>'
+        if subtitle is not None:
+            intro += f'<p class="subtitle">{escape(subtitle, quote=True)}</p>'
+
     replacements = {
         "__BODY_CLASS__": body_class,
-        "__PAGE_HEADING__": heading,
-        "__PAGE_SUBTITLE__": subtitle,
         "__INPUT_LABEL__": input_label,
         "__INPUT_PLACEHOLDER__": input_placeholder,
         "__APP_VERSION__": APP_VERSION,
@@ -62,4 +66,4 @@ def _render_page(
     page = INDEX_HTML
     for placeholder, value in replacements.items():
         page = page.replace(placeholder, escape(value, quote=True))
-    return page
+    return page.replace("__PAGE_INTRO__", intro)
