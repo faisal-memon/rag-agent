@@ -1041,6 +1041,7 @@ body.agent-only main {
 .conversation-sidebar { position: fixed; left: 14px; top: 14px; width: 260px; max-height: calc(100vh - 28px); overflow: auto; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; z-index: 5; }
 .conversation-sidebar.hidden { display: none; }
 .conversation-sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.conversation-drawer-nav { display: none; }
 .conversation-list { display: grid; gap: 6px; margin-top: 12px; }
 .conversation-row { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: stretch; }
 .conversation-item { display: grid; min-width: 0; gap: 3px; text-align: left; padding: 9px; background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; }
@@ -1265,7 +1266,68 @@ body.agent-only .status {
     text-align: left;
   }
 
-  .conversation-sidebar { left: 8px; top: max(8px, env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
+  .conversation-sidebar {
+    z-index: 30;
+    left: 8px;
+    top: calc(env(safe-area-inset-top) + 64px);
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 80px);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 80px);
+    overscroll-behavior-y: contain;
+  }
+
+  .conversation-drawer-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0 0 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .conversation-drawer-nav a {
+    display: block;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .conversation-drawer-nav a:hover,
+  body.agent-only .conversation-drawer-nav .agent-nav,
+  body.debug-console .conversation-drawer-nav .debug-nav,
+  body.settings-console .conversation-drawer-nav .settings-nav {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--panel-strong);
+  }
+
+  .conversation-sidebar > #new-conversation,
+  .conversation-sidebar > #show-all-conversations {
+    width: 100%;
+  }
+
+  .conversation-list {
+    gap: 8px;
+  }
+
+  .conversation-item {
+    padding: 11px;
+  }
+
+  .conversation-item span {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .conversation-sidebar ~ .hero .page-nav {
+    display: none;
+  }
   body.agent-only main { margin-left: 0; }
   .pipeline-grid {
     grid-template-columns: 1fr;
