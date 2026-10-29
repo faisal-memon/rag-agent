@@ -1201,7 +1201,7 @@ body.agent-only .status {
 
   body.agent-only main {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     width: 100%;
     height: 100vh;
     height: 100dvh;
@@ -1221,13 +1221,11 @@ body.agent-only .status {
   }
 
   body.agent-only .hero {
-    grid-row: 2;
-    min-width: 0;
-    margin: 0 14px 8px;
+    display: none;
   }
 
   body.agent-only .result {
-    grid-row: 3;
+    grid-row: 2;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
@@ -1236,7 +1234,7 @@ body.agent-only .status {
 
   body.agent-only .query-card {
     position: static;
-    grid-row: 4;
+    grid-row: 3;
     width: 100%;
     margin: 0;
     border-radius: 0;
