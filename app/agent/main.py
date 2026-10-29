@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from app.agent import tools
@@ -33,3 +33,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Nextcloud Personal RAG", version=APP_VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(router)
+
+
+@app.middleware("http")
+async def revalidate_static_assets(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
