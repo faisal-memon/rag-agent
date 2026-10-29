@@ -1227,6 +1227,8 @@ body.agent-only .status {
 
   .agent-chat {
     max-height: calc(100vh - 260px);
+    max-height: calc(100dvh - 260px);
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
 
   .tool-call summary {
