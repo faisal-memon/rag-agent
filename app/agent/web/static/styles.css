@@ -604,6 +604,7 @@ button:disabled {
 
 .agent-chat {
   display: none;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 18px;
   max-height: calc(100vh - 280px);
@@ -1156,6 +1157,7 @@ body.agent-only .query-card > label {
 
 body.agent-only textarea {
   grid-column: 1;
+  min-width: 0;
   min-height: 42px;
   height: 42px;
   padding: 9px 11px;
