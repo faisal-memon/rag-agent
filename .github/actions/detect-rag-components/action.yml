@@ -16,6 +16,9 @@ outputs:
   normalize:
     description: Normalize-specific files changed.
     value: ${{ steps.changes.outputs.normalize }}
+  test_support:
+    description: Test infrastructure or test files changed.
+    value: ${{ steps.changes.outputs.test_support }}
 runs:
   using: composite
   steps:
@@ -26,16 +29,28 @@ runs:
         filters: |
           common:
             - '.github/actions/**'
+            - '.dockerignore'
             - 'Dockerfile'
+            - 'app/__init__.py'
             - 'app/core/**'
+          test_support:
+            - '.github/actions/**'
+            - '.github/workflows/**'
+            - 'Makefile'
+            - 'requirements.txt'
+            - 'requirements-test.txt'
+            - 'scripts/**'
+            - 'tests/**'
           release:
             - '.github/workflows/release_build.yaml'
           api:
             - 'requirements-api.txt'
             - 'app/agent/**'
+            - 'sql/**'
           embed:
             - 'requirements-embed.txt'
             - 'app/embed/**'
+            - 'sql/**'
           normalize:
             - 'requirements-normalize.txt'
             - 'app/normalize/**'
