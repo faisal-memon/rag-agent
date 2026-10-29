@@ -14,11 +14,16 @@
         <div id="conversation-list" class="conversation-list"></div>
       </aside>
       <section class="hero">
-        <div class="eyebrow">nextcloud-rag</div>
+        <div class="hero-topline">
+          <button class="secondary mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="page-nav" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+          <div class="eyebrow">nextcloud-rag</div>
+        </div>
         <h1>__PAGE_HEADING__</h1>
         <p class="subtitle">__PAGE_SUBTITLE__</p>
-        <nav class="page-nav" aria-label="Application">
-          <button class="secondary" id="show-conversations" type="button">Conversations</button>
+        <nav class="page-nav" id="page-nav" aria-label="Application">
+          <button class="secondary" id="show-conversations" data-close-mobile-menu type="button">Conversations</button>
           <a class="agent-nav" href="/">Chat</a>
           <a class="debug-nav" href="/debug">Debug</a>
           <a class="settings-nav" href="/settings">Settings</a>
@@ -72,5 +77,6 @@
     <div class="app-version" aria-label="Application version">v__APP_VERSION__</div>
 
     <script src="/static/app.js" defer></script>
+    <script src="/static/navigation.js" defer></script>
   </body>
 </html>
