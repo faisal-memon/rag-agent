@@ -1109,7 +1109,7 @@ body.agent-only .status {
   clip: rect(0 0 0 0);
 }
 
-@media (max-width: 720px), (pointer: coarse) and (max-width: 1024px) {
+@media (max-width: 720px) {
   .hero {
     position: relative;
   }
