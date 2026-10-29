@@ -11,9 +11,12 @@ const agentChat = document.getElementById("agent-chat");
 const clearChatButton = document.getElementById("clear-chat");
 const conversationSidebar = document.getElementById("conversation-sidebar");
 const conversationList = document.getElementById("conversation-list");
+const conversationDrawerNav = document.getElementById("conversation-drawer-nav");
+const mobileMenuToggle = document.getElementById("mobile-menu-toggle");
 const newConversationButton = document.getElementById("new-conversation");
 const toggleConversations = document.getElementById("toggle-conversations");
 const showConversations = document.getElementById("show-conversations");
+const showAllConversationsButton = document.getElementById("show-all-conversations");
 const pipelineSummary = document.getElementById("pipeline-summary");
 const answer = document.getElementById("answer");
 const citations = document.getElementById("citations");
@@ -31,6 +34,7 @@ const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
 let agentConversationId = localStorage.getItem(agentConversationIdKey) || null;
 let pendingConversation = false;
+let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 
@@ -45,10 +49,14 @@ async function loadConversations() {
       return;
     }
     const items = await response.json();
+    const isMobileMenu = window.matchMedia("(max-width: 720px)").matches;
+    const visibleItems = isMobileMenu && !showAllConversations ? items.slice(0, 5) : items;
     const pendingMarkup = pendingConversation
       ? '<div class="conversation-row"><button class="conversation-item active" disabled><span>New thread</span><small>Not started</small></button></div>'
       : '';
-    conversationList.innerHTML = pendingMarkup + items.map(item => `<div class="conversation-row"><button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button><button class="conversation-delete" data-delete-conversation-id="${escapeHtml(item.id)}" aria-label="Delete conversation">×</button></div>`).join("");
+    conversationList.innerHTML = pendingMarkup + visibleItems.map(item => `<div class="conversation-row"><button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button><button class="conversation-delete" data-delete-conversation-id="${escapeHtml(item.id)}" aria-label="Delete conversation">×</button></div>`).join("");
+    showAllConversationsButton.hidden = !isMobileMenu || items.length <= 5;
+    showAllConversationsButton.textContent = showAllConversations ? "Show latest five" : `See all ${items.length} conversations`;
     conversationList.querySelectorAll("[data-conversation-id]").forEach(button => button.addEventListener("click", () => loadConversation(button.dataset.conversationId)));
     conversationList.querySelectorAll("[data-delete-conversation-id]").forEach(button => button.addEventListener("click", () => deleteConversation(button.dataset.deleteConversationId)));
   } catch (error) { console.warn("Unable to load conversations", error); }
@@ -81,6 +89,7 @@ async function loadConversation(conversationId) {
     localStorage.setItem(agentConversationIdKey, agentConversationId);
     localStorage.setItem(agentHistoryKey, JSON.stringify(agentConversation));
     renderAgentConversation();
+    if (window.matchMedia("(max-width: 720px)").matches) setConversationSidebar(true);
     await loadConversations();
   } catch (error) {
     console.warn("Unable to load conversation", error);
@@ -92,7 +101,34 @@ async function loadConversation(conversationId) {
 function setConversationSidebar(hidden) {
   conversationSidebar?.classList.toggle("hidden", hidden);
   localStorage.setItem("conversation-sidebar-hidden", hidden ? "1" : "0");
+  mobileMenuToggle?.setAttribute("aria-expanded", String(!hidden));
+  mobileMenuToggle?.setAttribute("aria-label", hidden ? "Open navigation menu" : "Close navigation menu");
 }
+
+mobileMenuToggle?.addEventListener("click", () => {
+  const isHidden = conversationSidebar?.classList.contains("hidden") ?? true;
+  setConversationSidebar(!isHidden);
+  if (isHidden) loadConversations();
+});
+
+conversationDrawerNav?.addEventListener("click", (event) => {
+  if (event.target.closest("a")) setConversationSidebar(true);
+});
+
+document.addEventListener("click", (event) => {
+  if (!conversationSidebar?.classList.contains("hidden")
+      && !conversationSidebar?.contains(event.target)
+      && !mobileMenuToggle?.contains(event.target)
+      && window.matchMedia("(max-width: 720px)").matches) {
+    setConversationSidebar(true);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !conversationSidebar?.classList.contains("hidden")) {
+    setConversationSidebar(true);
+  }
+});
 
 newConversationButton?.addEventListener("click", () => {
   agentConversationId = null;
@@ -102,10 +138,15 @@ newConversationButton?.addEventListener("click", () => {
   localStorage.setItem(agentHistoryKey, "[]");
   renderAgentConversation();
   loadConversations();
+  if (window.matchMedia("(max-width: 720px)").matches) setConversationSidebar(true);
 });
 toggleConversations?.addEventListener("click", () => setConversationSidebar(true));
 showConversations?.addEventListener("click", () => setConversationSidebar(false));
-setConversationSidebar(localStorage.getItem("conversation-sidebar-hidden") === "1");
+showAllConversationsButton?.addEventListener("click", () => {
+  showAllConversations = !showAllConversations;
+  loadConversations();
+});
+setConversationSidebar(window.matchMedia("(max-width: 720px)").matches || localStorage.getItem("conversation-sidebar-hidden") === "1");
 loadConversations();
 
 function showRecordingError(message) {

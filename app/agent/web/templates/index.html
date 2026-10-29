@@ -8,13 +8,20 @@
   </head>
   <body class="__BODY_CLASS__">
     <main>
-      <aside class="conversation-sidebar" id="conversation-sidebar" aria-label="Conversations">
-        <div class="conversation-sidebar-header"><strong>Conversations</strong><button class="secondary" id="toggle-conversations" type="button" aria-label="Hide conversations">Hide</button></div>
+      <aside class="conversation-sidebar" id="conversation-sidebar" aria-label="Navigation and conversations">
+        <div class="conversation-sidebar-header"><strong>Personal AI</strong><button class="secondary" id="toggle-conversations" type="button" aria-label="Close navigation menu">Close</button></div>
+        <nav class="conversation-drawer-nav" id="conversation-drawer-nav" aria-label="Application">
+          <a class="agent-nav" href="/">Chat</a>
+          <a class="debug-nav" href="/debug">Debug</a>
+          <a class="settings-nav" href="/settings">Settings</a>
+          <a href="/docs">API</a>
+        </nav>
         <button id="new-conversation" type="button">New conversation</button>
         <div id="conversation-list" class="conversation-list"></div>
+        <button class="secondary" id="show-all-conversations" type="button" hidden>See all conversations</button>
       </aside>
       <header class="app-header" aria-label="Application header">
-        <button class="secondary mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="page-nav" aria-expanded="false">
+        <button class="secondary mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="conversation-sidebar" aria-expanded="false">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
         <span class="app-header-brand">Personal AI</span>
