@@ -528,7 +528,11 @@ function saveAgentConversation() {
 }
 
 function renderAgentConversation() {
-  const wasNearChatBottom = agentChat.scrollHeight - agentChat.scrollTop - agentChat.clientHeight < 80;
+  const chatScroller = document.body.classList.contains("agent-only")
+    && window.matchMedia("(max-width: 720px)").matches
+    ? result
+    : agentChat;
+  const wasNearChatBottom = chatScroller.scrollHeight - chatScroller.scrollTop - chatScroller.clientHeight < 80;
   const messagesHtml = agentConversation.map((message) => {
     if (message.role === "user") {
       return `
@@ -566,7 +570,7 @@ function renderAgentConversation() {
   if (hasVisibleConversation) {
     result.classList.add("visible");
     if (wasNearChatBottom) {
-      agentChat.scrollTop = agentChat.scrollHeight;
+      chatScroller.scrollTop = chatScroller.scrollHeight;
     }
   }
 }
