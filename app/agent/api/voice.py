@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from pathlib import Path
 
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.concurrency import run_in_threadpool
 
+from app.agent.config import get_api_settings
+from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 from app.agent.voice_stream import (
     VoiceProtocolError,
     VoiceRecording,
@@ -17,14 +21,15 @@ from app.agent.voice_stream import (
     write_wav,
 )
 
+# Uvicorn's error logger is connected to the container's stdout/stderr stream.
+logger = logging.getLogger("uvicorn.error")
+
 
 async def stream_voice(websocket: WebSocket) -> None:
-    """Accept one bounded PCM utterance and acknowledge its reconstructed WAV.
+    """Accept a bounded PCM utterance, acknowledge it, and log its transcript.
 
-    This is a transport-only test endpoint. The temporary WAV verifies that the
-    incoming frames form valid audio, then is removed before the client gets a
-    completion acknowledgement. Deployment must keep this route off the public
-    proxy; authentication is added before it can reach agent functionality.
+    Deployment must keep this route off the public proxy; authentication is
+    added before it can reach agent functionality.
     """
     await websocket.accept()
     recording: VoiceRecording | None = None
@@ -52,9 +57,10 @@ async def stream_voice(websocket: WebSocket) -> None:
                 if is_end_message(control):
                     if recording.byte_count == 0:
                         raise VoiceProtocolError("Audio stream was empty.")
-                    await _verify_wav(recording)
+                    wav_audio = await _verify_wav(recording)
                     await websocket.send_json(completion_message(recording))
                     await websocket.close()
+                    await _transcribe_and_log(wav_audio)
                     return
                 raise VoiceProtocolError("Expected binary audio frames or an end message.")
 
@@ -70,11 +76,30 @@ async def stream_voice(websocket: WebSocket) -> None:
         await websocket.close(code=1008)
 
 
-async def _verify_wav(recording: VoiceRecording) -> None:
-    """Exercise WAV creation and ensure temporary capture data is always removed."""
+async def _transcribe_and_log(wav_audio: bytes) -> None:
+    """Transcribe one completed utterance through local whisper.cpp."""
+    try:
+        transcript = await run_in_threadpool(
+            transcribe_audio,
+            base_url=get_api_settings().whispercpp_base_url,
+            audio=wav_audio,
+            filename="respeaker.wav",
+            content_type="audio/wav",
+        )
+    except TranscriptionUnavailableError as exc:
+        logger.warning("ReSpeaker transcription failed: %s", exc)
+    except Exception:
+        logger.exception("Unexpected error transcribing ReSpeaker audio")
+    else:
+        logger.info("ReSpeaker transcription: %s", transcript)
+
+
+async def _verify_wav(recording: VoiceRecording) -> bytes:
+    """Build a temporary WAV payload for Whisper, then remove the file."""
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temporary_file:
         capture_path = Path(temporary_file.name)
     try:
         write_wav(recording, capture_path)
+        return capture_path.read_bytes()
     finally:
         capture_path.unlink(missing_ok=True)
