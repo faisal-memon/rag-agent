@@ -5,11 +5,10 @@ from pathlib import Path
 from unittest.mock import patch
 import wave
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.agent.api.routes import router
 from app.agent.api.voice import _verify_wav
+from app.agent.voice_main import app
 from app.agent.voice_stream import (
     CHANNELS,
     PROTOCOL_VERSION,
@@ -23,8 +22,6 @@ from app.agent.voice_stream import (
 
 class VoiceStreamTest(unittest.TestCase):
     def setUp(self) -> None:
-        app = FastAPI()
-        app.include_router(router)
         self.client = TestClient(app)
 
     def test_endpoint_accepts_pcm_and_reports_its_duration(self) -> None:
