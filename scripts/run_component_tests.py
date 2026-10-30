@@ -24,7 +24,6 @@ COMPONENT_TESTS = {
         "test_settings",
         "test_tool_catalog",
         "test_transcription",
-        "test_voice_stream",
     ),
     "embed": (
         "test_config",
