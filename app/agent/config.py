@@ -21,6 +21,10 @@ class ApiSettings(ConfiguredSettings):
     llamacpp_api_key: str = Field(default="not-needed", alias="LLAMACPP_API_KEY")
     llamacpp_chat_model: str = Field(default="local-model", alias="LLAMACPP_CHAT_MODEL")
     whispercpp_base_url: str = Field(default="http://whispercpp:8080", alias="WHISPERCPP_BASE_URL")
+    esphome_device_host: str = Field(default="", alias="ESPHOME_DEVICE_HOST")
+    esphome_device_port: int = Field(default=6053, ge=1, le=65535, alias="ESPHOME_DEVICE_PORT")
+    esphome_device_name: str = Field(default="", alias="ESPHOME_DEVICE_NAME")
+    esphome_api_key: str = Field(default="", alias="ESPHOME_API_KEY")
     query_limit: int = Field(default=8, alias="RAG_QUERY_LIMIT")
     agent_max_steps: int = Field(default=6, ge=1, le=12, alias="RAG_AGENT_MAX_STEPS")
     home_latitude: float | None = Field(default=None, ge=-90, le=90, alias="HOME_LATITUDE")
@@ -50,6 +54,7 @@ def get_api_settings() -> ApiSettings:
                 "openai_api_key",
                 "llamacpp_api_key",
                 "embedding_llamacpp_api_key",
+                "esphome_api_key",
             },
         )
     )
