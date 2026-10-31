@@ -58,14 +58,14 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
                 b"\x01\x00\x02\x00\x03\x00\x04\x00",
             )
 
-    async def test_aborted_session_is_not_transcribed(self):
-        await self.client._handle_session_start("conversation-aborted", 0, None, None)
+    async def test_user_stopped_session_is_transcribed(self):
+        await self.client._handle_session_start("conversation-user-stop", 0, None, None)
         await self.client._handle_audio(b"\x01\x00")
 
-        with patch("app.agent.esphome_voice.transcribe_audio") as transcribe:
+        with patch("app.agent.esphome_voice.transcribe_audio", return_value="hello") as transcribe:
             await self.client._handle_session_stop(aborted=True)
 
-        transcribe.assert_not_called()
+        transcribe.assert_called_once()
         self.assertIsNone(self.client._session_id)
 
     async def test_oversized_session_is_discarded_and_next_session_can_run(self):
