@@ -11,4 +11,4 @@ liteparse==2.17.0
 dateparser==1.4.3
 
 mcp==2.3.0
-aioesphomeapi==46.23.0
+aioesphomeapi==46.24.0
