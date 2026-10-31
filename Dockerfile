@@ -16,9 +16,10 @@ COPY app/agent ./app/agent
 COPY app/core ./app/core
 COPY app/embed ./app/embed
 COPY sql ./sql
+COPY app/agent/uvicorn-logging.json ./uvicorn-logging.json
 RUN printf 'APP_VERSION = "%s"\n' "$RAG_AGENT_VERSION" > ./app/agent/_build_version.py
 
-CMD ["uvicorn", "app.agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.agent.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-config", "/app/uvicorn-logging.json"]
 
 
 FROM base AS embed
