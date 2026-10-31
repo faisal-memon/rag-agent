@@ -34,8 +34,6 @@ class ESPHomeVoiceClient:
         self._reconnect: ReconnectLogic | None = None
         self._unsubscribe_voice: Callable[[], None] | None = None
         self._session_audio = bytearray()
-        self._session_audio_secondary = bytearray()
-        self._session_channels: int | None = None
         self._session_id: str | None = None
         self._session_audio_truncated = False
 
@@ -115,8 +113,6 @@ class ESPHomeVoiceClient:
     ) -> int:
         self._session_id = conversation_id
         self._session_audio.clear()
-        self._session_audio_secondary.clear()
-        self._session_channels = None
         self._session_audio_truncated = False
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
@@ -135,23 +131,11 @@ class ESPHomeVoiceClient:
             return
         if self._session_audio_truncated:
             return
-        channels = 2 if data2 is not None else 1
-        if self._session_channels is None:
-            self._session_channels = channels
-        elif channels != self._session_channels:
-            self._session_audio_truncated = True
-            logger.warning("ESPHome audio session changed channel count mid-stream")
-            return
-        if len(data) % VOICE_SAMPLE_WIDTH or (
-            data2 is not None
-            and (len(data2) != len(data) or len(data2) % VOICE_SAMPLE_WIDTH)
-        ):
-            self._session_audio_truncated = True
-            logger.warning("ESPHome audio session contained a malformed PCM frame")
-            return
-        incoming_size = len(data) + (len(data2) if data2 is not None else 0)
-        buffered_size = len(self._session_audio) + len(self._session_audio_secondary)
-        if buffered_size + incoming_size > MAX_SESSION_AUDIO_BYTES:
+        # ESPHome may split PCM samples across Native API messages, and its
+        # optional second channel need not have the same chunk boundaries.
+        # Use channel 1 (the default voice channel) and join bytes before WAV
+        # framing rather than validating each transport frame independently.
+        if len(self._session_audio) + len(data) > MAX_SESSION_AUDIO_BYTES:
             self._session_audio_truncated = True
             logger.warning(
                 "ESPHome audio session exceeded the %d-byte in-memory limit",
@@ -159,14 +143,10 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
-        if data2 is not None:
-            self._session_audio_secondary.extend(data2)
 
     async def _handle_session_stop(self, aborted: bool) -> None:
         conversation_id = self._session_id
         audio = bytes(self._session_audio)
-        audio_secondary = bytes(self._session_audio_secondary)
-        channels = self._session_channels or 1
         truncated = self._session_audio_truncated
         self._reset_session()
         logger.info(
@@ -174,7 +154,7 @@ class ESPHomeVoiceClient:
             "audio_bytes=%d, truncated=%s)",
             conversation_id,
             aborted,
-            len(audio) + len(audio_secondary),
+            len(audio),
             truncated,
         )
         # aioesphomeapi reports VoiceAssistantRequest(start=False) as an
@@ -184,9 +164,16 @@ class ESPHomeVoiceClient:
         if truncated or not audio:
             return
 
-        if channels == 2:
-            audio = _interleave_pcm_channels(audio, audio_secondary)
-        wav_audio = _pcm_to_wav(audio, channels=channels)
+        if len(audio) % VOICE_SAMPLE_WIDTH:
+            logger.warning(
+                "ESPHome voice session ended with an incomplete PCM sample; "
+                "discarding its final byte (conversation=%s)",
+                conversation_id,
+            )
+            audio = audio[:-1]
+        if not audio:
+            return
+        wav_audio = _pcm_to_wav(audio, channels=1)
         try:
             transcript = await asyncio.to_thread(
                 transcribe_audio,
@@ -213,8 +200,6 @@ class ESPHomeVoiceClient:
     def _reset_session(self) -> None:
         self._session_id = None
         self._session_audio.clear()
-        self._session_audio_secondary.clear()
-        self._session_channels = None
         self._session_audio_truncated = False
 
     def _unsubscribe(self) -> None:
@@ -222,23 +207,6 @@ class ESPHomeVoiceClient:
         self._unsubscribe_voice = None
         if unsubscribe is not None:
             unsubscribe()
-
-
-def _interleave_pcm_channels(channel_1: bytes, channel_2: bytes) -> bytes:
-    if len(channel_1) != len(channel_2):
-        raise ValueError("ESPHome stereo PCM channels have different lengths")
-    interleaved = bytearray(len(channel_1) + len(channel_2))
-    target = memoryview(interleaved)
-    for offset in range(0, len(channel_1), VOICE_SAMPLE_WIDTH):
-        frame_offset = (offset // VOICE_SAMPLE_WIDTH) * VOICE_SAMPLE_WIDTH * 2
-        target[frame_offset : frame_offset + VOICE_SAMPLE_WIDTH] = channel_1[
-            offset : offset + VOICE_SAMPLE_WIDTH
-        ]
-        secondary_offset = frame_offset + VOICE_SAMPLE_WIDTH
-        target[secondary_offset : secondary_offset + VOICE_SAMPLE_WIDTH] = channel_2[
-            offset : offset + VOICE_SAMPLE_WIDTH
-        ]
-    return bytes(interleaved)
 
 
 def _pcm_to_wav(pcm: bytes, *, channels: int) -> bytes:
