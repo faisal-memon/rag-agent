@@ -41,22 +41,30 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertIsNone(self.client._session_id)
         self.assertEqual(self.client._session_audio, bytearray())
 
-    async def test_stereo_audio_is_interleaved_for_whisper(self):
-        channel_1 = b"\x01\x00\x03\x00"
-        channel_2 = b"\x02\x00\x04\x00"
-        await self.client._handle_session_start("conversation-stereo", 0, None, None)
-        await self.client._handle_audio(channel_1, channel_2)
+    async def test_audio_chunks_can_split_pcm_samples_and_secondary_channel_is_ignored(self):
+        await self.client._handle_session_start("conversation-chunked", 0, None, None)
+        await self.client._handle_audio(b"\x01", b"secondary channel with different chunking")
+        await self.client._handle_audio(b"\x00\x02", b"x")
+        await self.client._handle_audio(b"\x00")
 
         with patch("app.agent.esphome_voice.transcribe_audio") as transcribe:
-            transcribe.return_value = "stereo"
+            transcribe.return_value = "mono"
             await self.client._handle_session_stop(aborted=False)
 
         with wave.open(io.BytesIO(transcribe.call_args.kwargs["audio"]), "rb") as wav_file:
-            self.assertEqual(wav_file.getnchannels(), 2)
-            self.assertEqual(
-                wav_file.readframes(wav_file.getnframes()),
-                b"\x01\x00\x02\x00\x03\x00\x04\x00",
-            )
+            self.assertEqual(wav_file.getnchannels(), 1)
+            self.assertEqual(wav_file.readframes(wav_file.getnframes()), b"\x01\x00\x02\x00")
+
+    async def test_incomplete_final_pcm_sample_is_discarded(self):
+        await self.client._handle_session_start("conversation-partial", 0, None, None)
+        await self.client._handle_audio(b"\x01\x00\x02")
+
+        with patch("app.agent.esphome_voice.transcribe_audio") as transcribe:
+            transcribe.return_value = "mono"
+            await self.client._handle_session_stop(aborted=False)
+
+        with wave.open(io.BytesIO(transcribe.call_args.kwargs["audio"]), "rb") as wav_file:
+            self.assertEqual(wav_file.readframes(wav_file.getnframes()), b"\x01\x00")
 
     async def test_user_stopped_session_is_transcribed(self):
         await self.client._handle_session_start("conversation-user-stop", 0, None, None)
