@@ -6,7 +6,7 @@ python-dotenv==1.2.4
 openai==3.42.0
 pydantic==2.14.2
 pydantic-settings==2.16.2
-python-multipart==0.0.32
+python-multipart==0.0.33
 liteparse==2.17.0
 dateparser==1.4.3
 
