@@ -30,7 +30,7 @@ VOICE_HISTORY_MAX_MESSAGES = 12
 class ESPHomeVoiceClient:
     """Maintain a Native API connection and receive ReSpeaker voice audio."""
 
-    def __init__(self, settings: ApiSettings, agent: Agent) -> None:
+    def __init__(self, settings: ApiSettings, agent: Agent | None = None) -> None:
         self._settings = settings
         self._agent = agent
         self._client: APIClient | None = None
@@ -200,6 +200,10 @@ class ESPHomeVoiceClient:
             )
             return
         logger.info("ReSpeaker transcription (conversation=%s): %s", conversation_id, transcript)
+
+        if self._agent is None:
+            logger.debug("ReSpeaker agent is not configured; skipping model request")
+            return
 
         self._voice_history.append({"role": "user", "content": transcript})
         self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
