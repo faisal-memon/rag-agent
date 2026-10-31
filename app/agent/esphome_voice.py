@@ -15,6 +15,7 @@ from aioesphomeapi import (
     VoiceAssistantFeature,
 )
 
+from app.agent.agent import Agent
 from app.agent.config import ApiSettings
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 
@@ -23,19 +24,22 @@ logger = logging.getLogger(__name__)
 MAX_SESSION_AUDIO_BYTES = 3_000_000
 VOICE_SAMPLE_RATE = 16_000
 VOICE_SAMPLE_WIDTH = 2
+VOICE_HISTORY_MAX_MESSAGES = 12
 
 
 class ESPHomeVoiceClient:
     """Maintain a Native API connection and receive ReSpeaker voice audio."""
 
-    def __init__(self, settings: ApiSettings) -> None:
+    def __init__(self, settings: ApiSettings, agent: Agent) -> None:
         self._settings = settings
+        self._agent = agent
         self._client: APIClient | None = None
         self._reconnect: ReconnectLogic | None = None
         self._unsubscribe_voice: Callable[[], None] | None = None
         self._session_audio = bytearray()
         self._session_id: str | None = None
         self._session_audio_truncated = False
+        self._voice_history: list[dict[str, str]] = []
 
     async def start(self) -> None:
         """Start reconnecting to the configured device; leave it disabled by default."""
@@ -196,6 +200,29 @@ class ESPHomeVoiceClient:
             )
             return
         logger.info("ReSpeaker transcription (conversation=%s): %s", conversation_id, transcript)
+
+        self._voice_history.append({"role": "user", "content": transcript})
+        self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
+        try:
+            result = await asyncio.to_thread(
+                self._agent.answer,
+                transcript,
+                history=self._voice_history[:-1],
+            )
+        except Exception:
+            logger.exception(
+                "ReSpeaker agent request failed (conversation=%s)",
+                conversation_id,
+            )
+            return
+
+        answer = str(result.get("answer") or "").strip()
+        if not answer:
+            logger.warning("ReSpeaker agent returned an empty answer (conversation=%s)", conversation_id)
+            return
+        self._voice_history.append({"role": "assistant", "content": answer})
+        self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
+        logger.info("ReSpeaker agent response (conversation=%s): %s", conversation_id, answer)
 
     def _reset_session(self) -> None:
         self._session_id = None

@@ -18,15 +18,14 @@ async def lifespan(app: FastAPI):
     settings = get_api_settings()
     tool_catalog_manager = tools.ToolCatalogManager(settings.mcp_registry_refresh_interval)
     await tool_catalog_manager.start()
-    esphome_voice_client = ESPHomeVoiceClient(settings)
-    await esphome_voice_client.start()
-
     # Requests share this agent and its initialized tool catalog manager.
     agent = Agent(settings, tool_catalog_manager)
     app.state.agent = agent
     error = agent.startup()
     if error:
         logging.getLogger("rag-api").warning("Could not load agent memory: %s", error)
+    esphome_voice_client = ESPHomeVoiceClient(settings, agent)
+    await esphome_voice_client.start()
     try:
         yield
     finally:
