@@ -8,6 +8,7 @@ from app.agent import tools
 from app.agent.agent import Agent
 from app.agent.api.routes import router
 from app.agent.config import get_api_settings
+from app.agent.esphome_voice import ESPHomeVoiceClient
 from app.agent.version import APP_VERSION
 from app.agent.web.routes import STATIC_DIR
 
@@ -17,6 +18,8 @@ async def lifespan(app: FastAPI):
     settings = get_api_settings()
     tool_catalog_manager = tools.ToolCatalogManager(settings.mcp_registry_refresh_interval)
     await tool_catalog_manager.start()
+    esphome_voice_client = ESPHomeVoiceClient(settings)
+    await esphome_voice_client.start()
 
     # Requests share this agent and its initialized tool catalog manager.
     agent = Agent(settings, tool_catalog_manager)
@@ -27,6 +30,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await esphome_voice_client.stop()
         await tool_catalog_manager.stop()
 
 

@@ -28,7 +28,11 @@ lint: $(VENV_PYTHON)
 test: $(VENV_PYTHON) deps-test
 	$(VENV_PYTHON) -m unittest discover -s tests -v
 
-test-components: $(VENV_PYTHON) deps-test
+test-components: $(VENV_PYTHON)
+	@set -e; \
+	for component in $(COMPONENTS); do \
+		$(VENV_PYTHON) -m pip install -r "requirements-$$component.txt"; \
+	done
 	$(VENV_PYTHON) scripts/run_component_tests.py $(COMPONENTS)
 
 build: $(VENV_PYTHON)
