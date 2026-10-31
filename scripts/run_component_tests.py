@@ -17,6 +17,7 @@ COMPONENT_TESTS = {
         "test_config",
         "test_dates",
         "test_evals",
+        "test_esphome_voice",
         "test_external_tools",
         "test_mcp_registry",
         "test_pipeline",

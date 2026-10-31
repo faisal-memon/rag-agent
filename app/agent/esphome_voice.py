@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import io
 import logging
+import wave
 from collections.abc import Callable
 
 from aioesphomeapi import (
@@ -13,10 +16,13 @@ from aioesphomeapi import (
 )
 
 from app.agent.config import ApiSettings
+from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 
 logger = logging.getLogger(__name__)
 
 MAX_SESSION_AUDIO_BYTES = 3_000_000
+VOICE_SAMPLE_RATE = 16_000
+VOICE_SAMPLE_WIDTH = 2
 
 
 class ESPHomeVoiceClient:
@@ -28,6 +34,8 @@ class ESPHomeVoiceClient:
         self._reconnect: ReconnectLogic | None = None
         self._unsubscribe_voice: Callable[[], None] | None = None
         self._session_audio = bytearray()
+        self._session_audio_secondary = bytearray()
+        self._session_channels: int | None = None
         self._session_id: str | None = None
         self._session_audio_truncated = False
 
@@ -107,6 +115,8 @@ class ESPHomeVoiceClient:
     ) -> int:
         self._session_id = conversation_id
         self._session_audio.clear()
+        self._session_audio_secondary.clear()
+        self._session_channels = None
         self._session_audio_truncated = False
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
@@ -120,25 +130,87 @@ class ESPHomeVoiceClient:
         return 0
 
     async def _handle_audio(self, data: bytes, data2: bytes | None = None) -> None:
+        if self._session_id is None:
+            logger.debug("Ignoring ESPHome audio frame outside a voice session")
+            return
         if self._session_audio_truncated:
             return
-        if len(self._session_audio) + len(data) > MAX_SESSION_AUDIO_BYTES:
+        channels = 2 if data2 is not None else 1
+        if self._session_channels is None:
+            self._session_channels = channels
+        elif channels != self._session_channels:
             self._session_audio_truncated = True
-            logger.warning("ESPHome audio session exceeded the in-memory size limit")
+            logger.warning("ESPHome audio session changed channel count mid-stream")
+            return
+        if len(data) % VOICE_SAMPLE_WIDTH or (
+            data2 is not None
+            and (len(data2) != len(data) or len(data2) % VOICE_SAMPLE_WIDTH)
+        ):
+            self._session_audio_truncated = True
+            logger.warning("ESPHome audio session contained a malformed PCM frame")
+            return
+        incoming_size = len(data) + (len(data2) if data2 is not None else 0)
+        buffered_size = len(self._session_audio) + len(self._session_audio_secondary)
+        if buffered_size + incoming_size > MAX_SESSION_AUDIO_BYTES:
+            self._session_audio_truncated = True
+            logger.warning(
+                "ESPHome audio session exceeded the %d-byte in-memory limit",
+                MAX_SESSION_AUDIO_BYTES,
+            )
             return
         self._session_audio.extend(data)
+        if data2 is not None:
+            self._session_audio_secondary.extend(data2)
 
     async def _handle_session_stop(self, aborted: bool) -> None:
+        conversation_id = self._session_id
+        audio = bytes(self._session_audio)
+        audio_secondary = bytes(self._session_audio_secondary)
+        channels = self._session_channels or 1
+        truncated = self._session_audio_truncated
+        self._reset_session()
         logger.info(
             "ESPHome voice session ended (conversation=%s, aborted=%s, "
             "audio_bytes=%d, truncated=%s)",
-            self._session_id,
+            conversation_id,
             aborted,
-            len(self._session_audio),
-            self._session_audio_truncated,
+            len(audio) + len(audio_secondary),
+            truncated,
         )
+        if aborted or truncated or not audio:
+            return
+
+        if channels == 2:
+            audio = _interleave_pcm_channels(audio, audio_secondary)
+        wav_audio = _pcm_to_wav(audio, channels=channels)
+        try:
+            transcript = await asyncio.to_thread(
+                transcribe_audio,
+                base_url=self._settings.whispercpp_base_url,
+                audio=wav_audio,
+                filename="respeaker.wav",
+                content_type="audio/wav",
+            )
+        except TranscriptionUnavailableError as exc:
+            logger.warning(
+                "ReSpeaker transcription failed (conversation=%s): %s",
+                conversation_id,
+                exc,
+            )
+            return
+        except Exception:
+            logger.exception(
+                "Unexpected ReSpeaker transcription error (conversation=%s)",
+                conversation_id,
+            )
+            return
+        logger.info("ReSpeaker transcription (conversation=%s): %s", conversation_id, transcript)
+
+    def _reset_session(self) -> None:
         self._session_id = None
         self._session_audio.clear()
+        self._session_audio_secondary.clear()
+        self._session_channels = None
         self._session_audio_truncated = False
 
     def _unsubscribe(self) -> None:
@@ -146,3 +218,30 @@ class ESPHomeVoiceClient:
         self._unsubscribe_voice = None
         if unsubscribe is not None:
             unsubscribe()
+
+
+def _interleave_pcm_channels(channel_1: bytes, channel_2: bytes) -> bytes:
+    if len(channel_1) != len(channel_2):
+        raise ValueError("ESPHome stereo PCM channels have different lengths")
+    interleaved = bytearray(len(channel_1) + len(channel_2))
+    target = memoryview(interleaved)
+    for offset in range(0, len(channel_1), VOICE_SAMPLE_WIDTH):
+        frame_offset = (offset // VOICE_SAMPLE_WIDTH) * VOICE_SAMPLE_WIDTH * 2
+        target[frame_offset : frame_offset + VOICE_SAMPLE_WIDTH] = channel_1[
+            offset : offset + VOICE_SAMPLE_WIDTH
+        ]
+        secondary_offset = frame_offset + VOICE_SAMPLE_WIDTH
+        target[secondary_offset : secondary_offset + VOICE_SAMPLE_WIDTH] = channel_2[
+            offset : offset + VOICE_SAMPLE_WIDTH
+        ]
+    return bytes(interleaved)
+
+
+def _pcm_to_wav(pcm: bytes, *, channels: int) -> bytes:
+    wav_buffer = io.BytesIO()
+    with wave.open(wav_buffer, "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(VOICE_SAMPLE_WIDTH)
+        wav_file.setframerate(VOICE_SAMPLE_RATE)
+        wav_file.writeframes(pcm)
+    return wav_buffer.getvalue()
