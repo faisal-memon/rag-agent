@@ -177,7 +177,11 @@ class ESPHomeVoiceClient:
             len(audio) + len(audio_secondary),
             truncated,
         )
-        if aborted or truncated or not audio:
+        # aioesphomeapi reports VoiceAssistantRequest(start=False) as an
+        # aborted stop. On this satellite, the user button sends that message
+        # when the user ends a recording, so preserve and transcribe captured
+        # audio even when the protocol marks the stop as aborted.
+        if truncated or not audio:
             return
 
         if channels == 2:
