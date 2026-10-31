@@ -12,3 +12,5 @@ dateparser==1.4.3
 
 mcp==2.3.0
 aioesphomeapi==46.25.0
+soundfile==0.14.0
+wyoming==1.10.2

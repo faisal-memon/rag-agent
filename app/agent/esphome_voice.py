@@ -5,18 +5,24 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import math
+import struct
+import time
 import wave
 from collections.abc import Callable
 
 from aioesphomeapi import (
     APIClient,
+    MediaPlayerInfo,
     ReconnectLogic,
+    VoiceAssistantEventType,
     VoiceAssistantAudioSettings,
     VoiceAssistantFeature,
 )
 
 from app.agent.agent import Agent
 from app.agent.config import ApiSettings
+from app.agent.esphome_playback import OneShotAudioServer, PiperClient
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 
 logger = logging.getLogger(__name__)
@@ -24,6 +30,10 @@ logger = logging.getLogger(__name__)
 MAX_SESSION_AUDIO_BYTES = 3_000_000
 VOICE_SAMPLE_RATE = 16_000
 VOICE_SAMPLE_WIDTH = 2
+VAD_FRAME_BYTES = 640  # 20 ms at 16 kHz, mono, signed 16-bit PCM.
+VAD_RMS_THRESHOLD = 260
+VAD_SPEECH_FRAMES = 5
+VAD_SILENCE_FRAMES = 55
 VOICE_HISTORY_MAX_MESSAGES = 12
 
 
@@ -33,12 +43,34 @@ class ESPHomeVoiceClient:
     def __init__(self, settings: ApiSettings, agent: Agent | None = None) -> None:
         self._settings = settings
         self._agent = agent
+        self._piper = PiperClient(
+            settings.piper_host,
+            settings.piper_port,
+            settings.piper_voice,
+        )
+        self._media_server = (
+            OneShotAudioServer(
+                settings.esphome_media_server_host,
+                settings.esphome_media_server_port,
+                settings.esphome_media_url_base,
+            )
+            if settings.esphome_media_url_base
+            else None
+        )
         self._client: APIClient | None = None
+        self._media_player_key: int | None = None
         self._reconnect: ReconnectLogic | None = None
         self._unsubscribe_voice: Callable[[], None] | None = None
         self._session_audio = bytearray()
         self._session_id: str | None = None
         self._session_audio_truncated = False
+        self._vad_tail = bytearray()
+        self._vad_speech_frames = 0
+        self._vad_silence_frames = 0
+        self._vad_started = False
+        self._vad_ended = False
+        self._vad_last_log = 0.0
+        self._vad_started_at = 0.0
         self._voice_history: list[dict[str, str]] = []
 
     async def start(self) -> None:
@@ -46,6 +78,9 @@ class ESPHomeVoiceClient:
         if not self._settings.esphome_device_host:
             logger.info("ESPHome voice client disabled; ESPHOME_DEVICE_HOST is unset")
             return
+
+        if self._media_server is not None:
+            await self._media_server.start()
 
         self._client = APIClient(
             self._settings.esphome_device_host,
@@ -76,6 +111,8 @@ class ESPHomeVoiceClient:
         self._unsubscribe()
         if self._client is not None:
             await self._client.disconnect()
+        if self._media_server is not None:
+            await self._media_server.stop()
 
     async def _on_connect(self) -> None:
         assert self._client is not None
@@ -89,6 +126,20 @@ class ESPHomeVoiceClient:
         if not feature_flags & VoiceAssistantFeature.API_AUDIO:
             logger.error("ESPHome device %s does not support Native API audio", info.name)
             return
+
+        entities, _ = await self._client.list_entities_services()
+        media_player = next(
+            (
+                entity
+                for entity in entities
+                if isinstance(entity, MediaPlayerInfo)
+                and entity.object_id == "media_player"
+            ),
+            None,
+        )
+        self._media_player_key = media_player.key if media_player is not None else None
+        if self._media_server is not None and self._media_player_key is None:
+            logger.error("ESPHome device %s has no Media Player entity", info.name)
 
         self._unsubscribe_voice = self._client.subscribe_voice_assistant(
             handle_start=self._handle_session_start,
@@ -118,6 +169,13 @@ class ESPHomeVoiceClient:
         self._session_id = conversation_id
         self._session_audio.clear()
         self._session_audio_truncated = False
+        self._vad_tail.clear()
+        self._vad_speech_frames = 0
+        self._vad_silence_frames = 0
+        self._vad_started = False
+        self._vad_ended = False
+        self._vad_last_log = 0.0
+        self._vad_started_at = time.monotonic()
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
             "wake_word=%s, audio_settings=%s)",
@@ -126,6 +184,15 @@ class ESPHomeVoiceClient:
             wake_word_phrase,
             audio_settings,
         )
+        if self._client is not None:
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START, None
+            )
+            if wake_word_phrase:
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_WAKE_WORD_END,
+                    {"wake_word": wake_word_phrase},
+                )
         # API_AUDIO sends audio frames on this already-open Native API connection.
         return 0
 
@@ -147,11 +214,64 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
+        await self._update_vad(data)
+
+    async def _update_vad(self, data: bytes) -> None:
+        """Signal ESPHome when speech begins and ends so its mic stream closes."""
+        if self._client is None or self._vad_ended:
+            return
+        self._vad_tail.extend(data)
+        while len(self._vad_tail) >= VAD_FRAME_BYTES:
+            frame = bytes(self._vad_tail[:VAD_FRAME_BYTES])
+            del self._vad_tail[:VAD_FRAME_BYTES]
+            samples = struct.unpack("<320h", frame)
+            rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+            now = time.monotonic()
+            if now - self._vad_last_log >= 1.0:
+                logger.info(
+                    "ReSpeaker audio activity (session_bytes=%d, frame_rms=%.1f, speech_frames=%d)",
+                    len(self._session_audio),
+                    rms,
+                    self._vad_speech_frames,
+                )
+                self._vad_last_log = now
+            if rms >= VAD_RMS_THRESHOLD:
+                self._vad_speech_frames += 1
+                self._vad_silence_frames = 0
+            elif self._vad_speech_frames >= VAD_SPEECH_FRAMES:
+                self._vad_silence_frames += 1
+
+            if not self._vad_started and self._vad_speech_frames >= VAD_SPEECH_FRAMES:
+                self._vad_started = True
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None
+                )
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_START, None
+                )
+                logger.info("ReSpeaker voice activity detected; waiting for end of speech")
+            elif self._vad_started and self._vad_silence_frames >= VAD_SILENCE_FRAMES:
+                self._vad_ended = True
+                logger.info("ReSpeaker speech ended after 1.1 seconds of silence")
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
+                )
+                asyncio.create_task(self._handle_session_stop(False))
+                return
+            elif not self._vad_started and now - self._vad_started_at >= 15:
+                self._vad_ended = True
+                logger.info("ReSpeaker capture timed out with no detected speech")
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
+                )
+                asyncio.create_task(self._handle_session_stop(False))
+                return
 
     async def _handle_session_stop(self, aborted: bool) -> None:
         conversation_id = self._session_id
         audio = bytes(self._session_audio)
         truncated = self._session_audio_truncated
+        vad_ended = self._vad_ended
         self._reset_session()
         logger.info(
             "ESPHome voice session ended (conversation=%s, aborted=%s, "
@@ -201,6 +321,12 @@ class ESPHomeVoiceClient:
             return
         logger.info("ReSpeaker transcription (conversation=%s): %s", conversation_id, transcript)
 
+        if vad_ended and self._client is not None:
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                {"text": transcript},
+            )
+
         if self._agent is None:
             logger.debug("ReSpeaker agent is not configured; skipping model request")
             return
@@ -228,10 +354,49 @@ class ESPHomeVoiceClient:
         self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
         logger.info("ReSpeaker agent response (conversation=%s): %s", conversation_id, answer)
 
+        if self._media_server is None:
+            logger.debug("ReSpeaker playback is disabled; ESPHOME_MEDIA_URL_BASE is unset")
+            return
+        if self._media_player_key is None or self._client is None:
+            logger.warning("ReSpeaker reply could not be played; Media Player is unavailable")
+            return
+
+        try:
+            flac_audio = await self._piper.synthesize_flac(answer)
+            media_url = self._media_server.publish(flac_audio)
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START, None
+            )
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
+                {"conversation_id": "", "continue_conversation": "0"},
+            )
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START,
+                {"text": answer},
+            )
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END,
+                {"url": media_url},
+            )
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
+            )
+            logger.info("ReSpeaker agent reply queued for speaker playback")
+        except Exception:
+            logger.exception("ReSpeaker reply synthesis or playback request failed")
+
     def _reset_session(self) -> None:
         self._session_id = None
         self._session_audio.clear()
         self._session_audio_truncated = False
+        self._vad_tail.clear()
+        self._vad_speech_frames = 0
+        self._vad_silence_frames = 0
+        self._vad_started = False
+        self._vad_ended = False
+        self._vad_last_log = 0.0
+        self._vad_started_at = 0.0
 
     def _unsubscribe(self) -> None:
         unsubscribe = self._unsubscribe_voice
