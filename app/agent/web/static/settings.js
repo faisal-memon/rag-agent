@@ -43,6 +43,9 @@ form.addEventListener("submit", async (event) => {
   const data = Object.fromEntries(new FormData(form));
   data.query_limit = Number(data.query_limit);
   data.agent_max_steps = Number(data.agent_max_steps);
+  data.voice_start_grace_ms = Number(data.voice_start_grace_ms);
+  data.voice_end_silence_ms = Number(data.voice_end_silence_ms);
+  data.voice_capture_limit_seconds = Number(data.voice_capture_limit_seconds);
   data.home_latitude = data.home_latitude === "" ? null : Number(data.home_latitude);
   data.home_longitude = data.home_longitude === "" ? null : Number(data.home_longitude);
   data.memory_enabled = form.elements.memory_enabled.checked;

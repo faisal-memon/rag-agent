@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from app.agent.api import routes
 from app.agent.api.schemas import AgentQueryRequest, AgentRuntimeSettings
@@ -24,7 +24,15 @@ class SettingsApiTest(unittest.TestCase):
             os.environ["RAG_SETTINGS_PATH"] = str(path)
             write_runtime_settings({"normalize": {"backend": "docling"}})
             previous_agent = SimpleNamespace(tool_catalog_manager=SimpleNamespace(stop=AsyncMock()))
-            request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(agent=previous_agent)))
+            voice_client = SimpleNamespace(update_settings=Mock())
+            request = SimpleNamespace(
+                app=SimpleNamespace(
+                    state=SimpleNamespace(
+                        agent=previous_agent,
+                        esphome_voice_client=voice_client,
+                    )
+                )
+            )
             payload = AgentRuntimeSettings(
                 llm_provider="llamacpp",
                 openai_chat_model="gpt-4.1-mini",
@@ -36,6 +44,9 @@ class SettingsApiTest(unittest.TestCase):
                 embedding_llamacpp_model="mxbai",
                 query_limit=10,
                 agent_max_steps=5,
+                voice_start_grace_ms=0,
+                voice_end_silence_ms=600,
+                voice_capture_limit_seconds=0,
             )
 
             with (
@@ -49,6 +60,9 @@ class SettingsApiTest(unittest.TestCase):
 
         self.assertEqual("gemma-4", result.llamacpp_chat_model)
         self.assertEqual(10, result.query_limit)
+        self.assertEqual(0, result.voice_capture_limit_seconds)
+        self.assertEqual(0, result.voice_start_grace_ms)
+        self.assertEqual(600, result.voice_end_silence_ms)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
         catalog_manager_class.assert_called_once_with(get_api_settings().mcp_registry_refresh_interval)
@@ -56,6 +70,7 @@ class SettingsApiTest(unittest.TestCase):
         agent_class.assert_called_once_with(get_api_settings(), catalog_manager_class.return_value)
         agent_class.return_value.startup.assert_called_once()
         previous_agent.tool_catalog_manager.stop.assert_awaited_once()
+        voice_client.update_settings.assert_called_once_with(get_api_settings())
 
     def test_agent_stream_emits_progress_before_the_final_response(self) -> None:
         class StreamingAgent:

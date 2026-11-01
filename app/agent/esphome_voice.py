@@ -9,7 +9,6 @@ import time
 import wave
 from collections.abc import Callable
 
-import webrtcvad
 from aioesphomeapi import (
     APIClient,
     MediaPlayerInfo,
@@ -23,18 +22,16 @@ from app.agent.agent import Agent
 from app.agent.config import ApiSettings
 from app.agent.esphome_playback import OneShotAudioServer, PiperClient
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
+from app.agent.voice_activity import (
+    VOICE_SAMPLE_RATE,
+    CaptureEvent,
+    VoiceActivityDetector,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_SESSION_AUDIO_BYTES = 3_000_000
-VOICE_SAMPLE_RATE = 16_000
 VOICE_SAMPLE_WIDTH = 2
-VAD_FRAME_BYTES = 640  # 20 ms at 16 kHz, mono, signed 16-bit PCM.
-VAD_AGGRESSIVENESS = 2
-VAD_SPEECH_FRAMES = 5
-VAD_SILENCE_FRAMES = 55
-VAD_END_RESET_FRAMES = 3
-WAKE_BEEP_VAD_DELAY_BYTES = int(0.96 * VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH)
 VOICE_HISTORY_MAX_MESSAGES = 12
 
 
@@ -65,17 +62,10 @@ class ESPHomeVoiceClient:
         self._session_audio = bytearray()
         self._session_id: str | None = None
         self._session_audio_truncated = False
-        self._vad_tail = bytearray()
-        self._vad_speech_frames = 0
-        self._vad_silence_frames = 0
-        self._vad_above_threshold_frames = 0
-        self._vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
-        self._vad_started = False
+        self._vad: VoiceActivityDetector | None = None
         self._vad_ended = False
-        self._vad_last_log = 0.0
-        self._vad_started_at = 0.0
+        self._vad_no_speech_timeout = False
         self._session_started_at = 0.0
-        self._wake_beep_vad_delay_bytes_remaining = 0
         self._voice_history: list[dict[str, str]] = []
 
     async def start(self) -> None:
@@ -174,19 +164,14 @@ class ESPHomeVoiceClient:
         self._session_id = conversation_id
         self._session_audio.clear()
         self._session_audio_truncated = False
-        self._vad_tail.clear()
-        self._vad_speech_frames = 0
-        self._vad_silence_frames = 0
-        self._vad_above_threshold_frames = 0
-        self._vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
-        self._vad_started = False
-        self._vad_ended = False
-        self._vad_last_log = 0.0
-        self._vad_started_at = time.monotonic()
-        self._session_started_at = self._vad_started_at
-        self._wake_beep_vad_delay_bytes_remaining = (
-            WAKE_BEEP_VAD_DELAY_BYTES if wake_word_phrase else 0
+        self._vad = VoiceActivityDetector(
+            startup_grace_ms=self._settings.voice_start_grace_ms,
+            end_silence_ms=self._settings.voice_end_silence_ms,
+            capture_limit_seconds=self._settings.voice_capture_limit_seconds,
         )
+        self._vad_ended = False
+        self._vad_no_speech_timeout = False
+        self._session_started_at = time.monotonic()
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
             "wake_word=%s, audio_settings=%s)",
@@ -225,90 +210,50 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
-        vad_data = data
-        if self._wake_beep_vad_delay_bytes_remaining:
-            ignored_for_vad = min(
-                len(vad_data), self._wake_beep_vad_delay_bytes_remaining
-            )
-            self._wake_beep_vad_delay_bytes_remaining -= ignored_for_vad
-            vad_data = vad_data[ignored_for_vad:]
-        if vad_data:
-            await self._update_vad(vad_data)
+        await self._update_vad(data)
 
     async def _update_vad(self, data: bytes) -> None:
         """Signal ESPHome when speech begins and ends so its mic stream closes."""
-        if self._client is None or self._vad_ended:
+        if self._client is None or self._vad_ended or self._vad is None:
             return
-        self._vad_tail.extend(data)
-        while len(self._vad_tail) >= VAD_FRAME_BYTES:
-            frame = bytes(self._vad_tail[:VAD_FRAME_BYTES])
-            del self._vad_tail[:VAD_FRAME_BYTES]
-            speech_detected = self._vad.is_speech(frame, VOICE_SAMPLE_RATE)
-            now = time.monotonic()
-            if now - self._vad_last_log >= 1.0:
-                logger.info(
-                    "ReSpeaker audio activity (session_bytes=%d, speech_detected=%s, speech_frames=%d)",
-                    len(self._session_audio),
-                    speech_detected,
-                    self._vad_speech_frames,
-                )
-                self._vad_last_log = now
-            if speech_detected:
-                self._vad_speech_frames += 1
-                if self._vad_started:
-                    self._vad_above_threshold_frames += 1
-                    if (
-                        self._vad_above_threshold_frames >= VAD_END_RESET_FRAMES
-                    ):
-                        if self._vad_silence_frames:
-                            logger.info(
-                                "ReSpeaker VAD silence reset "
-                                "(speech_frames=%d, "
-                                "prior_silence_frames=%d/%d)",
-                                self._vad_above_threshold_frames,
-                                self._vad_silence_frames,
-                                VAD_SILENCE_FRAMES,
-                            )
-                        self._vad_silence_frames = 0
-            elif not self._vad_started:
-                self._vad_speech_frames = 0
-            else:
-                self._vad_above_threshold_frames = 0
-                self._vad_silence_frames += 1
-                if self._vad_silence_frames % 5 == 0:
-                    logger.info(
-                        "ReSpeaker VAD silence progress "
-                        "(silence_frames=%d/%d, speech_detected=%s)",
-                        self._vad_silence_frames,
-                        VAD_SILENCE_FRAMES,
-                        speech_detected,
-                    )
-
-            if not self._vad_started and self._vad_speech_frames >= VAD_SPEECH_FRAMES:
-                self._vad_started = True
+        for event in self._vad.process(data):
+            if event is CaptureEvent.SPEECH_STARTED:
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None
                 )
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_START, None
                 )
-                logger.info("ReSpeaker voice activity detected; waiting for end of speech")
-            elif self._vad_started and self._vad_silence_frames >= VAD_SILENCE_FRAMES:
+                logger.info("ReSpeaker VAD state: waiting_for_speech -> speaking")
+            elif event is CaptureEvent.SPEECH_ENDED:
                 self._vad_ended = True
-                logger.info("ReSpeaker speech ended after 1.1 seconds of silence")
+                logger.info("ReSpeaker VAD state: waiting_for_silence -> ended")
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 asyncio.create_task(self._handle_session_stop(False))
                 return
-            elif not self._vad_started and now - self._vad_started_at >= 15:
+            elif event is CaptureEvent.MAX_DURATION_REACHED:
                 self._vad_ended = True
-                logger.info("ReSpeaker capture timed out with no detected speech")
+                logger.warning("ReSpeaker capture reached its configured time limit")
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 asyncio.create_task(self._handle_session_stop(False))
                 return
+            elif event is CaptureEvent.NO_SPEECH_TIMEOUT:
+                self._vad_ended = True
+                self._vad_no_speech_timeout = True
+                logger.info("ReSpeaker capture ended: no speech detected")
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
+                )
+                asyncio.create_task(self._handle_session_stop(False))
+                return
+
+    def update_settings(self, settings: ApiSettings) -> None:
+        """Apply settings updates to subsequent voice sessions."""
+        self._settings = settings
 
     async def _handle_session_stop(self, aborted: bool) -> None:
         capture_seconds = (
@@ -320,6 +265,7 @@ class ESPHomeVoiceClient:
         audio = bytes(self._session_audio)
         truncated = self._session_audio_truncated
         vad_ended = self._vad_ended
+        no_speech_timeout = self._vad_no_speech_timeout
         self._reset_session()
         logger.info(
             "ESPHome voice session ended (conversation=%s, aborted=%s, "
@@ -334,6 +280,13 @@ class ESPHomeVoiceClient:
         # aborted stop. On this satellite, the user button sends that message
         # when the user ends a recording, so preserve and transcribe captured
         # audio even when the protocol marks the stop as aborted.
+        if no_speech_timeout:
+            if self._client is not None:
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                    {"text": ""},
+                )
+            return
         if truncated or not audio:
             return
 
@@ -458,16 +411,10 @@ class ESPHomeVoiceClient:
         self._session_id = None
         self._session_audio.clear()
         self._session_audio_truncated = False
-        self._vad_tail.clear()
-        self._vad_speech_frames = 0
-        self._vad_silence_frames = 0
-        self._vad_above_threshold_frames = 0
-        self._vad_started = False
+        self._vad = None
         self._vad_ended = False
-        self._vad_last_log = 0.0
-        self._vad_started_at = 0.0
+        self._vad_no_speech_timeout = False
         self._session_started_at = 0.0
-        self._wake_beep_vad_delay_bytes_remaining = 0
 
     def _unsubscribe(self) -> None:
         unsubscribe = self._unsubscribe_voice

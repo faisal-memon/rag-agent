@@ -86,6 +86,9 @@ def _runtime_settings() -> AgentRuntimeSettings:
         home_longitude=settings.home_longitude,
         memory_enabled=settings.memory_enabled,
         memory_require_approval=settings.memory_require_approval,
+        voice_start_grace_ms=settings.voice_start_grace_ms,
+        voice_end_silence_ms=settings.voice_end_silence_ms,
+        voice_capture_limit_seconds=settings.voice_capture_limit_seconds,
     )
 
 
@@ -97,6 +100,9 @@ async def _reload_agent(request: Request) -> None:
     await tool_catalog_manager.start()
     agent = Agent(settings, tool_catalog_manager)
     agent.startup()
+    voice_client = getattr(request.app.state, "esphome_voice_client", None)
+    if voice_client is not None:
+        voice_client.update_settings(settings)
     previous_agent = getattr(request.app.state, "agent", None)
     request.app.state.agent = agent
     if previous_agent is not None:

@@ -23,7 +23,7 @@
           <div class="eyebrow">Personal AI</div>
         </div>
         <h1>runtime settings</h1>
-        <p class="subtitle">Changes are saved on this installation and apply to the next chat request. API keys remain outside this page.</p>
+        <p class="subtitle">Changes are saved on this installation. Most apply to the next chat request; voice capture settings apply to the next voice session. API keys remain outside this page.</p>
         <nav class="page-nav" id="page-nav" aria-label="Application">
           <a class="agent-nav" href="/">Chat</a>
           <a class="debug-nav" href="/debug">Debug</a>
@@ -51,6 +51,7 @@
         <button type="button" class="settings-tab active" role="tab" aria-selected="true" aria-controls="models-panel" data-panel="models-panel">Models</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="general-panel" data-panel="general-panel">General</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="memory-panel" data-panel="memory-panel">Memory</button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="voice-panel" data-panel="voice-panel">Voice activity</button>
       </div>
 
       <form class="query-card settings-form" id="settings-form">
@@ -118,6 +119,21 @@
             <input id="home-latitude" name="home_latitude" type="number" min="-90" max="90" step="any" />
             <label for="home-longitude">Longitude</label>
             <input id="home-longitude" name="home_longitude" type="number" min="-180" max="180" step="any" />
+          </fieldset>
+        </section>
+
+        <section id="voice-panel" class="settings-panel" role="tabpanel" hidden>
+          <fieldset>
+            <legend>voice activity detection</legend>
+            <label for="voice-start-grace-ms">Ignore startup sound (milliseconds)</label>
+            <input id="voice-start-grace-ms" name="voice_start_grace_ms" type="number" min="0" max="10000" step="20" required />
+            <p class="field-help">Audio is kept. This only delays voice detection. Use 0 when the speaker has no startup beep.</p>
+            <label for="voice-end-silence-ms">Silence before ending speech (milliseconds)</label>
+            <input id="voice-end-silence-ms" name="voice_end_silence_ms" type="number" min="20" max="10000" step="20" required />
+            <p class="field-help">Capture ends after this much continuous silence. Detected speech during the wait clears the silence timer.</p>
+            <label for="voice-capture-limit-seconds">Maximum capture time (seconds)</label>
+            <input id="voice-capture-limit-seconds" name="voice_capture_limit_seconds" type="number" min="0" max="3600" step="1" required />
+            <p class="field-help">Use 0 for no maximum. If no speech is detected, capture still ends after 15 seconds.</p>
           </fieldset>
         </section>
 

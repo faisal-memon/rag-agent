@@ -82,6 +82,9 @@ class AgentRuntimeSettings(BaseModel):
     home_longitude: float | None = Field(default=None, ge=-180, le=180)
     memory_enabled: bool = True
     memory_require_approval: bool = True
+    voice_start_grace_ms: int = Field(default=960, ge=0, le=10_000, multiple_of=20)
+    voice_end_silence_ms: int = Field(default=1100, ge=20, le=10_000, multiple_of=20)
+    voice_capture_limit_seconds: int = Field(default=20, ge=0, le=3600)
 
 
 class RetrievalDebugResponse(BaseModel):

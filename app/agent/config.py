@@ -25,6 +25,15 @@ class ApiSettings(ConfiguredSettings):
     esphome_device_port: int = Field(default=6053, ge=1, le=65535, alias="ESPHOME_DEVICE_PORT")
     esphome_device_name: str = Field(default="", alias="ESPHOME_DEVICE_NAME")
     esphome_api_key: str = Field(default="", alias="ESPHOME_API_KEY")
+    voice_start_grace_ms: int = Field(
+        default=960, ge=0, le=10_000, multiple_of=20, alias="ESPHOME_VOICE_START_GRACE_MS"
+    )
+    voice_end_silence_ms: int = Field(
+        default=1100, ge=20, le=10_000, multiple_of=20, alias="ESPHOME_VOICE_END_SILENCE_MS"
+    )
+    voice_capture_limit_seconds: int = Field(
+        default=20, ge=0, le=3600, alias="ESPHOME_VOICE_CAPTURE_LIMIT_SECONDS"
+    )
     piper_host: str = Field(default="piper-piper-1", alias="PIPER_HOST")
     piper_port: int = Field(default=10200, ge=1, le=65535, alias="PIPER_PORT")
     piper_voice: str = Field(default="en_US-lessac-medium", alias="PIPER_VOICE")
