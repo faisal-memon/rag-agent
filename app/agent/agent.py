@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 from pathlib import Path
@@ -73,6 +74,7 @@ class Agent:
         profile_name: str | None = None,
     ) -> dict:
         """Answer one user question using bounded model-selected tools."""
+        logger.info("Agent input (thread=%s): %r", threading.get_ident(), question)
         if not self.memory.loaded:
             self.startup()
         turn = TurnContext(
@@ -104,6 +106,7 @@ class Agent:
             _emit_progress(turn.on_progress, "thinking", message="Preparing answer")
             answer = _synthesize_answer(self, turn)
         citations = _citations_from_tool_results(turn.tool_results)
+        logger.info("Agent final answer (thread=%s): %r", threading.get_ident(), answer)
 
         return {
             "answer": answer,
@@ -139,6 +142,10 @@ class Agent:
             if latitude is not None and longitude is not None
             else tools.ToolExecutionContext()
         )
+        logger.info(
+            "Agent tool call (thread=%s, tool=%s): arguments=%r",
+            threading.get_ident(), tool, arguments,
+        )
         try:
             if tool == "remember":
                 if not self.settings.memory_enabled:
@@ -164,6 +171,10 @@ class Agent:
         except Exception as exc:
             result = {"error": str(exc)}
 
+        logger.info(
+            "Agent tool result (thread=%s, tool=%s): arguments=%r result=%r",
+            threading.get_ident(), tool, arguments, result,
+        )
         return {"tool": tool, "arguments": arguments, "result": result}
 
 
@@ -473,6 +484,24 @@ def _decide_next_action(
                 "evidence_status": "casual",
                 "answer": text.strip(),
             }
+        if (
+            not turn.tool_results
+            and text.strip()
+            and not _question_requires_tools(turn.question, catalog)
+            and not text.lstrip().startswith(("{", "<|tool_call|>"))
+        ):
+            _append_debug(
+                turn.debug,
+                "controller_decision",
+                phase="planning",
+                decision="fallback_prose_answer",
+                reason="non_json_response_for_casual_request",
+            )
+            return {
+                "action": "answer",
+                "evidence_status": "casual",
+                "answer": text.strip(),
+            }
         _append_debug(
             turn.debug,
             "parse_error",
@@ -518,6 +547,23 @@ def _is_agent_configuration_question(question: str) -> bool:
             "your tools",
             "your configuration",
         )
+    )
+
+
+def _question_requires_tools(question: str, catalog: tools.ToolCatalog) -> bool:
+    """Keep plain-text planner fallback away from requests needing evidence or actions."""
+    normalized = question.casefold()
+    tool_terms = {
+        "current", "latest", "today", "tomorrow", "weather", "alert", "route",
+        "schedule", "class", "lunch", "news", "document", "file", "search",
+        "find", "look up", "check", "use the", "mcp", "tool", "remember",
+    }
+    if any(term in normalized for term in tool_terms):
+        return True
+    return any(
+        capability in normalized
+        for definition in catalog.tools
+        for capability in definition.capabilities
     )
 
 
@@ -595,6 +641,10 @@ def _complete_text(
     reasoning: list[dict] | None = None,
     phase: str = "",
 ) -> str:
+    logger.info(
+        "Agent model request (thread=%s, phase=%s, model=%s): system=%r prompt=%r",
+        threading.get_ident(), phase, model, system, prompt,
+    )
     if settings.llm_provider == "llamacpp":
         response = client.chat.completions.create(
             model=model,
@@ -604,10 +654,19 @@ def _complete_text(
             ],
         )
         message = response.choices[0].message
-        _record_reasoning(reasoning, phase, _message_reasoning_content(message))
+        reasoning_text = _message_reasoning_content(message)
+        _record_reasoning(reasoning, phase, reasoning_text)
+        logger.info(
+            "Agent model response (thread=%s, phase=%s): text=%r reasoning=%r",
+            threading.get_ident(), phase, message.content or "", reasoning_text,
+        )
         return message.content or ""
 
     response = client.responses.create(model=model, input=f"{system}\n\n{prompt}")
+    logger.info(
+        "Agent model response (thread=%s, phase=%s): text=%r",
+        threading.get_ident(), phase, response.output_text,
+    )
     return response.output_text
 
 
