@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import math
-import struct
 import time
 import wave
 from collections.abc import Callable
 
+import webrtcvad
 from aioesphomeapi import (
     APIClient,
     MediaPlayerInfo,
@@ -31,9 +30,11 @@ MAX_SESSION_AUDIO_BYTES = 3_000_000
 VOICE_SAMPLE_RATE = 16_000
 VOICE_SAMPLE_WIDTH = 2
 VAD_FRAME_BYTES = 640  # 20 ms at 16 kHz, mono, signed 16-bit PCM.
-VAD_RMS_THRESHOLD = 260
+VAD_AGGRESSIVENESS = 2
 VAD_SPEECH_FRAMES = 5
 VAD_SILENCE_FRAMES = 55
+VAD_END_RESET_FRAMES = 3
+WAKE_BEEP_VAD_DELAY_BYTES = int(0.96 * VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH)
 VOICE_HISTORY_MAX_MESSAGES = 12
 
 
@@ -67,11 +68,14 @@ class ESPHomeVoiceClient:
         self._vad_tail = bytearray()
         self._vad_speech_frames = 0
         self._vad_silence_frames = 0
+        self._vad_above_threshold_frames = 0
+        self._vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
         self._vad_started = False
         self._vad_ended = False
         self._vad_last_log = 0.0
         self._vad_started_at = 0.0
         self._session_started_at = 0.0
+        self._wake_beep_vad_delay_bytes_remaining = 0
         self._voice_history: list[dict[str, str]] = []
 
     async def start(self) -> None:
@@ -173,11 +177,16 @@ class ESPHomeVoiceClient:
         self._vad_tail.clear()
         self._vad_speech_frames = 0
         self._vad_silence_frames = 0
+        self._vad_above_threshold_frames = 0
+        self._vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
         self._vad_started = False
         self._vad_ended = False
         self._vad_last_log = 0.0
         self._vad_started_at = time.monotonic()
         self._session_started_at = self._vad_started_at
+        self._wake_beep_vad_delay_bytes_remaining = (
+            WAKE_BEEP_VAD_DELAY_BYTES if wake_word_phrase else 0
+        )
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
             "wake_word=%s, audio_settings=%s)",
@@ -216,7 +225,15 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
-        await self._update_vad(data)
+        vad_data = data
+        if self._wake_beep_vad_delay_bytes_remaining:
+            ignored_for_vad = min(
+                len(vad_data), self._wake_beep_vad_delay_bytes_remaining
+            )
+            self._wake_beep_vad_delay_bytes_remaining -= ignored_for_vad
+            vad_data = vad_data[ignored_for_vad:]
+        if vad_data:
+            await self._update_vad(vad_data)
 
     async def _update_vad(self, data: bytes) -> None:
         """Signal ESPHome when speech begins and ends so its mic stream closes."""
@@ -226,22 +243,46 @@ class ESPHomeVoiceClient:
         while len(self._vad_tail) >= VAD_FRAME_BYTES:
             frame = bytes(self._vad_tail[:VAD_FRAME_BYTES])
             del self._vad_tail[:VAD_FRAME_BYTES]
-            samples = struct.unpack("<320h", frame)
-            rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+            speech_detected = self._vad.is_speech(frame, VOICE_SAMPLE_RATE)
             now = time.monotonic()
             if now - self._vad_last_log >= 1.0:
                 logger.info(
-                    "ReSpeaker audio activity (session_bytes=%d, frame_rms=%.1f, speech_frames=%d)",
+                    "ReSpeaker audio activity (session_bytes=%d, speech_detected=%s, speech_frames=%d)",
                     len(self._session_audio),
-                    rms,
+                    speech_detected,
                     self._vad_speech_frames,
                 )
                 self._vad_last_log = now
-            if rms >= VAD_RMS_THRESHOLD:
+            if speech_detected:
                 self._vad_speech_frames += 1
-                self._vad_silence_frames = 0
-            elif self._vad_speech_frames >= VAD_SPEECH_FRAMES:
+                if self._vad_started:
+                    self._vad_above_threshold_frames += 1
+                    if (
+                        self._vad_above_threshold_frames >= VAD_END_RESET_FRAMES
+                    ):
+                        if self._vad_silence_frames:
+                            logger.info(
+                                "ReSpeaker VAD silence reset "
+                                "(speech_frames=%d, "
+                                "prior_silence_frames=%d/%d)",
+                                self._vad_above_threshold_frames,
+                                self._vad_silence_frames,
+                                VAD_SILENCE_FRAMES,
+                            )
+                        self._vad_silence_frames = 0
+            elif not self._vad_started:
+                self._vad_speech_frames = 0
+            else:
+                self._vad_above_threshold_frames = 0
                 self._vad_silence_frames += 1
+                if self._vad_silence_frames % 5 == 0:
+                    logger.info(
+                        "ReSpeaker VAD silence progress "
+                        "(silence_frames=%d/%d, speech_detected=%s)",
+                        self._vad_silence_frames,
+                        VAD_SILENCE_FRAMES,
+                        speech_detected,
+                    )
 
             if not self._vad_started and self._vad_speech_frames >= VAD_SPEECH_FRAMES:
                 self._vad_started = True
@@ -420,11 +461,13 @@ class ESPHomeVoiceClient:
         self._vad_tail.clear()
         self._vad_speech_frames = 0
         self._vad_silence_frames = 0
+        self._vad_above_threshold_frames = 0
         self._vad_started = False
         self._vad_ended = False
         self._vad_last_log = 0.0
         self._vad_started_at = 0.0
         self._session_started_at = 0.0
+        self._wake_beep_vad_delay_bytes_remaining = 0
 
     def _unsubscribe(self) -> None:
         unsubscribe = self._unsubscribe_voice

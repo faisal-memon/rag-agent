@@ -570,10 +570,21 @@ def _question_requires_tools(question: str, catalog: tools.ToolCatalog) -> bool:
 def _needs_profile_name(question: str) -> bool:
     """Recognize questions where first-person identity affects document retrieval."""
     normalized = " ".join(question.casefold().split())
-    return bool(
-        re.search(r"\bmy\b|\bmine\b", normalized)
-        or any(phrase in normalized for phrase in ("do i own", "do i have", "i own", "i have", "am i"))
+    personal_record_terms = (
+        "document", "file", "folder", "record", "paperwork", "passport",
+        "tax return", "insurance", "policy", "receipt", "invoice", "contract",
+        "lease", "statement", "deed", "title", "registration", "application",
+        "warranty",
     )
+    has_personal_reference = bool(re.search(r"\bmy\b|\bmine\b", normalized))
+    if has_personal_reference and any(term in normalized for term in personal_record_terms):
+        return True
+
+    if re.search(r"\bdo i own\b", normalized):
+        return True
+
+    ownership_question = r"\b(?:what|which|where|who)\b.*\bdo i have\b(?!\s+to\b)"
+    return bool(re.search(ownership_question, normalized))
 
 
 def _identity_question_from_history(history: list[dict]) -> str | None:
