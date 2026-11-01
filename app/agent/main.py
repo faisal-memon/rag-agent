@@ -77,6 +77,7 @@ async def lifespan(app: FastAPI):
     if error:
         logging.getLogger("app.agent").warning("Could not load agent memory: %s", error)
     esphome_voice_client = ESPHomeVoiceClient(settings, agent)
+    app.state.esphome_voice_client = esphome_voice_client
     await esphome_voice_client.start()
     try:
         yield
