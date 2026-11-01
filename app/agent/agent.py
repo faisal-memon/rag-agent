@@ -484,6 +484,24 @@ def _decide_next_action(
                 "evidence_status": "casual",
                 "answer": text.strip(),
             }
+        if (
+            not turn.tool_results
+            and text.strip()
+            and not _question_requires_tools(turn.question, catalog)
+            and not text.lstrip().startswith(("{", "<|tool_call|>"))
+        ):
+            _append_debug(
+                turn.debug,
+                "controller_decision",
+                phase="planning",
+                decision="fallback_prose_answer",
+                reason="non_json_response_for_casual_request",
+            )
+            return {
+                "action": "answer",
+                "evidence_status": "casual",
+                "answer": text.strip(),
+            }
         _append_debug(
             turn.debug,
             "parse_error",
@@ -529,6 +547,23 @@ def _is_agent_configuration_question(question: str) -> bool:
             "your tools",
             "your configuration",
         )
+    )
+
+
+def _question_requires_tools(question: str, catalog: tools.ToolCatalog) -> bool:
+    """Keep plain-text planner fallback away from requests needing evidence or actions."""
+    normalized = question.casefold()
+    tool_terms = {
+        "current", "latest", "today", "tomorrow", "weather", "alert", "route",
+        "schedule", "class", "lunch", "news", "document", "file", "search",
+        "find", "look up", "check", "use the", "mcp", "tool", "remember",
+    }
+    if any(term in normalized for term in tool_terms):
+        return True
+    return any(
+        capability in normalized
+        for definition in catalog.tools
+        for capability in definition.capabilities
     )
 
 

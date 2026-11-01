@@ -723,6 +723,24 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn("parse_error", [event["event"] for event in result["debug"]])
         execute_tool.assert_not_called()
 
+    def test_agent_accepts_plain_text_answer_for_casual_request(self) -> None:
+        prose_answer = "Why don't scientists trust atoms? They make up everything!"
+
+        with (
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", return_value=prose_answer),
+            patch("app.agent.agent.Agent._execute_tool") as execute_tool,
+        ):
+            result = _answer("Tell me a short joke.")
+
+        self.assertEqual(prose_answer, result["answer"])
+        self.assertEqual([], result["tool_results"])
+        self.assertIn(
+            "fallback_prose_answer",
+            [event.get("decision") for event in result["debug"]],
+        )
+        execute_tool.assert_not_called()
+
     def test_agent_rejects_not_found_after_only_one_search_method(self) -> None:
         responses = iter(
             [
