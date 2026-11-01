@@ -20,17 +20,6 @@ def main() -> FastAPI:
     return create_app()
 
 
-def _pacific_log_handler() -> logging.StreamHandler:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S %Z",
-    )
-    formatter.converter = time.localtime
-    handler.setFormatter(formatter)
-    return handler
-
-
 def _configure_logging() -> None:
     """Give app and Uvicorn logs one consistent Pacific-time timestamp."""
     logger_names = (
@@ -47,6 +36,17 @@ def _configure_logging() -> None:
         configured_logger.handlers.clear()
         configured_logger.addHandler(_pacific_log_handler())
         configured_logger.propagate = False
+
+
+def _pacific_log_handler() -> logging.StreamHandler:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S %Z",
+    )
+    formatter.converter = time.localtime
+    handler.setFormatter(formatter)
+    return handler
 
 
 def create_app() -> FastAPI:
