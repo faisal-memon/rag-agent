@@ -37,7 +37,12 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             self.assertEqual(wav_file.getsampwidth(), 2)
             self.assertEqual(wav_file.getframerate(), 16000)
             self.assertEqual(wav_file.readframes(wav_file.getnframes()), pcm)
-        self.assertTrue(any("ReSpeaker transcription" in line and "hello there" in line for line in logs.output))
+        self.assertTrue(
+            any(
+                "ReSpeaker transcription complete" in line and "characters=11" in line
+                for line in logs.output
+            )
+        )
         self.assertIsNone(self.client._session_id)
         self.assertEqual(self.client._session_audio, bytearray())
 
