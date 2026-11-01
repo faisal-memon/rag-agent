@@ -12,6 +12,13 @@ from app.agent.esphome_voice import ESPHomeVoiceClient
 from app.agent.version import APP_VERSION
 from app.agent.web.routes import STATIC_DIR
 
+# Uvicorn leaves application INFO loggers below its visible threshold. Keep
+# voice lifecycle diagnostics scoped to these modules.
+for voice_logger_name in ("app.agent.esphome_voice", "app.agent.esphome_playback"):
+    voice_logger = logging.getLogger(voice_logger_name)
+    voice_logger.setLevel(logging.INFO)
+    voice_logger.addHandler(logging.StreamHandler())
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # The catalog manager owns MCP discovery and its background refresh task.

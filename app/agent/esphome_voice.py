@@ -71,6 +71,7 @@ class ESPHomeVoiceClient:
         self._vad_ended = False
         self._vad_last_log = 0.0
         self._vad_started_at = 0.0
+        self._session_started_at = 0.0
         self._voice_history: list[dict[str, str]] = []
 
     async def start(self) -> None:
@@ -176,6 +177,7 @@ class ESPHomeVoiceClient:
         self._vad_ended = False
         self._vad_last_log = 0.0
         self._vad_started_at = time.monotonic()
+        self._session_started_at = self._vad_started_at
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
             "wake_word=%s, audio_settings=%s)",
@@ -268,6 +270,11 @@ class ESPHomeVoiceClient:
                 return
 
     async def _handle_session_stop(self, aborted: bool) -> None:
+        capture_seconds = (
+            time.monotonic() - self._session_started_at
+            if self._session_started_at
+            else 0.0
+        )
         conversation_id = self._session_id
         audio = bytes(self._session_audio)
         truncated = self._session_audio_truncated
@@ -275,11 +282,12 @@ class ESPHomeVoiceClient:
         self._reset_session()
         logger.info(
             "ESPHome voice session ended (conversation=%s, aborted=%s, "
-            "audio_bytes=%d, truncated=%s)",
+            "audio_bytes=%d, truncated=%s, capture_seconds=%.2f)",
             conversation_id,
             aborted,
             len(audio),
             truncated,
+            capture_seconds,
         )
         # aioesphomeapi reports VoiceAssistantRequest(start=False) as an
         # aborted stop. On this satellite, the user button sends that message
@@ -298,6 +306,7 @@ class ESPHomeVoiceClient:
         if not audio:
             return
         wav_audio = _pcm_to_wav(audio, channels=1)
+        stage_started = time.monotonic()
         try:
             transcript = await asyncio.to_thread(
                 transcribe_audio,
@@ -319,7 +328,12 @@ class ESPHomeVoiceClient:
                 conversation_id,
             )
             return
-        logger.info("ReSpeaker transcription (conversation=%s): %s", conversation_id, transcript)
+        logger.info(
+            "ReSpeaker transcription complete (conversation=%s, seconds=%.2f, characters=%d)",
+            conversation_id,
+            time.monotonic() - stage_started,
+            len(transcript),
+        )
 
         if vad_ended and self._client is not None:
             self._client.send_voice_assistant_event(
@@ -333,6 +347,7 @@ class ESPHomeVoiceClient:
 
         self._voice_history.append({"role": "user", "content": transcript})
         self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
+        stage_started = time.monotonic()
         try:
             result = await asyncio.to_thread(
                 self._agent.answer,
@@ -352,7 +367,12 @@ class ESPHomeVoiceClient:
             return
         self._voice_history.append({"role": "assistant", "content": answer})
         self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
-        logger.info("ReSpeaker agent response (conversation=%s): %s", conversation_id, answer)
+        logger.info(
+            "ReSpeaker agent response complete (conversation=%s, seconds=%.2f, characters=%d)",
+            conversation_id,
+            time.monotonic() - stage_started,
+            len(answer),
+        )
 
         if self._media_server is None:
             logger.debug("ReSpeaker playback is disabled; ESPHOME_MEDIA_URL_BASE is unset")
@@ -362,7 +382,14 @@ class ESPHomeVoiceClient:
             return
 
         try:
+            stage_started = time.monotonic()
             flac_audio = await self._piper.synthesize_flac(answer)
+            logger.info(
+                "ReSpeaker synthesis complete (conversation=%s, seconds=%.2f, audio_bytes=%d)",
+                conversation_id,
+                time.monotonic() - stage_started,
+                len(flac_audio),
+            )
             media_url = self._media_server.publish(flac_audio)
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START, None
@@ -382,7 +409,7 @@ class ESPHomeVoiceClient:
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
             )
-            logger.info("ReSpeaker agent reply queued for speaker playback")
+            logger.info("ReSpeaker agent reply queued for speaker playback (conversation=%s)", conversation_id)
         except Exception:
             logger.exception("ReSpeaker reply synthesis or playback request failed")
 
@@ -397,6 +424,7 @@ class ESPHomeVoiceClient:
         self._vad_ended = False
         self._vad_last_log = 0.0
         self._vad_started_at = 0.0
+        self._session_started_at = 0.0
 
     def _unsubscribe(self) -> None:
         unsubscribe = self._unsubscribe_voice
