@@ -22,20 +22,22 @@ def main() -> FastAPI:
 
 def _configure_logging() -> None:
     """Give app and Uvicorn logs one consistent Pacific-time timestamp."""
-    logger_names = (
-        "app.agent.agent",
-        "app.agent.esphome_voice",
-        "app.agent.esphome_playback",
-        "uvicorn",
-        "uvicorn.error",
-        "uvicorn.access",
-    )
-    for logger_name in logger_names:
-        configured_logger = logging.getLogger(logger_name)
-        configured_logger.setLevel(logging.INFO)
-        configured_logger.handlers.clear()
-        configured_logger.addHandler(_pacific_log_handler())
-        configured_logger.propagate = False
+    app_logger = logging.getLogger("app.agent")
+    app_logger.setLevel(logging.INFO)
+    app_logger.handlers.clear()
+    app_logger.addHandler(_pacific_log_handler())
+    app_logger.propagate = False
+
+    uvicorn_logger = logging.getLogger("uvicorn")
+    uvicorn_logger.setLevel(logging.INFO)
+    uvicorn_logger.handlers.clear()
+    uvicorn_logger.addHandler(_pacific_log_handler())
+    uvicorn_logger.propagate = False
+    for logger_name in ("uvicorn.error", "uvicorn.access"):
+        child_logger = logging.getLogger(logger_name)
+        child_logger.handlers.clear()
+        child_logger.setLevel(logging.INFO)
+        child_logger.propagate = True
 
 
 def _pacific_log_handler() -> logging.StreamHandler:
@@ -73,7 +75,7 @@ async def lifespan(app: FastAPI):
     app.state.agent = agent
     error = agent.startup()
     if error:
-        logging.getLogger("rag-api").warning("Could not load agent memory: %s", error)
+        logging.getLogger("app.agent").warning("Could not load agent memory: %s", error)
     esphome_voice_client = ESPHomeVoiceClient(settings, agent)
     await esphome_voice_client.start()
     try:
