@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -12,14 +13,31 @@ from app.agent.esphome_voice import ESPHomeVoiceClient
 from app.agent.version import APP_VERSION
 from app.agent.web.routes import STATIC_DIR
 
-# Uvicorn leaves application INFO loggers below its visible threshold. Keep
-# voice lifecycle diagnostics scoped to these modules.
-for voice_logger_name in (
-    "app.agent.agent", "app.agent.esphome_voice", "app.agent.esphome_playback"
+def _pacific_log_handler() -> logging.StreamHandler:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S %Z",
+    )
+    formatter.converter = time.localtime
+    handler.setFormatter(formatter)
+    return handler
+
+
+# Keep application diagnostics and Uvicorn records on one Pacific-time format.
+for logger_name in (
+    "app.agent.agent",
+    "app.agent.esphome_voice",
+    "app.agent.esphome_playback",
+    "uvicorn",
+    "uvicorn.error",
+    "uvicorn.access",
 ):
-    voice_logger = logging.getLogger(voice_logger_name)
-    voice_logger.setLevel(logging.INFO)
-    voice_logger.addHandler(logging.StreamHandler())
+    configured_logger = logging.getLogger(logger_name)
+    configured_logger.setLevel(logging.INFO)
+    configured_logger.handlers.clear()
+    configured_logger.addHandler(_pacific_log_handler())
+    configured_logger.propagate = False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
