@@ -13,6 +13,13 @@ from app.agent.esphome_voice import ESPHomeVoiceClient
 from app.agent.version import APP_VERSION
 from app.agent.web.routes import STATIC_DIR
 
+
+def main() -> FastAPI:
+    """Configure process logging and construct the application."""
+    _configure_logging()
+    return create_app()
+
+
 def _pacific_log_handler() -> logging.StreamHandler:
     handler = logging.StreamHandler()
     formatter = logging.Formatter(
@@ -24,20 +31,36 @@ def _pacific_log_handler() -> logging.StreamHandler:
     return handler
 
 
-# Keep application diagnostics and Uvicorn records on one Pacific-time format.
-for logger_name in (
-    "app.agent.agent",
-    "app.agent.esphome_voice",
-    "app.agent.esphome_playback",
-    "uvicorn",
-    "uvicorn.error",
-    "uvicorn.access",
-):
-    configured_logger = logging.getLogger(logger_name)
-    configured_logger.setLevel(logging.INFO)
-    configured_logger.handlers.clear()
-    configured_logger.addHandler(_pacific_log_handler())
-    configured_logger.propagate = False
+def _configure_logging() -> None:
+    """Give app and Uvicorn logs one consistent Pacific-time timestamp."""
+    logger_names = (
+        "app.agent.agent",
+        "app.agent.esphome_voice",
+        "app.agent.esphome_playback",
+        "uvicorn",
+        "uvicorn.error",
+        "uvicorn.access",
+    )
+    for logger_name in logger_names:
+        configured_logger = logging.getLogger(logger_name)
+        configured_logger.setLevel(logging.INFO)
+        configured_logger.handlers.clear()
+        configured_logger.addHandler(_pacific_log_handler())
+        configured_logger.propagate = False
+
+
+def create_app() -> FastAPI:
+    """Build the FastAPI application and attach its routes and middleware."""
+    application = FastAPI(
+        title="Nextcloud Personal RAG",
+        version=APP_VERSION,
+        lifespan=lifespan,
+    )
+    application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    application.include_router(router)
+    application.middleware("http")(revalidate_static_assets)
+    return application
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,14 +83,11 @@ async def lifespan(app: FastAPI):
         await tool_catalog_manager.stop()
 
 
-app = FastAPI(title="Nextcloud Personal RAG", version=APP_VERSION, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.include_router(router)
-
-
-@app.middleware("http")
 async def revalidate_static_assets(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+app = main()
