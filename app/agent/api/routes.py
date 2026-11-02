@@ -89,6 +89,7 @@ def _runtime_settings() -> AgentRuntimeSettings:
         voice_start_grace_ms=settings.voice_start_grace_ms,
         voice_end_silence_ms=settings.voice_end_silence_ms,
         voice_capture_limit_seconds=settings.voice_capture_limit_seconds,
+        remote_mcp_servers=settings.remote_mcp_servers,
     )
 
 
@@ -186,7 +187,8 @@ def list_mcp_tools(request: Request) -> dict:
         servers.append({
             "name": server.get("name", "Unnamed server"),
             "description": server.get("description"),
-            "registered": True,
+            "registered": server.get("source", "private") == "private",
+            "source": server.get("source", "private"),
             "reachable": reachable,
             "error": tools_result.get("error") if isinstance(tools_result, dict) else None,
             "tools": tools_result if reachable else [],
@@ -233,7 +235,7 @@ def get_settings() -> AgentRuntimeSettings:
 @router.put("/api/settings", response_model=AgentRuntimeSettings)
 async def update_settings(request: Request, payload: AgentRuntimeSettings) -> AgentRuntimeSettings:
     settings = read_runtime_settings()
-    values = payload.model_dump()
+    values = payload.model_dump(mode="json")
     embed_values = {
         "provider": values.pop("embedding_provider"),
         "openai_embedding_model": values.pop("openai_embedding_model"),

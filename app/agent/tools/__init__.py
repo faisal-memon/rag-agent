@@ -4,6 +4,7 @@ from app.agent.tools import builtin
 from app.agent.tools.base import Tool, ToolExecutionContext, UserLocation
 from app.agent.tools.catalog import ToolCatalog, ToolCatalogManager
 from app.agent.tools.mcp import MCPTool
+from app.agent.tools.remote_mcp import RemoteMCPTool
 from app.agent.tools.static import StaticTool
 
 
@@ -35,8 +36,9 @@ def build_tool_catalog(registry: dict | None = None) -> ToolCatalog:
         for definition in definitions:
             if not isinstance(definition, dict) or not definition.get("name"):
                 continue
+            tool_type = RemoteMCPTool if server.get("source") == "remote" else MCPTool
             catalog.register(
-                MCPTool(
+                tool_type(
                     server=str(server["name"]),
                     tool_name=str(definition["name"]),
                     url=str(server["url"]),
@@ -74,6 +76,6 @@ for _name in (
 
 __all__ = [
     "Tool", "ToolExecutionContext", "UserLocation", "StaticTool", "MCPTool", "ToolCatalog",
-    "ToolCatalogManager", "STATIC_TOOL_CATALOG",
+    "ToolCatalogManager", "STATIC_TOOL_CATALOG", "RemoteMCPTool",
     "build_tool_catalog", "render_tool_descriptions", *builtin.STATIC_TOOL_FUNCTIONS,
 ]

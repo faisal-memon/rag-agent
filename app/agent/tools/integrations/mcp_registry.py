@@ -13,6 +13,7 @@ from app.agent.config import get_api_settings
 
 _registry_cache: dict | None = None
 _registry_cached_at = 0.0
+_registry_cache_key: tuple | None = None
 
 
 class MCPServer(BaseModel):
@@ -41,14 +42,20 @@ class MCPRegistry(BaseModel):
 
 def get_mcp_registry() -> dict:
     """List approved MCP servers from the configured registry URL."""
-    global _registry_cache, _registry_cached_at
+    global _registry_cache, _registry_cached_at, _registry_cache_key
+    settings = get_api_settings()
+    cache_key = (
+        settings.mcp_registry_url,
+        tuple((server.name, str(server.url)) for server in settings.remote_mcp_servers),
+    )
     if (
         _registry_cache is not None
-        and time.monotonic() - _registry_cached_at < get_api_settings().mcp_registry_refresh_interval
+        and cache_key == _registry_cache_key
+        and time.monotonic() - _registry_cached_at < settings.mcp_registry_refresh_interval
     ):
         return _registry_cache
     try:
-        request = Request(get_api_settings().mcp_registry_url, headers={"Accept": "application/json"})
+        request = Request(settings.mcp_registry_url, headers={"Accept": "application/json"})
         with urlopen(request, timeout=5) as response:
             payload = json.load(response)
         registry = MCPRegistry.model_validate(payload)
@@ -57,9 +64,22 @@ def get_mcp_registry() -> dict:
             if server.enabled:
                 entry = server.as_tool_entry()
                 entry["tools"] = _list_tools(str(server.url))
+                entry["source"] = "private"
                 servers.append(entry)
+        for server in settings.remote_mcp_servers:
+            servers.append(
+                {
+                    "name": server.name,
+                    "url": str(server.url),
+                    "description": "Manually configured remote MCP endpoint.",
+                    "enabled": True,
+                    "source": "remote",
+                    "tools": _list_tools(str(server.url)),
+                }
+            )
         _registry_cache = {"servers": servers}
         _registry_cached_at = time.monotonic()
+        _registry_cache_key = cache_key
         return _registry_cache
     except (TypeError, ValueError):
         return {"error": "MCP registry returned an invalid document."}

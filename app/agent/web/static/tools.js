@@ -27,7 +27,8 @@ function renderCatalog(data) {
     title.textContent = server.name;
     const badge = document.createElement("span");
     badge.className = `mcp-server-status ${server.reachable ? "reachable" : "unreachable"}`;
-    badge.textContent = server.reachable ? "Reachable · tools discovered" : "Registered · unreachable";
+    const source = server.source === "remote" ? "Remote MCP" : "Private MCP";
+    badge.textContent = server.reachable ? `${source} · tools discovered` : `${source} · unreachable`;
     header.append(title, badge);
     card.append(header);
     if (server.description) {
@@ -57,7 +58,7 @@ function renderCatalog(data) {
   if (!data.servers?.length) {
     const empty = document.createElement("article");
     empty.className = "query-card";
-    empty.textContent = data.refresh_error || "No MCP servers are currently registered.";
+    empty.textContent = data.refresh_error || "No MCP servers are currently configured.";
     serverList.append(empty);
   }
 }
@@ -72,7 +73,7 @@ async function loadCatalog() {
     renderCatalog(data);
     statusLine.textContent = data.refresh_error
       ? "Showing the last available catalog; the latest refresh failed."
-      : `Showing ${data.servers.length} registered MCP server${data.servers.length === 1 ? "" : "s"}.`;
+      : `Showing ${data.servers.length} configured MCP server${data.servers.length === 1 ? "" : "s"}.`;
   } catch (error) {
     statusLine.textContent = error.message;
   } finally {

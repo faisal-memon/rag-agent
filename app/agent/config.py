@@ -2,11 +2,31 @@
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from pydantic import Field
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
 from app.core.config import ConfiguredSettings, DatabaseSettings, runtime_settings
+
+
+class RemoteMCPServerSetting(BaseModel):
+    """A manually approved remote MCP endpoint, without embedded credentials."""
+
+    name: str = Field(min_length=1, max_length=40, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+    url: AnyHttpUrl
+
+    @field_validator("url")
+    @classmethod
+    def validate_remote_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        if value.scheme != "https":
+            raise ValueError("Remote MCP servers must use HTTPS.")
+        parts = urlsplit(str(value))
+        if parts.username or parts.password or parts.query or parts.fragment:
+            raise ValueError(
+                "Do not put credentials, query parameters, or fragments in the server URL."
+            )
+        return value
 
 
 class ApiSettings(ConfiguredSettings):
@@ -57,6 +77,7 @@ class ApiSettings(ConfiguredSettings):
     mcp_registry_refresh_interval: float = Field(
         default=300.0, gt=0, alias="MCP_REGISTRY_REFRESH_INTERVAL"
     )
+    remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list)
 
 
 @lru_cache
