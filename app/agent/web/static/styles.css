@@ -323,12 +323,26 @@ body.devices-console .page-nav .devices-nav {
   overflow-y: auto;
 }
 
-.device-section-title {
-  margin: 0;
+.device-disclosure {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.device-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--ink);
+  cursor: pointer;
   font-size: 13px;
   font-weight: 600;
+  list-style: none;
 }
+
+.device-disclosure > summary::-webkit-details-marker { display: none; }
+.device-disclosure > summary::before { color: var(--accent); content: "▸"; }
+.device-disclosure[open] > summary::before { content: "▾"; }
+.device-disclosure > :not(summary) { margin-top: 12px; }
 
 .device-activity {
   display: grid;
