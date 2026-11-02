@@ -1,5 +1,7 @@
 Choose the next action for a general-purpose personal assistant. Return ONLY one valid JSON object.
 
+{{ presentation_guidance }}
+
 Response schema: choose exactly one object allowed by this JSON Schema. Do not add Markdown, prose, or extra top-level fields.
 
 {{ planner_action_schema }}

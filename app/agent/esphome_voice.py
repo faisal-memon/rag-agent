@@ -388,6 +388,7 @@ class ESPHomeVoiceClient:
                 self._agent.answer,
                 transcript,
                 history=history,
+                response_mode="spoken",
             )
         except Exception:
             logger.exception(

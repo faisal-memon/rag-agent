@@ -5,7 +5,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from openai import OpenAI
 
@@ -38,6 +38,7 @@ class TurnContext:
     profile_name: str | None
     max_steps: int
     conversation: str
+    response_mode: Literal["text", "spoken"] = "text"
     memory_state: dict = field(default_factory=dict)
     plan: list[dict] = field(default_factory=list)
     tool_results: list[dict] = field(default_factory=list)
@@ -72,6 +73,7 @@ class Agent:
         history: list[dict] | None = None,
         on_progress: ProgressCallback | None = None,
         profile_name: str | None = None,
+        response_mode: Literal["text", "spoken"] = "text",
     ) -> dict:
         """Answer one user question using bounded model-selected tools."""
         logger.info("Agent input (thread=%s): %r", threading.get_ident(), question)
@@ -82,6 +84,7 @@ class Agent:
             history=history or [],
             on_progress=on_progress,
             profile_name=profile_name,
+            response_mode=response_mode,
             max_steps=self.settings.agent_max_steps,
             conversation=_conversation_context(history or []),
             catalog=self.tool_catalog(),
@@ -398,6 +401,19 @@ def _user_location_capability(agent: Agent) -> str:
     return "User location is not configured."
 
 
+def _presentation_guidance(response_mode: Literal["text", "spoken"]) -> str:
+    """Give user-facing model answers speech-friendly phrasing when Piper will read them."""
+    if response_mode != "spoken":
+        return ""
+    return (
+        "The final answer will be read aloud by text-to-speech. In the answer field only, "
+        "use concise, natural spoken sentences. Avoid Markdown, tables, raw URLs, hashes, "
+        "and unnecessary parenthetical asides or symbols. Preserve important facts, "
+        "uncertainty, caveats, and document references; prefer a readable document title "
+        "over a raw path. Keep the required JSON response structure unchanged."
+    )
+
+
 def _decide_next_action(
     agent: Agent,
     turn: TurnContext,
@@ -419,6 +435,7 @@ def _decide_next_action(
             "current_local_time": _current_local_time(agent.settings.timezone),
             "user_location_capability": _user_location_capability(agent),
             "tool_results": json.dumps(_compact_tool_results(turn.tool_results), indent=2),
+            "presentation_guidance": _presentation_guidance(turn.response_mode),
         },
     )
     text = _complete_text(
@@ -628,6 +645,7 @@ def _synthesize_answer(agent: Agent, turn: TurnContext) -> str:
             "question": turn.question,
             "plan": json.dumps(turn.plan, indent=2),
             "tool_results": json.dumps(_compact_tool_results(turn.tool_results), indent=2),
+            "presentation_guidance": _presentation_guidance(turn.response_mode),
         },
     )
     answer = _complete_text(
