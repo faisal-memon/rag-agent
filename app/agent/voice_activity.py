@@ -42,6 +42,7 @@ class VoiceActivityDetector:
         startup_grace_ms: int,
         end_silence_ms: int,
         capture_limit_seconds: int,
+        no_speech_timeout_seconds: int = NO_SPEECH_TIMEOUT_SECONDS,
         aggressiveness: int = VAD_AGGRESSIVENESS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -50,6 +51,7 @@ class VoiceActivityDetector:
         self._started_at = clock()
         self._speech_wait_started_at = self._started_at
         self._capture_limit_seconds = capture_limit_seconds
+        self._no_speech_timeout_seconds = no_speech_timeout_seconds
         self._startup_grace_frames = math.ceil(startup_grace_ms / FRAME_MILLISECONDS)
         self._end_silence_frames = math.ceil(end_silence_ms / FRAME_MILLISECONDS)
         self._grace_frames_seen = 0
@@ -94,7 +96,7 @@ class VoiceActivityDetector:
                 if self._start_candidate_frames >= START_CONFIRMATION_FRAMES:
                     self.state = CaptureState.SPEAKING
                     events.append(CaptureEvent.SPEECH_STARTED)
-                elif now - self._speech_wait_started_at >= NO_SPEECH_TIMEOUT_SECONDS:
+                elif now - self._speech_wait_started_at >= self._no_speech_timeout_seconds:
                     self.state = CaptureState.ENDED
                     events.append(CaptureEvent.NO_SPEECH_TIMEOUT)
             elif self.state is CaptureState.SPEAKING:

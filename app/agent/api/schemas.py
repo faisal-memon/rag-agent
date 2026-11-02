@@ -98,6 +98,7 @@ class AgentRuntimeSettings(BaseModel):
         if len(names) != len(set(names)):
             raise ValueError("Remote MCP server names must be unique.")
         return servers
+    voice_follow_up_timeout_seconds: int = Field(default=8, ge=0, le=60)
 
 
 class RetrievalDebugResponse(BaseModel):
