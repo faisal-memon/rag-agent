@@ -12,6 +12,7 @@ STATIC_DIR = WEB_DIR / "static"
 INDEX_HTML = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 SETTINGS_HTML = (TEMPLATE_DIR / "settings.html").read_text(encoding="utf-8")
 DEVICES_HTML = (TEMPLATE_DIR / "devices.html").read_text(encoding="utf-8")
+TOOLS_HTML = (TEMPLATE_DIR / "tools.html").read_text(encoding="utf-8")
 APP_JS = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
 STYLES_CSS = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
 
@@ -46,6 +47,10 @@ def settings_page() -> HTMLResponse:
 
 def devices_page() -> HTMLResponse:
     return HTMLResponse(DEVICES_HTML)
+
+
+def tools_page() -> HTMLResponse:
+    return HTMLResponse(TOOLS_HTML)
 
 
 def _render_page(

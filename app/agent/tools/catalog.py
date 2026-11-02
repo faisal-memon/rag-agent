@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 from contextlib import suppress
 from threading import Lock
@@ -73,6 +74,7 @@ class ToolCatalogManager:
 
         self._catalog = STATIC_TOOL_CATALOG
         self._registry: dict | None = None
+        self._registry_error: str | None = None
         self._catalog_lock = Lock()
         self._refresh_lock = Lock()
         self._refresh_task: asyncio.Task | None = None
@@ -81,6 +83,15 @@ class ToolCatalogManager:
         """Return the current catalog snapshot."""
         with self._catalog_lock:
             return self._catalog
+
+    def registry_snapshot(self) -> dict:
+        """Return the last registry snapshot and any refresh error for UI inspection."""
+        with self._catalog_lock:
+            if self._registry is None:
+                return {"servers": [], "error": self._registry_error}
+            snapshot = copy.deepcopy(self._registry)
+            snapshot["error"] = self._registry_error
+            return snapshot
 
     def refresh(self) -> ToolCatalog:
         """Fetch MCP discovery and replace the catalog only when it changes."""
@@ -100,11 +111,16 @@ class ToolCatalogManager:
                 registry = registry_loader()
             except Exception:
                 logger.exception("Could not refresh MCP tool catalog")
+                with self._catalog_lock:
+                    self._registry_error = "Could not refresh the MCP registry. Showing the last available catalog."
                 return self.current()
             if registry.get("error"):
                 logger.warning("Could not refresh MCP tool catalog: %s", registry["error"])
+                with self._catalog_lock:
+                    self._registry_error = "Could not refresh the MCP registry. Showing the last available catalog."
                 return self.current()
             with self._catalog_lock:
+                self._registry_error = None
                 if registry != self._registry:
                     try:
                         self._catalog = catalog_builder(registry)

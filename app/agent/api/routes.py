@@ -27,7 +27,7 @@ from app.agent.api.schemas import (
 )
 from app.agent.pipeline import pipeline_status
 from app.agent.search import search_debug
-from app.agent.web.routes import debug_page, devices_page, index_page, settings_page
+from app.agent.web.routes import debug_page, devices_page, index_page, settings_page, tools_page
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 from app.core.config import read_runtime_settings, write_runtime_settings
 
@@ -124,6 +124,12 @@ def settings_console():
     return settings_page()
 
 
+@router.get("/tools", include_in_schema=False)
+def tools_console(request: Request):
+    _conversation_user(request)
+    return tools_page()
+
+
 @router.get("/devices", include_in_schema=False)
 def devices_console(request: Request):
     _conversation_user(request)
@@ -165,6 +171,27 @@ def list_voice_devices(request: Request) -> list[dict]:
             }
         )
     return devices
+
+
+@router.get("/api/tools")
+def list_mcp_tools(request: Request) -> dict:
+    """Return the latest discovered MCP servers and their tool availability."""
+    _conversation_user(request)
+    manager = _agent(request).tool_catalog_manager
+    registry = manager.registry_snapshot()
+    servers = []
+    for server in registry.get("servers", []):
+        tools_result = server.get("tools")
+        reachable = isinstance(tools_result, list)
+        servers.append({
+            "name": server.get("name", "Unnamed server"),
+            "description": server.get("description"),
+            "registered": True,
+            "reachable": reachable,
+            "error": tools_result.get("error") if isinstance(tools_result, dict) else None,
+            "tools": tools_result if reachable else [],
+        })
+    return {"servers": servers, "refresh_error": registry.get("error")}
 
 
 @router.get("/api/devices/{device_id}/history")

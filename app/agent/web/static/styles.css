@@ -218,6 +218,10 @@ body.devices-console .page-nav .devices-nav {
   color: var(--accent);
 }
 
+body.tools-console .page-nav .tools-nav {
+  color: var(--accent);
+}
+
 .device-note {
   margin-bottom: 14px;
   color: var(--muted);
@@ -262,6 +266,73 @@ body.devices-console .page-nav .devices-nav {
   color: var(--ink);
   font-size: 17px;
   font-weight: 600;
+}
+
+.tools-server-list {
+  display: grid;
+  gap: 14px;
+}
+
+.mcp-server-card {
+  display: grid;
+  gap: 12px;
+}
+
+.mcp-server-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mcp-server-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mcp-server-status {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.mcp-server-status.reachable {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mcp-server-status.unreachable,
+.mcp-server-error {
+  color: var(--danger);
+}
+
+.mcp-tool-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-tool-item {
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+
+.mcp-tool-item strong {
+  color: var(--accent-2);
+  font-size: 13px;
+}
+
+.mcp-tool-item p,
+.mcp-server-error {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .device-id {
