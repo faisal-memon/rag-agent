@@ -8,3 +8,5 @@ postgres-data/
 app/__pycache__/
 .git
 .github
+._*
+**/._*
