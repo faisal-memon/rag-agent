@@ -24,6 +24,17 @@ CREATE TABLE IF NOT EXISTS voice_device_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_voice_device_messages_order
   ON voice_device_messages (device_id, id);
+CREATE TABLE IF NOT EXISTS voice_device_activity (
+  id BIGSERIAL PRIMARY KEY,
+  device_id TEXT NOT NULL REFERENCES voice_devices(device_id) ON DELETE CASCADE,
+  stage TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('started', 'completed', 'failed', 'info')),
+  duration_ms INTEGER,
+  detail TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_voice_device_activity_order
+  ON voice_device_activity (device_id, id DESC);
 """
 
 
@@ -142,3 +153,53 @@ def get_history(device_id: str, limit: int = 100) -> list[dict] | None:
         ]
         conn.commit()
         return history
+
+
+def record_activity(
+    device_id: str,
+    stage: str,
+    status: str,
+    *,
+    duration_ms: int | None = None,
+    detail: str | None = None,
+) -> None:
+    """Store concise device diagnostics, retaining only the latest 200 events."""
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute(
+            """INSERT INTO voice_device_activity
+               (device_id, stage, status, duration_ms, detail)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (device_id, stage, status, duration_ms, detail),
+        )
+        cur.execute(
+            """DELETE FROM voice_device_activity
+               WHERE device_id = %s AND id NOT IN (
+                 SELECT id FROM voice_device_activity
+                 WHERE device_id = %s ORDER BY id DESC LIMIT 200
+               )""",
+            (device_id, device_id),
+        )
+        conn.commit()
+
+
+def get_activity(device_id: str, limit: int = 50) -> list[dict] | None:
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute("SELECT 1 FROM voice_devices WHERE device_id = %s", (device_id,))
+        if cur.fetchone() is None:
+            conn.commit()
+            return None
+        cur.execute(
+            """SELECT stage, status, duration_ms, detail, created_at
+               FROM voice_device_activity WHERE device_id = %s
+               ORDER BY id DESC LIMIT %s""",
+            (device_id, limit),
+        )
+        events = [
+            {"stage": row[0], "status": row[1], "duration_ms": row[2],
+             "detail": row[3], "created_at": row[4]}
+            for row in cur.fetchall()
+        ]
+        conn.commit()
+        return events

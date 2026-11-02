@@ -60,6 +60,41 @@ async function showHistory(device, container, button) {
   }
 }
 
+async function loadActivity(device, container) {
+  try {
+    const response = await fetch(`/api/devices/${encodeURIComponent(device.device_id)}/activity?limit=30`);
+    if (!response.ok) throw new Error("Could not load recent activity");
+    const events = await response.json();
+    container.replaceChildren();
+    if (!events.length) {
+      const empty = document.createElement("p");
+      empty.className = "status";
+      empty.textContent = "No voice activity recorded yet.";
+      container.append(empty);
+      return;
+    }
+    for (const event of events) {
+      const item = document.createElement("article");
+      item.className = `device-activity-event ${event.status}`;
+      const heading = document.createElement("strong");
+      heading.textContent = event.stage;
+      const status = document.createElement("span");
+      status.className = "device-activity-status";
+      status.textContent = event.status === "completed" ? "Done" : event.status === "failed" ? "Failed" : event.status === "started" ? "Started" : "Info";
+      const meta = document.createElement("p");
+      const duration = Number.isFinite(event.duration_ms) ? ` · ${event.duration_ms < 1000 ? `${event.duration_ms} ms` : `${(event.duration_ms / 1000).toFixed(1)} sec`}` : "";
+      meta.textContent = `${formatDate(event.created_at)}${duration}${event.detail ? ` · ${event.detail}` : ""}`;
+      item.append(heading, status, meta);
+      container.append(item);
+    }
+  } catch (error) {
+    const message = document.createElement("p");
+    message.className = "status";
+    message.textContent = error.message;
+    container.replaceChildren(message);
+  }
+}
+
 function renderDevice(device) {
   const card = document.createElement("article");
   card.className = "query-card device-card";
@@ -97,7 +132,14 @@ function renderDevice(device) {
   history.className = "device-history";
   history.hidden = true;
   if (hasIdentity) toggle.addEventListener("click", () => showHistory(device, history, toggle));
-  card.append(header, details, toggle, history);
+  const activityTitle = document.createElement("h3");
+  activityTitle.className = "device-section-title";
+  activityTitle.textContent = "Recent voice activity";
+  const activity = document.createElement("div");
+  activity.className = "device-activity";
+  activity.textContent = hasIdentity ? "Loading activity…" : "Activity will appear after the speaker connects.";
+  if (hasIdentity) loadActivity(device, activity);
+  card.append(header, details, activityTitle, activity, toggle, history);
   return card;
 }
 
