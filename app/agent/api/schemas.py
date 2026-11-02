@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.agent.config import RemoteMCPServerSetting
 
 
 class QueryRequest(BaseModel):
@@ -85,6 +87,17 @@ class AgentRuntimeSettings(BaseModel):
     voice_start_grace_ms: int = Field(default=960, ge=0, le=10_000, multiple_of=20)
     voice_end_silence_ms: int = Field(default=1100, ge=20, le=10_000, multiple_of=20)
     voice_capture_limit_seconds: int = Field(default=20, ge=0, le=3600)
+    remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list, max_length=20)
+
+    @field_validator("remote_mcp_servers")
+    @classmethod
+    def remote_server_names_are_unique(
+        cls, servers: list[RemoteMCPServerSetting]
+    ) -> list[RemoteMCPServerSetting]:
+        names = [server.name.casefold() for server in servers]
+        if len(names) != len(set(names)):
+            raise ValueError("Remote MCP server names must be unique.")
+        return servers
 
 
 class RetrievalDebugResponse(BaseModel):

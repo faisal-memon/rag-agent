@@ -54,6 +54,7 @@
         <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="general-panel" data-panel="general-panel">General</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="memory-panel" data-panel="memory-panel">Memory</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="voice-panel" data-panel="voice-panel">Voice activity</button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" aria-controls="remote-mcp-panel" data-panel="remote-mcp-panel">Remote MCP</button>
       </div>
 
       <form class="query-card settings-form" id="settings-form">
@@ -136,6 +137,17 @@
             <label for="voice-capture-limit-seconds">Maximum capture time (seconds)</label>
             <input id="voice-capture-limit-seconds" name="voice_capture_limit_seconds" type="number" min="0" max="3600" step="1" required />
             <p class="field-help">Use 0 for no maximum. If no speech is detected, capture still ends after 15 seconds.</p>
+          </fieldset>
+        </section>
+
+        <section id="remote-mcp-panel" class="settings-panel" role="tabpanel" hidden>
+          <fieldset>
+            <legend>remote MCP servers</legend>
+            <p class="field-help">Add a Streamable HTTP MCP endpoint over HTTPS for this agent to call directly. Only add servers you trust; their tool descriptions and results are shown to the model. Credentials are not supported here yet.</p>
+            <div id="remote-mcp-servers" class="remote-mcp-server-list"></div>
+            <button class="secondary" id="add-remote-mcp-server" type="button">Add remote server</button>
+            <button class="secondary" id="add-wikimedia-mcp-server" type="button">Add Wikimedia MCP</button>
+            <p id="remote-mcp-form-status" class="status" aria-live="polite"></p>
           </fieldset>
         </section>
 

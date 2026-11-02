@@ -1,6 +1,60 @@
 const form = document.getElementById("settings-form");
 const status = document.getElementById("settings-status");
 const saveButton = document.getElementById("save-settings");
+const remoteMCPServerList = document.getElementById("remote-mcp-servers");
+const remoteMCPFormStatus = document.getElementById("remote-mcp-form-status");
+
+function renderRemoteMCPServers(servers = []) {
+  remoteMCPServerList.replaceChildren();
+  for (const server of servers) addRemoteMCPServer(server.name, server.url);
+}
+
+function addRemoteMCPServer(name = "", url = "") {
+  const row = document.createElement("div");
+  row.className = "remote-mcp-server-row";
+  const nameLabel = document.createElement("label");
+  nameLabel.textContent = "Name";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.name = "remote_mcp_server_name";
+  nameInput.required = true;
+  nameInput.maxLength = 40;
+  nameInput.pattern = "[A-Za-z0-9][A-Za-z0-9_-]*";
+  nameInput.autocomplete = "off";
+  nameInput.placeholder = "wikipedia";
+  nameInput.value = name;
+  nameLabel.append(nameInput);
+
+  const urlLabel = document.createElement("label");
+  urlLabel.textContent = "HTTPS MCP URL";
+  const urlInput = document.createElement("input");
+  urlInput.type = "url";
+  urlInput.name = "remote_mcp_server_url";
+  urlInput.required = true;
+  urlInput.placeholder = "https://example.org/mcp";
+  urlInput.value = url;
+  urlLabel.append(urlInput);
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "secondary";
+  removeButton.textContent = "Remove";
+  removeButton.addEventListener("click", () => row.remove());
+  row.append(nameLabel, urlLabel, removeButton);
+  remoteMCPServerList.append(row);
+}
+
+document.getElementById("add-remote-mcp-server").addEventListener("click", () => addRemoteMCPServer());
+document.getElementById("add-wikimedia-mcp-server").addEventListener("click", () => {
+  const existing = [...remoteMCPServerList.querySelectorAll('[name="remote_mcp_server_name"]')]
+    .some((input) => input.value.trim().toLowerCase() === "wikimedia");
+  if (!existing) {
+    addRemoteMCPServer("wikimedia", "https://enterprise.wikimedia.com/mcp");
+    remoteMCPFormStatus.textContent = "Wikimedia was added to this form. Click Save settings to connect it.";
+  } else {
+    remoteMCPFormStatus.textContent = "Wikimedia is already in this form. Click Save settings to connect it.";
+  }
+});
 
 for (const tab of document.querySelectorAll(".settings-tab")) {
   tab.addEventListener("click", () => {
@@ -12,6 +66,7 @@ for (const tab of document.querySelectorAll(".settings-tab")) {
     for (const panel of document.querySelectorAll(".settings-panel")) {
       panel.hidden = panel.id !== tab.dataset.panel;
     }
+    document.getElementById(tab.dataset.panel)?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
 
@@ -27,6 +82,7 @@ function fillForm(settings) {
       else input.value = value;
     }
   }
+  renderRemoteMCPServers(settings.remote_mcp_servers || []);
 }
 
 async function loadSettings() {
@@ -50,6 +106,12 @@ form.addEventListener("submit", async (event) => {
   data.home_longitude = data.home_longitude === "" ? null : Number(data.home_longitude);
   data.memory_enabled = form.elements.memory_enabled.checked;
   data.memory_require_approval = form.elements.memory_require_approval.checked;
+  const remoteNames = [...form.querySelectorAll('[name="remote_mcp_server_name"]')];
+  const remoteUrls = [...form.querySelectorAll('[name="remote_mcp_server_url"]')];
+  data.remote_mcp_servers = remoteNames.map((input, index) => ({
+    name: input.value.trim(),
+    url: remoteUrls[index].value.trim(),
+  }));
 
   try {
     const response = await fetch("/api/settings", {
