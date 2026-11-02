@@ -68,6 +68,8 @@ class ESPHomeVoiceClient:
         self._vad: VoiceActivityDetector | None = None
         self._vad_ended = False
         self._vad_no_speech_timeout = False
+        self._follow_up_pending = False
+        self._session_is_follow_up = False
         self._session_started_at = 0.0
         self._turn_started_at = 0.0
         self._activity_write: asyncio.Task | None = None
@@ -184,13 +186,25 @@ class ESPHomeVoiceClient:
         audio_settings: VoiceAssistantAudioSettings,
         wake_word_phrase: str | None,
     ) -> int:
+        self._session_is_follow_up = (
+            self._follow_up_pending and not wake_word_phrase
+        )
+        self._follow_up_pending = False
+        startup_grace_ms = (
+            0 if self._session_is_follow_up else self._settings.voice_start_grace_ms
+        )
         self._session_id = conversation_id
         self._session_audio.clear()
         self._session_audio_truncated = False
         self._vad = VoiceActivityDetector(
-            startup_grace_ms=self._settings.voice_start_grace_ms,
+            startup_grace_ms=startup_grace_ms,
             end_silence_ms=self._settings.voice_end_silence_ms,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
+            no_speech_timeout_seconds=(
+                self._settings.voice_follow_up_timeout_seconds
+                if self._session_is_follow_up
+                else 15
+            ),
         )
         self._vad_ended = False
         self._vad_no_speech_timeout = False
@@ -198,10 +212,11 @@ class ESPHomeVoiceClient:
         self._turn_started_at = self._session_started_at
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
-            "wake_word=%s, audio_settings=%s)",
+            "wake_word=%s, follow_up=%s, audio_settings=%s)",
             conversation_id,
             flags,
             wake_word_phrase,
+            self._session_is_follow_up,
             audio_settings,
         )
         self._record_activity("Voice session", "started")
@@ -310,6 +325,7 @@ class ESPHomeVoiceClient:
         truncated = self._session_audio_truncated
         vad_ended = self._vad_ended
         no_speech_timeout = self._vad_no_speech_timeout
+        session_is_follow_up = self._session_is_follow_up
         self._reset_session()
         logger.info(
             "ESPHome voice session ended (conversation=%s, aborted=%s, "
@@ -336,6 +352,20 @@ class ESPHomeVoiceClient:
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
+                )
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
+                    {"conversation_id": "", "continue_conversation": "0"},
+                )
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
+                )
+            if session_is_follow_up:
+                self._record_activity(
+                    "Follow-up listening",
+                    "completed",
+                    duration_ms=round(capture_seconds * 1000),
+                    detail="No request; returned to wake-word listening",
                 )
             return
         if truncated or not audio:
@@ -479,12 +509,17 @@ class ESPHomeVoiceClient:
             )
             self._record_activity("Speech generation", "completed", duration_ms=self._stage_ms(stage_started))
             media_url = self._media_server.publish(flac_audio)
+            continue_conversation = self._settings.voice_follow_up_timeout_seconds > 0
+            self._follow_up_pending = continue_conversation
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START, None
             )
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
-                {"conversation_id": "", "continue_conversation": "0"},
+                {
+                    "conversation_id": "",
+                    "continue_conversation": "1" if continue_conversation else "0",
+                },
             )
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START,
@@ -552,6 +587,7 @@ class ESPHomeVoiceClient:
         self._vad = None
         self._vad_ended = False
         self._vad_no_speech_timeout = False
+        self._session_is_follow_up = False
         self._session_started_at = 0.0
 
     def _unsubscribe(self) -> None:

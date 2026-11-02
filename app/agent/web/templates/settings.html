@@ -137,6 +137,9 @@
             <label for="voice-capture-limit-seconds">Maximum capture time (seconds)</label>
             <input id="voice-capture-limit-seconds" name="voice_capture_limit_seconds" type="number" min="0" max="3600" step="1" required />
             <p class="field-help">Use 0 for no maximum. If no speech is detected, capture still ends after 15 seconds.</p>
+            <label for="voice-follow-up-timeout-seconds">Follow-up listening window (seconds)</label>
+            <input id="voice-follow-up-timeout-seconds" name="voice_follow_up_timeout_seconds" type="number" min="0" max="60" step="1" required />
+            <p class="field-help">After a spoken reply, listen for another request during this window. Use 0 to require the wake word for every request.</p>
           </fieldset>
         </section>
 

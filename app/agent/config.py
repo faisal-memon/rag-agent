@@ -54,6 +54,9 @@ class ApiSettings(ConfiguredSettings):
     voice_capture_limit_seconds: int = Field(
         default=20, ge=0, le=3600, alias="ESPHOME_VOICE_CAPTURE_LIMIT_SECONDS"
     )
+    voice_follow_up_timeout_seconds: int = Field(
+        default=8, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
+    )
     piper_host: str = Field(default="piper-piper-1", alias="PIPER_HOST")
     piper_port: int = Field(default=10200, ge=1, le=65535, alias="PIPER_PORT")
     piper_voice: str = Field(default="en_US-lessac-medium", alias="PIPER_VOICE")
