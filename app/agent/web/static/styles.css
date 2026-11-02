@@ -213,8 +213,136 @@ h1 {
 .page-nav a:hover,
 body.agent-only .page-nav .agent-nav,
 body.debug-console .page-nav .debug-nav,
-body.settings-console .page-nav .settings-nav {
+body.settings-console .page-nav .settings-nav,
+body.devices-console .page-nav .devices-nav {
   color: var(--accent);
+}
+
+.device-note {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.device-note strong {
+  color: var(--ink);
+}
+
+.device-note p {
+  margin: 6px 0 0;
+}
+
+.device-list {
+  display: grid;
+  gap: 14px;
+}
+
+.device-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.device-card {
+  display: grid;
+  gap: 16px;
+}
+
+.device-card-header,
+.device-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.device-card h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.device-id {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.device-status-badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.device-status-badge.connected {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.device-status-badge.disconnected {
+  color: var(--muted);
+}
+
+.device-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.device-meta-item {
+  display: grid;
+  gap: 5px;
+  min-width: 150px;
+  flex: 1 1 170px;
+}
+
+.device-meta-label,
+.device-message-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-meta-item strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.device-history {
+  display: grid;
+  gap: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.device-message {
+  border-left: 2px solid var(--line);
+  padding: 8px 12px;
+}
+
+.device-message.assistant {
+  border-left-color: var(--accent);
+}
+
+.device-message p {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.device-empty {
+  color: var(--muted);
 }
 
 .query-card {

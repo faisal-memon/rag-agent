@@ -18,6 +18,7 @@ from aioesphomeapi import (
     VoiceAssistantFeature,
 )
 
+from app.agent import voice_devices
 from app.agent.agent import Agent
 from app.agent.config import ApiSettings
 from app.agent.esphome_playback import OneShotAudioServer, PiperClient
@@ -66,7 +67,9 @@ class ESPHomeVoiceClient:
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._session_started_at = 0.0
-        self._voice_history: list[dict[str, str]] = []
+        self._device_id: str | None = None
+        self._device_name = settings.esphome_device_name or "ESPHome speaker"
+        self._connected = False
 
     async def start(self) -> None:
         """Start reconnecting to the configured device; leave it disabled by default."""
@@ -141,6 +144,21 @@ class ESPHomeVoiceClient:
             handle_stop=self._handle_session_stop,
             handle_audio=self._handle_audio,
         )
+        device_id = _stable_device_id(info.mac_address, self._settings.esphome_device_host)
+        self._device_id = device_id
+        self._device_name = info.name or self._device_name
+        self._connected = True
+        try:
+            await asyncio.to_thread(
+                voice_devices.register_device,
+                device_id,
+                self._device_name,
+                self._settings.esphome_device_host,
+                self._settings.esphome_device_port,
+            )
+        except Exception:
+            logger.exception("Could not persist ESPHome device registration")
+            self._device_id = None
         logger.info(
             "Connected to ESPHome device %s (%s); Native API audio subscribed",
             info.name,
@@ -148,6 +166,7 @@ class ESPHomeVoiceClient:
         )
 
     async def _on_disconnect(self, expected: bool) -> None:
+        self._connected = False
         self._unsubscribe()
         logger.info("ESPHome Native API disconnected (expected=%s)", expected)
 
@@ -255,6 +274,16 @@ class ESPHomeVoiceClient:
         """Apply settings updates to subsequent voice sessions."""
         self._settings = settings
 
+    def status(self) -> dict:
+        """Return the currently configured speaker's live connection details."""
+        return {
+            "device_id": self._device_id,
+            "display_name": self._device_name,
+            "host": self._settings.esphome_device_host,
+            "port": self._settings.esphome_device_port,
+            "connected": self._connected,
+        }
+
     async def _handle_session_stop(self, aborted: bool) -> None:
         capture_seconds = (
             time.monotonic() - self._session_started_at
@@ -339,14 +368,26 @@ class ESPHomeVoiceClient:
             logger.debug("ReSpeaker agent is not configured; skipping model request")
             return
 
-        self._voice_history.append({"role": "user", "content": transcript})
-        self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
+        device_id = self._device_id
+        if not device_id:
+            logger.warning("ReSpeaker session has no registered device identity; skipping agent request")
+            return
+        try:
+            history = await asyncio.to_thread(
+                voice_devices.load_history,
+                device_id,
+                VOICE_HISTORY_MAX_MESSAGES,
+            )
+        except Exception:
+            logger.exception("Could not load ReSpeaker conversation history")
+            history = []
+        history.append({"role": "user", "content": transcript})
         stage_started = time.monotonic()
         try:
             result = await asyncio.to_thread(
                 self._agent.answer,
                 transcript,
-                history=self._voice_history[:-1],
+                history=history,
             )
         except Exception:
             logger.exception(
@@ -359,8 +400,16 @@ class ESPHomeVoiceClient:
         if not answer:
             logger.warning("ReSpeaker agent returned an empty answer (conversation=%s)", conversation_id)
             return
-        self._voice_history.append({"role": "assistant", "content": answer})
-        self._voice_history = self._voice_history[-VOICE_HISTORY_MAX_MESSAGES:]
+        try:
+            await asyncio.to_thread(
+                voice_devices.save_turn,
+                device_id,
+                transcript,
+                answer,
+                VOICE_HISTORY_MAX_MESSAGES,
+            )
+        except Exception:
+            logger.exception("Could not save ReSpeaker conversation turn")
         logger.info(
             "ReSpeaker agent response complete (conversation=%s, seconds=%.2f, characters=%d)",
             conversation_id,
@@ -431,3 +480,11 @@ def _pcm_to_wav(pcm: bytes, *, channels: int) -> bytes:
         wav_file.setframerate(VOICE_SAMPLE_RATE)
         wav_file.writeframes(pcm)
     return wav_buffer.getvalue()
+
+
+def _stable_device_id(mac_address: str | None, host: str) -> str:
+    """Prefer the hardware address so DHCP changes do not change device identity."""
+    mac = (mac_address or "").strip().lower()
+    if mac:
+        return mac
+    return f"host:{host.strip().lower()}"

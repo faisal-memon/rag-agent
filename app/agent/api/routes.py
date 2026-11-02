@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-from app.agent import tools
+from app.agent import tools, voice_devices
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
 from app.embed.config import get_embed_settings
@@ -27,7 +27,7 @@ from app.agent.api.schemas import (
 )
 from app.agent.pipeline import pipeline_status
 from app.agent.search import search_debug
-from app.agent.web.routes import debug_page, index_page, settings_page
+from app.agent.web.routes import debug_page, devices_page, index_page, settings_page
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 from app.core.config import read_runtime_settings, write_runtime_settings
 
@@ -122,6 +122,62 @@ def debug_console():
 @router.get("/settings", include_in_schema=False)
 def settings_console():
     return settings_page()
+
+
+@router.get("/devices", include_in_schema=False)
+def devices_console(request: Request):
+    _conversation_user(request)
+    return devices_page()
+
+
+@router.get("/api/devices")
+def list_voice_devices(request: Request) -> list[dict]:
+    _conversation_user(request)
+    devices = voice_devices.list_devices()
+    voice_client = getattr(request.app.state, "esphome_voice_client", None)
+    live_status = (
+        voice_client.status()
+        if voice_client is not None
+        else {"device_id": None, "connected": False, "host": "", "port": 6053}
+    )
+    live_id = live_status.get("device_id")
+    found_live_device = False
+    for device in devices:
+        device["connected"] = bool(live_status["connected"] and device["device_id"] == live_id)
+        found_live_device = found_live_device or device["device_id"] == live_id
+    if live_id and not found_live_device:
+        devices.append(
+            {
+                **live_status,
+                "first_seen_at": None,
+                "last_connected_at": None,
+                "last_interaction_at": None,
+            }
+        )
+    elif not live_id and not devices and live_status.get("host"):
+        devices.append(
+            {
+                **live_status,
+                "device_id": "not-yet-seen",
+                "first_seen_at": None,
+                "last_connected_at": None,
+                "last_interaction_at": None,
+            }
+        )
+    return devices
+
+
+@router.get("/api/devices/{device_id}/history")
+def voice_device_history(
+    request: Request,
+    device_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[dict]:
+    _conversation_user(request)
+    history = voice_devices.get_history(device_id, limit)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return history
 
 
 @router.get("/healthz")
