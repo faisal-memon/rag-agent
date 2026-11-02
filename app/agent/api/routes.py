@@ -180,6 +180,19 @@ def voice_device_history(
     return history
 
 
+@router.get("/api/devices/{device_id}/activity")
+def voice_device_activity(
+    request: Request,
+    device_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[dict]:
+    _conversation_user(request)
+    events = voice_devices.get_activity(device_id, limit)
+    if events is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return events
+
+
 @router.get("/healthz")
 def healthcheck() -> dict:
     return {"status": "ok"}

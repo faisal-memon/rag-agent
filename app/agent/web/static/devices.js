@@ -20,14 +20,8 @@ function makeMeta(label, value) {
   return item;
 }
 
-async function showHistory(device, container, button) {
-  if (!container.hidden) {
-    container.hidden = true;
-    button.textContent = "View history";
-    return;
-  }
-  button.disabled = true;
-  button.textContent = "Loading…";
+async function loadHistory(device, container) {
+  container.textContent = "Loading chat history…";
   try {
     const response = await fetch(`/api/devices/${encodeURIComponent(device.device_id)}/history`);
     if (!response.ok) throw new Error("Could not load device history");
@@ -50,13 +44,46 @@ async function showHistory(device, container, button) {
       article.append(heading, content);
       container.append(article);
     }
-    container.hidden = false;
-    button.textContent = "Hide history";
   } catch (error) {
-    devicesStatus.textContent = error.message;
-    button.textContent = "View history";
-  } finally {
-    button.disabled = false;
+    const message = document.createElement("p");
+    message.className = "status";
+    message.textContent = error.message;
+    container.replaceChildren(message);
+  }
+}
+
+async function loadActivity(device, container) {
+  try {
+    const response = await fetch(`/api/devices/${encodeURIComponent(device.device_id)}/activity?limit=30`);
+    if (!response.ok) throw new Error("Could not load recent activity");
+    const events = await response.json();
+    container.replaceChildren();
+    if (!events.length) {
+      const empty = document.createElement("p");
+      empty.className = "status";
+      empty.textContent = "No voice activity recorded yet.";
+      container.append(empty);
+      return;
+    }
+    for (const event of events) {
+      const item = document.createElement("article");
+      item.className = `device-activity-event ${event.status}`;
+      const heading = document.createElement("strong");
+      heading.textContent = event.stage;
+      const status = document.createElement("span");
+      status.className = "device-activity-status";
+      status.textContent = event.status === "completed" ? "Done" : event.status === "failed" ? "Failed" : event.status === "started" ? "Started" : "Info";
+      const meta = document.createElement("p");
+      const duration = Number.isFinite(event.duration_ms) ? ` · ${event.duration_ms < 1000 ? `${event.duration_ms} ms` : `${(event.duration_ms / 1000).toFixed(1)} sec`}` : "";
+      meta.textContent = `${formatDate(event.created_at)}${duration}${event.detail ? ` · ${event.detail}` : ""}`;
+      item.append(heading, status, meta);
+      container.append(item);
+    }
+  } catch (error) {
+    const message = document.createElement("p");
+    message.className = "status";
+    message.textContent = error.message;
+    container.replaceChildren(message);
   }
 }
 
@@ -87,17 +114,35 @@ function renderDevice(device) {
     makeMeta("Last interaction", formatDate(device.last_interaction_at)),
   );
 
-  const toggle = document.createElement("button");
-  toggle.className = "secondary";
-  toggle.type = "button";
   const hasIdentity = device.device_id && device.device_id !== "not-yet-seen";
-  toggle.textContent = hasIdentity ? "View history" : "No history yet";
-  toggle.disabled = !hasIdentity;
+  const activityDisclosure = document.createElement("details");
+  activityDisclosure.className = "device-disclosure";
+  const activitySummary = document.createElement("summary");
+  activitySummary.textContent = "View activity timeline";
+  const activity = document.createElement("div");
+  activity.className = "device-activity";
+  activity.textContent = hasIdentity ? "Expand to load recent voice activity." : "Activity will appear after the speaker connects.";
+  activityDisclosure.append(activitySummary, activity);
+  if (hasIdentity) {
+    activityDisclosure.addEventListener("toggle", () => {
+      if (activityDisclosure.open) loadActivity(device, activity);
+    });
+  }
+
+  const historyDisclosure = document.createElement("details");
+  historyDisclosure.className = "device-disclosure";
+  const historySummary = document.createElement("summary");
+  historySummary.textContent = "Chat history";
   const history = document.createElement("div");
   history.className = "device-history";
-  history.hidden = true;
-  if (hasIdentity) toggle.addEventListener("click", () => showHistory(device, history, toggle));
-  card.append(header, details, toggle, history);
+  history.textContent = hasIdentity ? "Expand to load saved conversations." : "No saved history yet.";
+  historyDisclosure.append(historySummary, history);
+  if (hasIdentity) {
+    historyDisclosure.addEventListener("toggle", () => {
+      if (historyDisclosure.open) loadHistory(device, history);
+    });
+  }
+  card.append(header, details, activityDisclosure, historyDisclosure);
   return card;
 }
 

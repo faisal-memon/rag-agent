@@ -9,6 +9,7 @@ import secrets
 import time
 import wave
 from dataclasses import dataclass
+from typing import Callable
 
 import soundfile
 from wyoming.audio import AudioChunk, AudioStop
@@ -85,6 +86,7 @@ class PiperClient:
 class _AudioItem:
     content: bytes
     expires_at: float
+    published_at: float
 
 
 class OneShotAudioServer:
@@ -97,6 +99,11 @@ class OneShotAudioServer:
         self._server: asyncio.Server | None = None
         self._items: dict[str, _AudioItem] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
+        self._fetch_callback: Callable[[bool, int], None] | None = None
+
+    def set_fetch_callback(self, callback: Callable[[bool, int], None]) -> None:
+        """Set a callback invoked after the speaker fetches a complete file."""
+        self._fetch_callback = callback
 
     async def start(self) -> None:
         """Start the dedicated audio-only HTTP listener."""
@@ -131,6 +138,7 @@ class OneShotAudioServer:
         self._items[token] = _AudioItem(
             content=audio,
             expires_at=time.monotonic() + MEDIA_TOKEN_TTL_SECONDS,
+            published_at=time.monotonic(),
         )
         return f"{self._url_base}/{token}.flac"
 
@@ -139,6 +147,7 @@ class OneShotAudioServer:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> None:
+        item: _AudioItem | None = None
         try:
             request_line = await asyncio.wait_for(reader.readline(), timeout=5)
             parts = request_line.decode("ascii", "replace").strip().split()
@@ -162,7 +171,11 @@ class OneShotAudioServer:
                 return
             token = path[1:-5]
             item = self._items.pop(token, None)
-            if item is None or item.expires_at <= time.monotonic():
+            if item is None:
+                await self._respond(writer, 404, b"not found")
+                return
+            if item.expires_at <= time.monotonic():
+                self._notify_fetch(False, item)
                 await self._respond(writer, 404, b"not found")
                 return
 
@@ -176,7 +189,10 @@ class OneShotAudioServer:
             )
             await writer.drain()
             logger.info("ReSpeaker fetched one-shot speech audio (%d bytes)", len(item.content))
+            self._notify_fetch(True, item)
         except (asyncio.TimeoutError, ConnectionError, OSError):
+            if item is not None:
+                self._notify_fetch(False, item)
             logger.debug("ESPHome audio request ended before completion")
         finally:
             writer.close()
@@ -211,4 +227,11 @@ class OneShotAudioServer:
         now = time.monotonic()
         expired = [token for token, item in self._items.items() if item.expires_at <= now]
         for token in expired:
-            self._items.pop(token, None)
+            item = self._items.pop(token, None)
+            if item is not None:
+                self._notify_fetch(False, item)
+
+    def _notify_fetch(self, successful: bool, item: _AudioItem) -> None:
+        if self._fetch_callback is not None:
+            elapsed_ms = max(0, round((time.monotonic() - item.published_at) * 1000))
+            self._fetch_callback(successful, elapsed_ms)
