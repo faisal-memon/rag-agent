@@ -20,7 +20,7 @@ class MCPRegistryTest(unittest.TestCase):
             result = get_mcp_registry()
 
         self.assertEqual(
-            {"servers": [{"name": "news", "url": "http://news-mcp:8080/mcp", "description": "RSS headlines", "enabled": True, "tools": []}]},
+            {"servers": [{"name": "news", "url": "http://news-mcp:8080/mcp", "description": "RSS headlines", "enabled": True, "source": "private", "tools": []}]},
             result,
         )
 
