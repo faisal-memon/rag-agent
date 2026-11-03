@@ -1,4 +1,4 @@
-psycopg[binary]==3.3.6
+psycopg[binary]==3.3.7
 pgvector==0.5.1
 python-dotenv==1.2.4
 openai==3.42.1
