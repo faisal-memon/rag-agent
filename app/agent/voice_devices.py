@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 
@@ -109,15 +111,19 @@ def save_turn(
     user_message: str,
     assistant_message: str,
     history_limit: int,
+    *,
+    speaker_created_at: datetime,
+    assistant_created_at: datetime,
 ) -> None:
-    """Persist a complete turn and keep only the context window in storage."""
+    """Persist a complete turn with event times and keep the context window."""
     with db_cursor(get_api_settings().database) as (conn, cur):
         _ensure_schema(cur)
         cur.executemany(
-            "INSERT INTO voice_device_messages (device_id, role, content) VALUES (%s, %s, %s)",
+            """INSERT INTO voice_device_messages
+               (device_id, role, content, created_at) VALUES (%s, %s, %s, %s)""",
             [
-                (device_id, "user", user_message),
-                (device_id, "assistant", assistant_message),
+                (device_id, "user", user_message, speaker_created_at),
+                (device_id, "assistant", assistant_message, assistant_created_at),
             ],
         )
         cur.execute(

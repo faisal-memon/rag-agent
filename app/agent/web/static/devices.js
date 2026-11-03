@@ -8,6 +8,17 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 }
 
+function formatMessageDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const clock = date.toLocaleTimeString(undefined, {
+    hour: "numeric", minute: "2-digit", second: "2-digit",
+  });
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+  return `${date.toLocaleDateString()} ${clock}.${milliseconds}`;
+}
+
 function makeMeta(label, value) {
   const item = document.createElement("div");
   item.className = "device-meta-item";
@@ -33,16 +44,21 @@ async function loadHistory(device, container) {
       empty.textContent = "No voice conversations saved yet.";
       container.append(empty);
     }
-    for (const message of messages) {
-      const article = document.createElement("article");
-      article.className = `device-message ${message.role}`;
-      const heading = document.createElement("div");
-      heading.className = "device-message-meta";
-      heading.textContent = `${message.role === "user" ? "Speaker" : "Assistant"} · ${formatDate(message.created_at)}`;
-      const content = document.createElement("p");
-      content.textContent = message.content;
-      article.append(heading, content);
-      container.append(article);
+    // Keep each turn in conversational order while placing the newest turn first.
+    for (let end = messages.length; end > 0;) {
+      const start = Math.max(0, end - 2);
+      for (const message of messages.slice(start, end)) {
+        const article = document.createElement("article");
+        article.className = `device-message ${message.role}`;
+        const heading = document.createElement("div");
+        heading.className = "device-message-meta";
+        heading.textContent = `${message.role === "user" ? "Speaker" : "Assistant"} · ${formatMessageDate(message.created_at)}`;
+        const content = document.createElement("p");
+        content.textContent = message.content;
+        article.append(heading, content);
+        container.append(article);
+      }
+      end = start;
     }
   } catch (error) {
     const message = document.createElement("p");
