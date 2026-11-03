@@ -23,6 +23,10 @@ MAX_REASONING_STEP_CHARS = 12000
 MAX_REASONING_TOTAL_CHARS = 48000
 MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
+MAX_DOCUMENT_SEARCH_CALLS = 3
+DOCUMENT_SEARCH_TOOLS = frozenset(
+    {"search_documents", "keyword_search", "semantic_search", "hybrid_search", "grep_documents"}
+)
 IDENTITY_ONBOARDING_QUESTION = "Before I search your documents, what name should I use to identify your records?"
 ProgressCallback = Callable[[dict], None]
 logger = logging.getLogger(__name__)
@@ -103,6 +107,10 @@ class Agent:
             return memory_approval_response
 
         turn.client, turn.model = get_llm_client(self.settings)
+        catalog = self.tool_catalog()
+        if not _wants_document_retrieval(question):
+            turn.catalog = _catalog_without_document_tools(catalog)
+            logger.info("Agent routing: document retrieval disabled; request has no document reference")
         answer = _run_agent_loop(self, turn)
 
         if not answer:
@@ -192,6 +200,24 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
             message="Reviewing available information" if turn.tool_results else "Thinking",
         )
         decision = _decide_next_action(agent, turn, decision_feedback)
+        if (
+            decision.get("action") == "tool"
+            and decision.get("tool") in DOCUMENT_SEARCH_TOOLS
+            and sum(step.get("tool") in DOCUMENT_SEARCH_TOOLS for step in turn.plan)
+            >= MAX_DOCUMENT_SEARCH_CALLS
+        ):
+            logger.warning(
+                "Agent document search limit reached (%d calls); synthesizing from collected results",
+                MAX_DOCUMENT_SEARCH_CALLS,
+            )
+            _append_debug(
+                turn.debug,
+                "controller_decision",
+                phase="planning",
+                decision="stop_document_search",
+                reason="document_search_limit_reached",
+            )
+            break
         answer, decision_feedback, should_stop = _handle_planner_decision(decision, turn)
         if should_stop:
             break
@@ -203,6 +229,35 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
             raise RuntimeError(f"Tool {decision['tool']} failed: {result['error']}")
 
     return answer or ""
+
+
+def _catalog_without_document_tools(catalog: tools.ToolCatalog) -> tools.ToolCatalog:
+    """Return a turn-local catalog that cannot route general requests into personal files."""
+    filtered = tools.ToolCatalog()
+    for tool in catalog.tools:
+        if "document_retrieval" not in tool.capabilities:
+            filtered.register(tool)
+    return filtered
+
+
+def _wants_document_retrieval(question: str) -> bool:
+    """Require a clear document or personal-record reference before exposing RAG tools."""
+    if _needs_profile_name(question):
+        return True
+    normalized = " ".join(question.casefold().split())
+    document_terms = (
+        r"documents?|files?|folders?|pdfs?|paperwork|records?|receipts?|invoices?|contracts?|"
+        r"leases?|tax returns?|insurance policies|warranties|statements?|deeds?|forms?|manuals?|"
+        r"spreadsheets?|attachments?"
+    )
+    explicit_reference = rf"\b(?:my|our|the|this|that|these|those|attached|uploaded)\s+(?:\w+\s+){{0,2}}(?:{document_terms})\b"
+    explicit_source = rf"\b(?:in|from|inside|within)\s+(?:my|our|the|this|that|attached|uploaded)\s+(?:{document_terms})\b"
+    document_action = rf"\b(?:search|find|look|check|read|summarize)\b.*\b(?:{document_terms})\b"
+    return bool(
+        re.search(explicit_reference, normalized)
+        or re.search(explicit_source, normalized)
+        or re.search(document_action, normalized)
+    )
 
 
 def _handle_planner_decision(
@@ -801,6 +856,8 @@ def _conversation_context(history: list[dict]) -> str:
 
 
 def _absence_search_complete(plan: list[dict], catalog: tools.ToolCatalog) -> bool:
+    if not any("document_retrieval" in tool.capabilities for tool in catalog.tools):
+        return True
     used_tools = {step.get("tool") for step in plan}
     retrieval_tools = {
         name for name in used_tools

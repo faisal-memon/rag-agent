@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import struct
 import time
 from enum import Enum, auto
 from typing import Callable
@@ -58,6 +59,17 @@ class VoiceActivityDetector:
         self._start_candidate_frames = 0
         self._silence_frames = 0
         self._buffer = bytearray()
+        self._interval_frames = 0
+        self._interval_grace_frames = 0
+        self._interval_speech_frames = 0
+        self._interval_non_speech_frames = 0
+        self._interval_rms_sum = 0.0
+        self._interval_rms_min: float | None = None
+        self._interval_rms_max: float | None = None
+        self._interval_peak_max = 0
+        self._interval_silence_resets = 0
+        self._non_speech_run_frames = 0
+        self._interval_longest_non_speech_run_frames = 0
         self.state = (
             CaptureState.STARTUP_GRACE
             if self._startup_grace_frames
@@ -72,6 +84,14 @@ class VoiceActivityDetector:
             frame = bytes(self._buffer[:FRAME_BYTES])
             del self._buffer[:FRAME_BYTES]
             now = self._clock()
+            samples = struct.unpack(f"<{FRAME_BYTES // VOICE_SAMPLE_WIDTH}h", frame)
+            rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+            peak = max(abs(sample) for sample in samples)
+            self._interval_frames += 1
+            self._interval_rms_sum += rms
+            self._interval_rms_min = rms if self._interval_rms_min is None else min(self._interval_rms_min, rms)
+            self._interval_rms_max = rms if self._interval_rms_max is None else max(self._interval_rms_max, rms)
+            self._interval_peak_max = max(self._interval_peak_max, peak)
 
             if (
                 self._capture_limit_seconds > 0
@@ -83,12 +103,23 @@ class VoiceActivityDetector:
 
             if self.state is CaptureState.STARTUP_GRACE:
                 self._grace_frames_seen += 1
+                self._interval_grace_frames += 1
                 if self._grace_frames_seen >= self._startup_grace_frames:
                     self.state = CaptureState.WAITING_FOR_SPEECH
                     self._speech_wait_started_at = now
                 continue
 
             speech = self._vad.is_speech(frame, VOICE_SAMPLE_RATE)
+            if speech:
+                self._interval_speech_frames += 1
+                self._non_speech_run_frames = 0
+            else:
+                self._interval_non_speech_frames += 1
+                self._non_speech_run_frames += 1
+                self._interval_longest_non_speech_run_frames = max(
+                    self._interval_longest_non_speech_run_frames,
+                    self._non_speech_run_frames,
+                )
             if self.state is CaptureState.WAITING_FOR_SPEECH:
                 self._start_candidate_frames = (
                     self._start_candidate_frames + 1 if speech else 0
@@ -108,6 +139,7 @@ class VoiceActivityDetector:
                         events.append(CaptureEvent.SPEECH_ENDED)
             elif self.state is CaptureState.WAITING_FOR_SILENCE:
                 if speech:
+                    self._interval_silence_resets += 1
                     self.state = CaptureState.SPEAKING
                     self._silence_frames = 0
                 else:
@@ -116,3 +148,32 @@ class VoiceActivityDetector:
                         self.state = CaptureState.ENDED
                         events.append(CaptureEvent.SPEECH_ENDED)
         return events
+
+    def take_diagnostics(self) -> dict[str, int | float | str | None]:
+        """Return and reset one interval of aggregate VAD/audio-level diagnostics."""
+        frames = self._interval_frames
+        diagnostics: dict[str, int | float | str | None] = {
+            "state": self.state.name.lower(),
+            "frames": frames,
+            "grace_frames": self._interval_grace_frames,
+            "speech_frames": self._interval_speech_frames,
+            "non_speech_frames": self._interval_non_speech_frames,
+            "silence_ms": self._silence_frames * FRAME_MILLISECONDS,
+            "silence_resets": self._interval_silence_resets,
+            "longest_non_speech_ms": self._interval_longest_non_speech_run_frames * FRAME_MILLISECONDS,
+            "rms_avg": round(self._interval_rms_sum / frames, 1) if frames else None,
+            "rms_min": round(self._interval_rms_min, 1) if self._interval_rms_min is not None else None,
+            "rms_max": round(self._interval_rms_max, 1) if self._interval_rms_max is not None else None,
+            "peak_max": self._interval_peak_max,
+        }
+        self._interval_frames = 0
+        self._interval_grace_frames = 0
+        self._interval_speech_frames = 0
+        self._interval_non_speech_frames = 0
+        self._interval_rms_sum = 0.0
+        self._interval_rms_min = None
+        self._interval_rms_max = None
+        self._interval_peak_max = 0
+        self._interval_silence_resets = 0
+        self._interval_longest_non_speech_run_frames = 0
+        return diagnostics
