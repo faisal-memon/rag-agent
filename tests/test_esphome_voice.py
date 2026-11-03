@@ -1,7 +1,9 @@
 import io
 import wave
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from aioesphomeapi import VoiceAssistantEventType
 
 from app.agent.config import ApiSettings
 from app.agent.esphome_voice import (
@@ -76,6 +78,36 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             "conversation-inaudible",
         )
         self.assertEqual(self.client._session_audio, bytearray())
+
+    async def test_synthesis_failure_stops_the_voice_run_and_disables_follow_up(self):
+        self.client._media_server = MagicMock()
+        self.client._media_player_key = 1
+        self.client._client = MagicMock()
+        self.client._piper.synthesize_flac = AsyncMock(side_effect=ConnectionError("Piper disconnected"))
+        self.client._follow_up_pending = True
+
+        with self.assertLogs("app.agent.esphome_voice", level="ERROR"):
+            await self.client._speak_reply("Hello", "conversation-tts-failure")
+
+        calls = self.client._client.send_voice_assistant_event.call_args_list
+        self.assertTrue(
+            any(
+                call.args[0] is VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END
+                and call.args[1]["continue_conversation"] == "0"
+                for call in calls
+            )
+        )
+        self.assertTrue(
+            any(call.args[0] is VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END for call in calls)
+        )
+        self.assertFalse(self.client._follow_up_pending)
+
+    def test_activity_write_without_event_loop_does_not_raise(self):
+        self.client._device_id = "speaker-test"
+
+        self.client._record_activity("Speech generation", "failed")
+
+        self.assertIsNone(self.client._activity_write)
 
     async def test_audio_chunks_can_split_pcm_samples_and_secondary_channel_is_ignored(self):
         await self.client._handle_session_start("conversation-chunked", 0, None, None)
