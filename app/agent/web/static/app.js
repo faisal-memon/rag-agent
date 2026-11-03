@@ -85,7 +85,7 @@ async function loadConversation(conversationId) {
     const response = await fetch(`/agent/conversations/${encodeURIComponent(conversationId)}`);
     if (!response.ok) throw new Error(`conversation load failed (${response.status})`);
     agentConversationId = conversationId;
-    agentConversation = await response.json();
+    agentConversation = restoreAgentConversation(await response.json());
     localStorage.setItem(agentConversationIdKey, agentConversationId);
     localStorage.setItem(agentHistoryKey, JSON.stringify(agentConversation));
     renderAgentConversation();
@@ -104,6 +104,18 @@ function setConversationSidebar(hidden) {
   mobileMenuToggle?.setAttribute("aria-expanded", String(!hidden));
   mobileMenuToggle?.setAttribute("aria-label", hidden ? "Open navigation menu" : "Close navigation menu");
 }
+
+function updateMobileViewport() {
+  const viewport = window.visualViewport;
+  if (!viewport || !document.body.classList.contains("agent-only")) return;
+  document.documentElement.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
+  document.documentElement.style.setProperty("--visual-viewport-offset-top", `${viewport.offsetTop}px`);
+}
+
+updateMobileViewport();
+window.visualViewport?.addEventListener("resize", updateMobileViewport);
+window.visualViewport?.addEventListener("scroll", updateMobileViewport);
+window.addEventListener("resize", updateMobileViewport);
 
 mobileMenuToggle?.addEventListener("click", () => {
   const isHidden = conversationSidebar?.classList.contains("hidden") ?? true;
@@ -554,10 +566,27 @@ function agentTraceTimelineHtml(message) {
 function loadAgentConversation() {
   try {
     const saved = JSON.parse(localStorage.getItem(agentHistoryKey) || "[]");
-    return Array.isArray(saved) ? saved.slice(-maxSavedAgentMessages) : [];
+    return restoreAgentConversation(saved).slice(-maxSavedAgentMessages);
   } catch (_error) {
     return [];
   }
+}
+
+function restoreAgentConversation(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((message) => {
+    if (message.role !== "assistant") return message;
+    const wasInterrupted = Boolean(message.streaming);
+    const progress = (message.progress || []).filter((event) => event.type !== "thinking");
+    return {
+      ...message,
+      content: wasInterrupted && !message.content
+        ? "This request was interrupted before a response arrived."
+        : message.content,
+      progress,
+      streaming: false,
+    };
+  });
 }
 
 function saveAgentConversation() {
