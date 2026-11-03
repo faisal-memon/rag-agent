@@ -1492,12 +1492,16 @@ body.agent-only .status {
 
 @media (max-width: 720px) {
   body.agent-only {
-    height: var(--visual-viewport-height, 100dvh);
+    min-height: 0;
     overflow: hidden;
     overflow-x: clip;
   }
 
   body.agent-only main {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
