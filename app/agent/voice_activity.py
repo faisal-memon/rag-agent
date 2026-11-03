@@ -59,6 +59,7 @@ class VoiceActivityDetector:
         self._start_candidate_frames = 0
         self._silence_frames = 0
         self._buffer = bytearray()
+        self._frame_index = 0
         self._interval_frames = 0
         self._interval_grace_frames = 0
         self._interval_speech_frames = 0
@@ -70,6 +71,8 @@ class VoiceActivityDetector:
         self._interval_silence_resets = 0
         self._non_speech_run_frames = 0
         self._interval_longest_non_speech_run_frames = 0
+        self._frame_trace: list[dict[str, int | str]] = []
+        self._ready_frame_traces: list[dict[str, int | str | float]] = []
         self.state = (
             CaptureState.STARTUP_GRACE
             if self._startup_grace_frames
@@ -83,6 +86,8 @@ class VoiceActivityDetector:
         while len(self._buffer) >= FRAME_BYTES and self.state is not CaptureState.ENDED:
             frame = bytes(self._buffer[:FRAME_BYTES])
             del self._buffer[:FRAME_BYTES]
+            frame_index = self._frame_index
+            self._frame_index += 1
             now = self._clock()
             samples = struct.unpack(f"<{FRAME_BYTES // VOICE_SAMPLE_WIDTH}h", frame)
             rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
@@ -107,6 +112,9 @@ class VoiceActivityDetector:
                 if self._grace_frames_seen >= self._startup_grace_frames:
                     self.state = CaptureState.WAITING_FOR_SPEECH
                     self._speech_wait_started_at = now
+                self._record_frame_trace(
+                    frame_index, "grace", rms, peak, self.state.name.lower()
+                )
                 continue
 
             speech = self._vad.is_speech(frame, VOICE_SAMPLE_RATE)
@@ -147,7 +155,40 @@ class VoiceActivityDetector:
                     if self._silence_frames >= self._end_silence_frames:
                         self.state = CaptureState.ENDED
                         events.append(CaptureEvent.SPEECH_ENDED)
+            self._record_frame_trace(
+                frame_index,
+                "speech" if speech else "non_speech",
+                rms,
+                peak,
+                self.state.name.lower(),
+            )
         return events
+
+    def _record_frame_trace(
+        self,
+        frame_index: int,
+        decision: str,
+        rms: float,
+        peak: int,
+        state: str,
+    ) -> None:
+        """Retain only per-frame metadata, never the frame's audio samples."""
+        self._ready_frame_traces.append(
+            {
+                "start_ms": frame_index * FRAME_MILLISECONDS,
+                "decision": decision,
+                "rms_dbfs": round(20 * math.log10(max(1.0, rms) / 32768), 1),
+                "peak_percent": round(100 * peak / 32767),
+                "state": state,
+                "silence_ms": self._silence_frames * FRAME_MILLISECONDS,
+            }
+        )
+
+    def take_frame_diagnostics(self) -> list[dict[str, int | str | float]]:
+        """Return per-frame VAD decisions; audio itself is never retained."""
+        diagnostics = self._ready_frame_traces
+        self._ready_frame_traces = []
+        return diagnostics
 
     def take_diagnostics(self) -> dict[str, int | float | str | None]:
         """Return and reset one interval of aggregate VAD/audio-level diagnostics."""

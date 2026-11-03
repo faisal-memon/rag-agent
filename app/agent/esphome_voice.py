@@ -272,6 +272,16 @@ class ESPHomeVoiceClient:
         if self._client is None or self._vad_ended or self._vad is None:
             return
         events = self._vad.process(data)
+        for frame in self._vad.take_frame_diagnostics():
+            logger.info(
+                "ReSpeaker VAD frame (start_ms=%d, decision=%s, state=%s, silence_ms=%d, rms_dbfs=%s, peak_percent=%d)",
+                frame["start_ms"],
+                frame["decision"],
+                frame["state"],
+                frame["silence_ms"],
+                frame["rms_dbfs"],
+                frame["peak_percent"],
+            )
         now = time.monotonic()
         if events or now - self._last_vad_diagnostic_at >= 1.0:
             diagnostic = self._vad.take_diagnostics()
