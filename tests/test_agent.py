@@ -892,7 +892,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn('event.key !== "Enter" || event.shiftKey || event.isComposing', APP_JS)
         self.assertIn("event.preventDefault()", APP_JS)
         self.assertIn('class="agent-progress-event agent-progress-${escapeHtml(type)}"', APP_JS)
-        self.assertIn("groupedProgressEvents(events, streaming)", APP_JS)
+        self.assertIn("groupedProgressEvents(events)", APP_JS)
         self.assertIn('class="agent-progress-tool', APP_JS)
         self.assertIn("Arguments</strong>", APP_JS)
         self.assertIn("Result</strong>", APP_JS)
@@ -915,7 +915,8 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn("<h1>", page)
         self.assertNotIn("Ask questions, get help with everyday tasks", page)
         self.assertIn('<nav class="page-nav"', page)
-        self.assertIn('<div class="app-version" aria-label="Application version">vdev</div>', page)
+        self.assertIn('<span class="app-version mobile-app-version" aria-label="Application version">vdev</span>', page)
+        self.assertIn('<div class="app-version desktop-app-version" aria-label="Application version">vdev</div>', page)
         self.assertIn("body.agent-only #ask", STYLES_CSS)
         self.assertIn('href="/debug">Debug</a>', page)
 

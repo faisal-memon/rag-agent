@@ -85,7 +85,7 @@ async function loadConversation(conversationId) {
     const response = await fetch(`/agent/conversations/${encodeURIComponent(conversationId)}`);
     if (!response.ok) throw new Error(`conversation load failed (${response.status})`);
     agentConversationId = conversationId;
-    agentConversation = await response.json();
+    agentConversation = restoreAgentConversation(await response.json());
     localStorage.setItem(agentConversationIdKey, agentConversationId);
     localStorage.setItem(agentHistoryKey, JSON.stringify(agentConversation));
     renderAgentConversation();
@@ -104,6 +104,19 @@ function setConversationSidebar(hidden) {
   mobileMenuToggle?.setAttribute("aria-expanded", String(!hidden));
   mobileMenuToggle?.setAttribute("aria-label", hidden ? "Open navigation menu" : "Close navigation menu");
 }
+
+function updateMobileViewport() {
+  const viewport = window.visualViewport;
+  if (!viewport || !document.body.classList.contains("agent-only")) return;
+  document.documentElement.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
+  document.documentElement.style.setProperty("--visual-viewport-offset-top", `${viewport.offsetTop}px`);
+}
+
+updateMobileViewport();
+window.visualViewport?.addEventListener("resize", updateMobileViewport);
+window.visualViewport?.addEventListener("scroll", updateMobileViewport);
+window.addEventListener("resize", updateMobileViewport);
+window.addEventListener("scroll", updateMobileViewport);
 
 mobileMenuToggle?.addEventListener("click", () => {
   const isHidden = conversationSidebar?.classList.contains("hidden") ?? true;
@@ -167,6 +180,28 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function renderChatMarkdown(value) {
+  const blocks = String(value ?? "").trim().split(/\n\s*\n/);
+  return blocks.map((block) => {
+    const lines = block.split(/\r?\n/);
+    const items = lines.map((line) => line.match(/^\s*[*+-]\s+(.+)$/));
+    if (items.every(Boolean)) {
+      return `<ul>${items.map((item) => `<li>${renderChatInline(item[1])}</li>`).join("")}</ul>`;
+    }
+    const heading = block.match(/^#{1,3}\s+(.+)$/);
+    if (heading) return `<h4>${renderChatInline(heading[1])}</h4>`;
+    return `<p>${lines.map(renderChatInline).join("<br>")}</p>`;
+  }).join("");
+}
+
+function renderChatInline(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" rel="noreferrer">$1</a>');
 }
 
 function citationHtml(items) {
@@ -326,11 +361,12 @@ function progressEventPresentation(event) {
   }
 }
 
-function groupedProgressEvents(events, streaming) {
+function groupedProgressEvents(events) {
   const items = [];
   (events || []).forEach((event) => {
-    if (streaming && event.type === "thinking") return;
-    if (event.type === "thinking" && items[items.length - 1]?.type === "thinking") return;
+    // Thinking events describe live work; don't replay them as a lingering
+    // status after the response is complete. The trace keeps the full history.
+    if (event.type === "thinking") return;
     if (event.type === "tool_result") {
       const toolCall = [...items].reverse().find((item) => item.type === "tool_call" && !item.result);
       if (toolCall) {
@@ -364,7 +400,7 @@ function toolProgressHtml(event) {
 }
 
 function agentProgressTimelineHtml(events, streaming = false) {
-  const items = groupedProgressEvents(events, streaming);
+  const items = groupedProgressEvents(events);
   const rows = items.map((event) => {
     if (event.type === "tool_call") return toolProgressHtml(event);
     const type = event.type || "thinking";
@@ -553,10 +589,27 @@ function agentTraceTimelineHtml(message) {
 function loadAgentConversation() {
   try {
     const saved = JSON.parse(localStorage.getItem(agentHistoryKey) || "[]");
-    return Array.isArray(saved) ? saved.slice(-maxSavedAgentMessages) : [];
+    return restoreAgentConversation(saved).slice(-maxSavedAgentMessages);
   } catch (_error) {
     return [];
   }
+}
+
+function restoreAgentConversation(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((message) => {
+    if (message.role !== "assistant") return message;
+    const wasInterrupted = Boolean(message.streaming);
+    const progress = (message.progress || []).filter((event) => event.type !== "thinking");
+    return {
+      ...message,
+      content: wasInterrupted && !message.content
+        ? "This request was interrupted before a response arrived."
+        : message.content,
+      progress,
+      streaming: false,
+    };
+  });
 }
 
 function saveAgentConversation() {
@@ -597,7 +650,7 @@ function renderAgentConversation() {
       <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
         <div class="chat-role">rag agent</div>
         ${agentProgressTimelineHtml(message.progress, message.streaming)}
-        ${message.streaming ? "" : `<div class="chat-content">${escapeHtml(message.content)}</div>`}
+        ${message.streaming ? "" : `<div class="chat-content">${renderChatMarkdown(message.content)}</div>`}
         ${agentTraceTimelineHtml(message)}
         ${sourceFold}
       </article>
