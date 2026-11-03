@@ -109,12 +109,10 @@ function updateMobileViewport() {
   const viewport = window.visualViewport;
   if (!viewport || !document.body.classList.contains("agent-only")) return;
   document.documentElement.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
-  document.documentElement.style.setProperty("--visual-viewport-offset-top", `${viewport.offsetTop}px`);
 }
 
 updateMobileViewport();
 window.visualViewport?.addEventListener("resize", updateMobileViewport);
-window.visualViewport?.addEventListener("scroll", updateMobileViewport);
 window.addEventListener("resize", updateMobileViewport);
 
 mobileMenuToggle?.addEventListener("click", () => {
@@ -179,6 +177,28 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function renderChatMarkdown(value) {
+  const blocks = String(value ?? "").trim().split(/\n\s*\n/);
+  return blocks.map((block) => {
+    const lines = block.split(/\r?\n/);
+    const items = lines.map((line) => line.match(/^\s*[*+-]\s+(.+)$/));
+    if (items.every(Boolean)) {
+      return `<ul>${items.map((item) => `<li>${renderChatInline(item[1])}</li>`).join("")}</ul>`;
+    }
+    const heading = block.match(/^#{1,3}\s+(.+)$/);
+    if (heading) return `<h4>${renderChatInline(heading[1])}</h4>`;
+    return `<p>${lines.map(renderChatInline).join("<br>")}</p>`;
+  }).join("");
+}
+
+function renderChatInline(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" rel="noreferrer">$1</a>');
 }
 
 function citationHtml(items) {
@@ -627,7 +647,7 @@ function renderAgentConversation() {
       <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
         <div class="chat-role">rag agent</div>
         ${agentProgressTimelineHtml(message.progress, message.streaming)}
-        ${message.streaming ? "" : `<div class="chat-content">${escapeHtml(message.content)}</div>`}
+        ${message.streaming ? "" : `<div class="chat-content">${renderChatMarkdown(message.content)}</div>`}
         ${agentTraceTimelineHtml(message)}
         ${sourceFold}
       </article>

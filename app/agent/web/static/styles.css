@@ -181,6 +181,10 @@ main {
   pointer-events: none;
 }
 
+.mobile-app-version {
+  display: none;
+}
+
 h1 {
   margin: 0;
   color: var(--ink);
@@ -958,7 +962,38 @@ button:disabled {
   font-size: 14px;
   line-height: 1.65;
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  white-space: normal;
+}
+
+.chat-content p {
+  margin: 0 0 0.8em;
+}
+
+.chat-content p:last-child,
+.chat-content ul:last-child,
+.chat-content h4:last-child {
+  margin-bottom: 0;
+}
+
+.chat-content ul {
+  margin: 0 0 0.8em;
+  padding-left: 1.3em;
+}
+
+.chat-content li + li {
+  margin-top: 0.35em;
+}
+
+.chat-content code {
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: var(--code-bg);
+  font-size: 0.92em;
+}
+
+.chat-content a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
 }
 
 .agent-progress {
@@ -1457,7 +1492,6 @@ body.agent-only .status {
 
 @media (max-width: 720px) {
   body.agent-only {
-    --mobile-composer-height: calc(64px + env(safe-area-inset-bottom));
     height: var(--visual-viewport-height, 100dvh);
     overflow: hidden;
     overflow-x: clip;
@@ -1466,7 +1500,7 @@ body.agent-only .status {
   body.agent-only main {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
     width: 100%;
     height: var(--visual-viewport-height, 100dvh);
     min-height: 0;
@@ -1498,23 +1532,39 @@ body.agent-only .status {
     overflow-y: auto;
     overflow-x: clip;
     overscroll-behavior-y: contain;
-    padding-bottom: calc(16px + var(--mobile-composer-height));
+    padding-bottom: 16px;
   }
 
   body.agent-only .query-card {
-    position: fixed;
+    position: relative;
+    grid-row: 3;
     z-index: 15;
-    right: 0;
-    bottom: max(0px, calc(100vh - var(--visual-viewport-height, 100vh) - var(--visual-viewport-offset-top, 0px)));
-    left: 0;
+    inset: auto;
     width: 100%;
     margin: 0;
     border-radius: 0;
     padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
   }
 
-  .app-version {
-    bottom: calc(var(--mobile-composer-height, 0px) + 10px);
+  .desktop-app-version {
+    display: none;
+  }
+
+  .mobile-app-version {
+    position: static;
+    display: block;
+    flex: 0 1 auto;
+    max-width: 38%;
+    margin-left: auto;
+    padding: 5px 7px;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .account-placeholder {
+    display: none;
   }
 
   body.agent-only .agent-chat {
