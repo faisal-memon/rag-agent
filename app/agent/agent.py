@@ -52,6 +52,7 @@ class TurnContext:
     catalog: tools.ToolCatalog | None = None
     client: OpenAI | None = None
     model: str = ""
+    continue_listening: bool = False
 
 
 class Agent:
@@ -121,6 +122,7 @@ class Agent:
 
         return {
             "answer": answer,
+            "continue_listening": turn.continue_listening,
             "plan": turn.plan,
             "tool_results": turn.tool_results,
             "reasoning": turn.reasoning,
@@ -290,6 +292,11 @@ def _handle_planner_decision(
             parsed=decision,
         )
         return None, feedback, False
+
+    turn.continue_listening = (
+        decision.get("continue_listening") is True
+        and turn.response_mode == "spoken"
+    )
 
     _append_debug(
         turn.debug,
@@ -535,10 +542,14 @@ def _decide_next_action(
                     evidence_status = "not_found" if _looks_like_not_found(answer) else "supported"
                     if not turn.tool_results:
                         evidence_status = "casual"
+                continue_listening = parsed.get("continue_listening")
+                if not isinstance(continue_listening, bool):
+                    continue_listening = False
                 return {
                     "action": "answer",
                     "evidence_status": evidence_status,
                     "answer": answer,
+                    "continue_listening": continue_listening,
                 }
         if parsed.get("action") == "tool" or catalog.get(str(parsed.get("action") or "")):
             step = protocol.sanitize_planner_action(parsed, catalog)
