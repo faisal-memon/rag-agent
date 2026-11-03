@@ -565,7 +565,15 @@ class ESPHomeVoiceClient:
         )
         self._record_activity("Assistant", "completed", duration_ms=self._stage_ms(stage_started))
 
-        await self._speak_reply(answer, conversation_id)
+        continue_listening = (
+            self._settings.voice_follow_up_timeout_seconds > 0
+            and result.get("continue_listening") is True
+        )
+        await self._speak_reply(
+            answer,
+            conversation_id,
+            continue_conversation=continue_listening,
+        )
 
     async def _speak_progress(self, message: str, conversation_id: str) -> None:
         """Speak a tool-call update without ending the active voice turn."""
@@ -598,7 +606,13 @@ class ESPHomeVoiceClient:
         finally:
             self._progress_audio_fetched = None
 
-    async def _speak_reply(self, answer: str, conversation_id: str) -> None:
+    async def _speak_reply(
+        self,
+        answer: str,
+        conversation_id: str,
+        *,
+        continue_conversation: bool | None = None,
+    ) -> None:
         if self._media_server is None:
             self._record_activity(
                 "Speaker audio", "failed", detail="Audio listener is not configured"
@@ -624,8 +638,12 @@ class ESPHomeVoiceClient:
             )
             self._record_activity("Speech generation", "completed", duration_ms=self._stage_ms(stage_started))
             media_url = self._media_server.publish(flac_audio)
-            continue_conversation = self._settings.voice_follow_up_timeout_seconds > 0
-            self._follow_up_pending = continue_conversation
+            should_continue = (
+                self._settings.voice_follow_up_timeout_seconds > 0
+                if continue_conversation is None
+                else continue_conversation
+            )
+            self._follow_up_pending = should_continue
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START, None
             )
@@ -633,7 +651,7 @@ class ESPHomeVoiceClient:
                 VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
                 {
                     "conversation_id": "",
-                    "continue_conversation": "1" if continue_conversation else "0",
+                    "continue_conversation": "1" if should_continue else "0",
                 },
             )
             self._client.send_voice_assistant_event(

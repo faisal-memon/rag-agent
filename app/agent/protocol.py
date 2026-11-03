@@ -35,6 +35,7 @@ class AnswerPlannerAction(BaseModel):
     action: Literal["answer"]
     evidence_status: Literal["supported", "not_found", "casual"]
     answer: str
+    continue_listening: bool
 
 
 PlannerAction = Annotated[ToolPlannerAction | AnswerPlannerAction, Field(discriminator="action")]
@@ -79,7 +80,14 @@ def _recover_answer_object(candidate: str) -> str | None:
         return None
     answer = candidate[answer_start:answer_end]
     answer = answer.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
-    return json.dumps({"action": action_match.group(1), "evidence_status": evidence_match.group(1), "answer": answer})
+    return json.dumps(
+        {
+            "action": action_match.group(1),
+            "evidence_status": evidence_match.group(1),
+            "answer": answer,
+            "continue_listening": False,
+        }
+    )
 
 
 def extract_native_tool_call(text: str, catalog: tools.ToolCatalog | None = None) -> dict | None:
