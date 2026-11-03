@@ -14,4 +14,4 @@ mcp==2.3.0
 aioesphomeapi==46.25.1
 webrtcvad-wheels==2.0.14.post1
 soundfile==0.14.0
-wyoming==1.10.2
+wyoming==1.11.0
