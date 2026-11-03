@@ -246,17 +246,19 @@ def _wants_document_retrieval(question: str) -> bool:
         return True
     normalized = " ".join(question.casefold().split())
     document_terms = (
-        r"documents?|files?|folders?|pdfs?|paperwork|records?|receipts?|invoices?|contracts?|"
+        r"documents?|files?|folders?|pdfs?|paperwork|records?(?:ed|ing)?|receipts?|invoices?|contracts?|"
         r"leases?|tax returns?|insurance policies|warranties|statements?|deeds?|forms?|manuals?|"
         r"spreadsheets?|attachments?"
     )
     explicit_reference = rf"\b(?:my|our|the|this|that|these|those|attached|uploaded)\s+(?:\w+\s+){{0,2}}(?:{document_terms})\b"
     explicit_source = rf"\b(?:in|from|inside|within)\s+(?:my|our|the|this|that|attached|uploaded)\s+(?:{document_terms})\b"
     document_action = rf"\b(?:search|find|look|check|read|summarize)\b.*\b(?:{document_terms})\b"
+    dated_tax_figure = r"\b(?:19|20)\d{2}\s+(?:agi|adjusted gross income)\b"
     return bool(
         re.search(explicit_reference, normalized)
         or re.search(explicit_source, normalized)
         or re.search(document_action, normalized)
+        or re.search(dated_tax_figure, normalized)
     )
 
 
