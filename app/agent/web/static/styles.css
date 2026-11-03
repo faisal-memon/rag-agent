@@ -1550,6 +1550,10 @@ body.agent-only .status {
     padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
   }
 
+  body.agent-only textarea {
+    font-size: 16px;
+  }
+
   .desktop-app-version {
     display: none;
   }
