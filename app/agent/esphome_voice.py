@@ -69,6 +69,7 @@ class ESPHomeVoiceClient:
         self._vad: VoiceActivityDetector | None = None
         self._vad_ended = False
         self._vad_no_speech_timeout = False
+        self._last_vad_diagnostic_at = 0.0
         self._follow_up_pending = False
         self._session_is_follow_up = False
         self._session_started_at = 0.0
@@ -210,6 +211,7 @@ class ESPHomeVoiceClient:
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._session_started_at = time.monotonic()
+        self._last_vad_diagnostic_at = self._session_started_at
         self._turn_started_at = self._session_started_at
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
@@ -257,7 +259,30 @@ class ESPHomeVoiceClient:
         """Signal ESPHome when speech begins and ends so its mic stream closes."""
         if self._client is None or self._vad_ended or self._vad is None:
             return
-        for event in self._vad.process(data):
+        events = self._vad.process(data)
+        now = time.monotonic()
+        if events or now - self._last_vad_diagnostic_at >= 1.0:
+            diagnostic = self._vad.take_diagnostics()
+            if diagnostic["frames"]:
+                logger.info(
+                    "ReSpeaker VAD diagnostics (state=%s, frames=%d, speech=%d, "
+                    "non_speech=%d, grace=%d, silence_ms=%d, silence_resets=%d, "
+                    "longest_non_speech_ms=%d, rms_avg=%s, rms_min=%s, rms_max=%s, peak_max=%s)",
+                    diagnostic["state"],
+                    diagnostic["frames"],
+                    diagnostic["speech_frames"],
+                    diagnostic["non_speech_frames"],
+                    diagnostic["grace_frames"],
+                    diagnostic["silence_ms"],
+                    diagnostic["silence_resets"],
+                    diagnostic["longest_non_speech_ms"],
+                    diagnostic["rms_avg"],
+                    diagnostic["rms_min"],
+                    diagnostic["rms_max"],
+                    diagnostic["peak_max"],
+                )
+            self._last_vad_diagnostic_at = now
+        for event in events:
             if event is CaptureEvent.SPEECH_STARTED:
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None
