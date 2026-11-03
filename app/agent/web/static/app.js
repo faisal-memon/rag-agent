@@ -109,11 +109,14 @@ function updateMobileViewport() {
   const viewport = window.visualViewport;
   if (!viewport || !document.body.classList.contains("agent-only")) return;
   document.documentElement.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
+  document.documentElement.style.setProperty("--visual-viewport-offset-top", `${viewport.offsetTop}px`);
 }
 
 updateMobileViewport();
 window.visualViewport?.addEventListener("resize", updateMobileViewport);
+window.visualViewport?.addEventListener("scroll", updateMobileViewport);
 window.addEventListener("resize", updateMobileViewport);
+window.addEventListener("scroll", updateMobileViewport);
 
 mobileMenuToggle?.addEventListener("click", () => {
   const isHidden = conversationSidebar?.classList.contains("hidden") ?? true;
