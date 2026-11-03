@@ -253,11 +253,13 @@ def _wants_document_retrieval(question: str) -> bool:
     explicit_reference = rf"\b(?:my|our|the|this|that|these|those|attached|uploaded)\s+(?:\w+\s+){{0,2}}(?:{document_terms})\b"
     explicit_source = rf"\b(?:in|from|inside|within)\s+(?:my|our|the|this|that|attached|uploaded)\s+(?:{document_terms})\b"
     document_action = rf"\b(?:search|find|look|check|read|summarize)\b.*\b(?:{document_terms})\b"
+    recorded_fact = r"\b(?:what|which|where|who)\b.*\b(?:is|are|was|were)\b.*\b(?:recorded|listed|registered|saved|on file)\b"
     dated_tax_figure = r"\b(?:19|20)\d{2}\s+(?:agi|adjusted gross income)\b"
     return bool(
         re.search(explicit_reference, normalized)
         or re.search(explicit_source, normalized)
         or re.search(document_action, normalized)
+        or re.search(recorded_fact, normalized)
         or re.search(dated_tax_figure, normalized)
     )
 
