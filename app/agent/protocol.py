@@ -24,6 +24,7 @@ class ToolPlannerAction(BaseModel):
     action: Literal["tool"]
     tool: str
     arguments: dict[str, Any]
+    status: str | None = None
 
 
 class AnswerPlannerAction(BaseModel):
@@ -233,10 +234,35 @@ def sanitize_planner_action(action: Any, catalog: tools.ToolCatalog | None = Non
             canonical = ToolPlannerAction.model_validate(action)
         except ValidationError:
             return None
-        return sanitize_step(canonical.model_dump(), catalog)
+        step = sanitize_step(canonical.model_dump(exclude={"status"}), catalog)
+        if step is None:
+            return None
+        status = sanitize_tool_status(canonical.status, canonical.arguments)
+        if status:
+            step["status"] = status
+        return step
 
     tool = action.get("action")
     catalog = catalog or tools.STATIC_TOOL_CATALOG
     if not isinstance(tool, str) or catalog.get(tool) is None:
         return None
     return sanitize_step({"tool": tool, "arguments": action.get("arguments")}, catalog)
+
+
+def sanitize_tool_status(status: Any, arguments: dict[str, Any] | None = None) -> str | None:
+    """Accept only a short, single-line spoken update that does not echo arguments."""
+    if not isinstance(status, str):
+        return None
+    status = " ".join(status.split()).strip()
+    if not status or len(status) > 120:
+        return None
+    if re.search(r"https?://|www\.|\b[^\s@]+@[^\s@]+\.[^\s@]+\b|\d{5,}", status, re.IGNORECASE):
+        return None
+    normalized_status = re.sub(r"[^a-z0-9]+", " ", status.casefold()).strip()
+    for value in (arguments or {}).values():
+        if not isinstance(value, str):
+            continue
+        normalized_argument = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+        if len(normalized_argument) >= 4 and normalized_argument in normalized_status:
+            return None
+    return status

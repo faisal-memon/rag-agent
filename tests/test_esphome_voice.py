@@ -4,7 +4,11 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from app.agent.config import ApiSettings
-from app.agent.esphome_voice import ESPHomeVoiceClient
+from app.agent.esphome_voice import (
+    ESPHomeVoiceClient,
+    _is_unintelligible_transcript,
+    _spoken_tool_status,
+)
 
 
 class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
@@ -44,6 +48,33 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             )
         )
         self.assertIsNone(self.client._session_id)
+
+    def test_unintelligible_transcript_filter_keeps_short_valid_requests(self):
+        self.assertTrue(_is_unintelligible_transcript(""))
+        self.assertTrue(_is_unintelligible_transcript("[inaudible]"))
+        self.assertTrue(_is_unintelligible_transcript("Indistinct"))
+        self.assertFalse(_is_unintelligible_transcript("Hi"))
+
+    def test_spoken_tool_status_uses_generic_fallback_when_missing_or_oversized(self):
+        self.assertEqual("I'm checking that now.", _spoken_tool_status(None))
+        self.assertEqual("I'm checking that now.", _spoken_tool_status("x" * 121))
+        self.assertEqual("Checking the forecast.", _spoken_tool_status("  Checking   the forecast. "))
+
+    async def test_unintelligible_transcript_skips_agent_and_speaks_repeat_prompt(self):
+        await self.client._handle_session_start("conversation-inaudible", 0, None, None)
+        await self.client._handle_audio(b"\x01\x00")
+        self.client._agent = object()
+
+        with (
+            patch("app.agent.esphome_voice.transcribe_audio", return_value="[inaudible]"),
+            patch.object(self.client, "_speak_reply") as speak_reply,
+        ):
+            await self.client._handle_session_stop(aborted=False)
+
+        speak_reply.assert_awaited_once_with(
+            "Sorry, I didn't catch that. Could you please repeat it?",
+            "conversation-inaudible",
+        )
         self.assertEqual(self.client._session_audio, bytearray())
 
     async def test_audio_chunks_can_split_pcm_samples_and_secondary_channel_is_ignored(self):

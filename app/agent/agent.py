@@ -337,7 +337,13 @@ def _execute_planned_tool(
 
     turn.seen_calls.add(signature)
     turn.plan.append(step)
-    _emit_progress(turn.on_progress, "tool_call", tool=step["tool"], arguments=step["arguments"])
+    _emit_progress(
+        turn.on_progress,
+        "tool_call",
+        tool=step["tool"],
+        arguments=step["arguments"],
+        status=decision.get("status"),
+    )
     _append_debug(
         turn.debug,
         "controller_decision",

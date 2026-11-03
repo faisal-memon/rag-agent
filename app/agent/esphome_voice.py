@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import time
 import wave
 from collections.abc import Callable
@@ -35,6 +36,16 @@ logger = logging.getLogger(__name__)
 MAX_SESSION_AUDIO_BYTES = 3_000_000
 VOICE_SAMPLE_WIDTH = 2
 VOICE_HISTORY_MAX_MESSAGES = 12
+UNINTELLIGIBLE_TRANSCRIPTS = {
+    "blank audio",
+    "inaudible",
+    "inaudible speech",
+    "indistinct",
+    "unintelligible",
+    "unintelligible speech",
+    "no speech detected",
+}
+REPEAT_REQUEST = "Sorry, I didn't catch that. Could you please repeat it?"
 
 
 class ESPHomeVoiceClient:
@@ -76,6 +87,7 @@ class ESPHomeVoiceClient:
         self._turn_started_at = 0.0
         self._activity_write: asyncio.Task | None = None
         self._device_id: str | None = None
+        self._progress_audio_fetched: asyncio.Event | None = None
         self._device_name = settings.esphome_device_name or "ESPHome speaker"
         self._connected = False
 
@@ -445,6 +457,25 @@ class ESPHomeVoiceClient:
             time.monotonic() - stage_started,
             len(transcript),
         )
+        if _is_unintelligible_transcript(transcript):
+            self._record_activity(
+                "Transcription",
+                "failed",
+                duration_ms=self._stage_ms(stage_started),
+                detail="No intelligible speech detected",
+            )
+            logger.info(
+                "ReSpeaker transcript was an unintelligible placeholder; skipping agent request "
+                "(conversation=%s)",
+                conversation_id,
+            )
+            if vad_ended and self._client is not None:
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                    {"text": ""},
+                )
+            await self._speak_reply(REPEAT_REQUEST, conversation_id)
+            return
         self._record_activity("Transcription", "completed", duration_ms=self._stage_ms(stage_started))
 
         if vad_ended and self._client is not None:
@@ -472,12 +503,29 @@ class ESPHomeVoiceClient:
             history = []
         history.append({"role": "user", "content": transcript})
         stage_started = time.monotonic()
+        progress_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def on_progress(event: dict) -> None:
+            if event.get("type") != "tool_call":
+                return
+            loop.call_soon_threadsafe(
+                progress_queue.put_nowait,
+                _spoken_tool_status(event.get("status")),
+            )
+
+        async def announce_progress() -> None:
+            while (message := await progress_queue.get()) is not None:
+                await self._speak_progress(message, conversation_id)
+
+        progress_task = asyncio.create_task(announce_progress())
         try:
             self._record_activity("Assistant", "started")
             result = await asyncio.to_thread(
                 self._agent.answer,
                 transcript,
                 history=history,
+                on_progress=on_progress,
                 response_mode="spoken",
             )
         except Exception:
@@ -487,6 +535,9 @@ class ESPHomeVoiceClient:
                 conversation_id,
             )
             return
+        finally:
+            progress_queue.put_nowait(None)
+            await progress_task
 
         answer = str(result.get("answer") or "").strip()
         if not answer:
@@ -514,6 +565,40 @@ class ESPHomeVoiceClient:
         )
         self._record_activity("Assistant", "completed", duration_ms=self._stage_ms(stage_started))
 
+        await self._speak_reply(answer, conversation_id)
+
+    async def _speak_progress(self, message: str, conversation_id: str) -> None:
+        """Speak a tool-call update without ending the active voice turn."""
+        if self._media_server is None or self._media_player_key is None or self._client is None:
+            return
+        try:
+            flac_audio = await asyncio.wait_for(self._piper.synthesize_flac(message), timeout=15)
+            self._progress_audio_fetched = asyncio.Event()
+            media_url = self._media_server.publish(flac_audio)
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START,
+                {"text": message},
+            )
+            self._client.send_voice_assistant_event(
+                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END,
+                {"url": media_url},
+            )
+            logger.info(
+                "ReSpeaker progress update queued (conversation=%s, message=%r)",
+                conversation_id,
+                message,
+            )
+            try:
+                await asyncio.wait_for(self._progress_audio_fetched.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                logger.debug("Speaker did not fetch the progress update before timeout")
+            await asyncio.sleep(min(4.0, max(1.0, len(message.split()) * 0.42)))
+        except Exception:
+            logger.exception("Could not speak ReSpeaker progress update (conversation=%s)", conversation_id)
+        finally:
+            self._progress_audio_fetched = None
+
+    async def _speak_reply(self, answer: str, conversation_id: str) -> None:
         if self._media_server is None:
             self._record_activity(
                 "Speaker audio", "failed", detail="Audio listener is not configured"
@@ -603,6 +688,8 @@ class ESPHomeVoiceClient:
         self._activity_write = asyncio.create_task(persist())
 
     def _on_audio_fetched(self, successful: bool, duration_ms: int) -> None:
+        if successful and self._progress_audio_fetched is not None:
+            self._progress_audio_fetched.set()
         self._record_activity(
             "Speaker audio",
             "completed" if successful else "failed",
@@ -635,6 +722,21 @@ def _pcm_to_wav(pcm: bytes, *, channels: int) -> bytes:
         wav_file.setframerate(VOICE_SAMPLE_RATE)
         wav_file.writeframes(pcm)
     return wav_buffer.getvalue()
+
+
+def _is_unintelligible_transcript(transcript: str) -> bool:
+    """Recognize empty audio and common Whisper placeholder transcripts only."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", transcript.casefold()).strip()
+    return not normalized or normalized in UNINTELLIGIBLE_TRANSCRIPTS
+
+
+def _spoken_tool_status(status: object) -> str:
+    """Use a validated planner status, with a generic fallback for other tool paths."""
+    if isinstance(status, str):
+        normalized = " ".join(status.split()).strip()
+        if normalized and len(normalized) <= 120:
+            return normalized
+    return "I'm checking that now."
 
 
 def _stable_device_id(mac_address: str | None, host: str) -> str:

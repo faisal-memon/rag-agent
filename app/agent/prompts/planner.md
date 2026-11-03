@@ -6,8 +6,8 @@ Response schema: choose exactly one object allowed by this JSON Schema. Do not a
 
 {{ planner_action_schema }}
 
-To call one tool:
-{"action":"tool","tool":"semantic_search","arguments":{"query":"...","limit":8}}
+For a tool action, include an optional `status` string: one brief, natural sentence describing the lookup for spoken progress. Do not say the internal tool name, repeat the user's request, include tool arguments, reveal private details, or include URLs or long numbers. Omit it when you cannot provide a safe, useful update.
+{"action":"tool","tool":"semantic_search","arguments":{"query":"...","limit":8},"status":"Searching the saved documents."}
 
 To answer without another tool:
 {"action":"answer","evidence_status":"supported|not_found|casual","answer":"..."}

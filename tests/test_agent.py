@@ -193,6 +193,51 @@ class AgentTest(unittest.TestCase):
             ),
         )
 
+    def test_sanitize_planner_action_keeps_safe_spoken_status(self) -> None:
+        self.assertEqual(
+            {
+                "tool": "get_weather",
+                "arguments": {"day": None},
+                "status": "Checking the forecast.",
+            },
+            _sanitize_planner_action(
+                {
+                    "action": "tool",
+                    "tool": "get_weather",
+                    "arguments": {},
+                    "status": "  Checking   the forecast.  ",
+                }
+            ),
+        )
+
+    def test_sanitize_planner_action_drops_status_that_repeats_tool_arguments(self) -> None:
+        self.assertEqual(
+            {"tool": "keyword_search", "arguments": {"query": "secret project", "limit": 8}},
+            _sanitize_planner_action(
+                {
+                    "action": "tool",
+                    "tool": "keyword_search",
+                    "arguments": {"query": "secret project"},
+                    "status": "Searching for secret project.",
+                }
+            ),
+        )
+
+    def test_sanitize_planner_action_drops_long_or_url_status(self) -> None:
+        for status in ("See https://example.com", "This has 123456 in it", "x" * 121):
+            with self.subTest(status=status):
+                self.assertEqual(
+                    {"tool": "get_weather", "arguments": {"day": None}},
+                    _sanitize_planner_action(
+                        {
+                            "action": "tool",
+                            "tool": "get_weather",
+                            "arguments": {},
+                            "status": status,
+                        }
+                    ),
+                )
+
     def test_planner_schema_includes_each_discovered_mcp_tool(self) -> None:
         catalog = tools.build_tool_catalog({"servers": [{
             "name": "muni", "url": "http://muni/mcp", "tools": [{
@@ -684,7 +729,8 @@ class AgentTest(unittest.TestCase):
         settings = _settings_with_api(agent_max_steps=3, memory_path=Path(tempfile.mkdtemp()) / "MEMORY.md")
         responses = iter(
             [
-                '{"action":"tool","tool":"get_school_lunch","arguments":{"day":"2026-09-29"}}',
+                '{"action":"tool","tool":"get_school_lunch","arguments":{"day":"2026-09-29"},'
+                '"status":"Checking the school lunch menu."}',
                 '{"action":"answer","evidence_status":"supported","answer":"Lunch is available."}',
             ]
         )
@@ -701,6 +747,7 @@ class AgentTest(unittest.TestCase):
 
         self.assertEqual(["thinking", "tool_call", "tool_result", "thinking"], [event["type"] for event in events])
         self.assertEqual("get_school_lunch", events[1]["tool"])
+        self.assertEqual("Checking the school lunch menu.", events[1]["status"])
         self.assertEqual({"type": "object", "keys": ["choices"]}, events[2]["summary"])
         self.assertEqual({"choices": ["Pasta"]}, events[2]["result"])
 
