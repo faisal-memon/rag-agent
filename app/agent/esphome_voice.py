@@ -8,6 +8,7 @@ import logging
 import time
 import wave
 from collections.abc import Callable
+from datetime import datetime, timezone
 
 from aioesphomeapi import (
     APIClient,
@@ -315,6 +316,7 @@ class ESPHomeVoiceClient:
         }
 
     async def _handle_session_stop(self, aborted: bool) -> None:
+        speaker_created_at = datetime.now(timezone.utc)
         capture_seconds = (
             time.monotonic() - self._session_started_at
             if self._session_started_at
@@ -466,6 +468,7 @@ class ESPHomeVoiceClient:
             self._record_activity("Assistant", "failed", detail="Empty response")
             logger.warning("ReSpeaker agent returned an empty answer (conversation=%s)", conversation_id)
             return
+        assistant_created_at = datetime.now(timezone.utc)
         try:
             await asyncio.to_thread(
                 voice_devices.save_turn,
@@ -473,6 +476,8 @@ class ESPHomeVoiceClient:
                 transcript,
                 answer,
                 VOICE_HISTORY_MAX_MESSAGES,
+                speaker_created_at=speaker_created_at,
+                assistant_created_at=assistant_created_at,
             )
         except Exception:
             logger.exception("Could not save ReSpeaker conversation turn")
