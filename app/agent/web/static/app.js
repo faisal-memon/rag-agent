@@ -326,11 +326,12 @@ function progressEventPresentation(event) {
   }
 }
 
-function groupedProgressEvents(events, streaming) {
+function groupedProgressEvents(events) {
   const items = [];
   (events || []).forEach((event) => {
-    if (streaming && event.type === "thinking") return;
-    if (event.type === "thinking" && items[items.length - 1]?.type === "thinking") return;
+    // Thinking events describe live work; don't replay them as a lingering
+    // status after the response is complete. The trace keeps the full history.
+    if (event.type === "thinking") return;
     if (event.type === "tool_result") {
       const toolCall = [...items].reverse().find((item) => item.type === "tool_call" && !item.result);
       if (toolCall) {
@@ -364,7 +365,7 @@ function toolProgressHtml(event) {
 }
 
 function agentProgressTimelineHtml(events, streaming = false) {
-  const items = groupedProgressEvents(events, streaming);
+  const items = groupedProgressEvents(events);
   const rows = items.map((event) => {
     if (event.type === "tool_call") return toolProgressHtml(event);
     const type = event.type || "thinking";
