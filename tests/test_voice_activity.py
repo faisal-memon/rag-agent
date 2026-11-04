@@ -51,19 +51,43 @@ class VoiceActivityDetectorTest(unittest.TestCase):
             [CaptureEvent.SPEECH_STARTED], detector.process(self.frame(True) * 3)
         )
 
-    def test_speech_during_silence_restarts_the_continuous_silence_window(self) -> None:
-        detector = self.make_detector()
+    def test_isolated_speech_does_not_restart_windowed_quiet_time(self) -> None:
+        detector = self.make_detector(
+            end_silence_ms=200,
+            activity_history=1,
+            active_windows_required=1,
+        )
 
         self.assertEqual(
             [CaptureEvent.SPEECH_STARTED], detector.process(self.frame(True) * 3)
         )
-        self.assertEqual([], detector.process(self.frame(False)))
-        self.assertEqual([], detector.process(self.frame(True)))
-        self.assertEqual([], detector.process(self.frame(False)))
+        self.assertEqual([], detector.process(self.frame(True) * 2))
+        self.assertEqual([], detector.process(self.frame(False) * 4 + self.frame(True)))
+        self.assertEqual([], detector.process(self.frame(True) * 2 + self.frame(False) * 3))
+        self.assertEqual([], detector.process(self.frame(False) * 4 + self.frame(True)))
+        self.assertEqual(
+            [CaptureEvent.SPEECH_ENDED],
+            detector.process(self.frame(False) * 4 + self.frame(True)),
+        )
+        self.assertIs(detector.state, CaptureState.ENDED)
+
+    def test_sustained_activity_keeps_capture_open(self) -> None:
+        detector = self.make_detector(end_silence_ms=200)
+        self.assertEqual(
+            [CaptureEvent.SPEECH_STARTED], detector.process(self.frame(True) * 3)
+        )
+        self.assertEqual([], detector.process(self.frame(True) * 52))
+        self.assertIs(detector.state, CaptureState.SPEAKING)
+
+    def test_brief_speech_uses_continuous_silence_until_activity_is_confirmed(self) -> None:
+        detector = self.make_detector(end_silence_ms=200)
+        self.assertEqual(
+            [CaptureEvent.SPEECH_STARTED], detector.process(self.frame(True) * 3)
+        )
+        self.assertEqual([], detector.process(self.frame(False) * 9))
         self.assertEqual(
             [CaptureEvent.SPEECH_ENDED], detector.process(self.frame(False))
         )
-        self.assertIs(detector.state, CaptureState.ENDED)
 
     def test_zero_capture_limit_is_unlimited_but_speech_timeout_remains(self) -> None:
         detector = self.make_detector(capture_limit_seconds=0)

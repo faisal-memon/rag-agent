@@ -215,6 +215,10 @@ class ESPHomeVoiceClient:
         self._vad = VoiceActivityDetector(
             startup_grace_ms=startup_grace_ms,
             end_silence_ms=self._settings.voice_end_silence_ms,
+            window_frames=self._settings.voice_vad_window_frames,
+            window_speech_frames=self._settings.voice_vad_window_speech_frames,
+            activity_history=self._settings.voice_vad_activity_history,
+            active_windows_required=self._settings.voice_vad_active_windows_required,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
                 self._settings.voice_follow_up_timeout_seconds
@@ -281,7 +285,7 @@ class ESPHomeVoiceClient:
                 logger.info(
                     "ReSpeaker VAD diagnostics (state=%s, frames=%d, speech=%d, "
                     "non_speech=%d, grace=%d, silence_ms=%d, silence_resets=%d, "
-                    "longest_non_speech_ms=%d, shadow_quiet_ms=%d, shadow_end_elapsed_ms=%s, "
+                    "longest_non_speech_ms=%d, endpoint_quiet_ms=%d, "
                     "rms_avg=%s, rms_min=%s, rms_max=%s, peak_max=%s)",
                     diagnostic["state"],
                     diagnostic["frames"],
@@ -291,8 +295,7 @@ class ESPHomeVoiceClient:
                     diagnostic["silence_ms"],
                     diagnostic["silence_resets"],
                     diagnostic["longest_non_speech_ms"],
-                    diagnostic["shadow_quiet_ms"],
-                    diagnostic["shadow_end_elapsed_ms"],
+                    diagnostic["endpoint_quiet_ms"],
                     diagnostic["rms_avg"],
                     diagnostic["rms_min"],
                     diagnostic["rms_max"],

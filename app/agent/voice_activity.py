@@ -18,11 +18,10 @@ FRAME_BYTES = VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH * FRAME_MILLISECONDS // 100
 START_CONFIRMATION_FRAMES = 3
 NO_SPEECH_TIMEOUT_SECONDS = 15
 VAD_AGGRESSIVENESS = 2
-SHADOW_WINDOW_FRAMES = 5  # 100 ms at 20 ms per frame
-SHADOW_WINDOW_SPEECH_FRAMES = 2
-SHADOW_ACTIVITY_HISTORY = 3
-SHADOW_ACTIVE_WINDOWS_REQUIRED = 2
-SHADOW_QUIET_WINDOWS_TO_END = 8
+DEFAULT_WINDOW_FRAMES = 5  # 100 ms at 20 ms per frame
+DEFAULT_WINDOW_SPEECH_FRAMES = 2
+DEFAULT_ACTIVITY_HISTORY = 3
+DEFAULT_ACTIVE_WINDOWS_REQUIRED = 2
 
 
 class CaptureState(Enum):
@@ -51,8 +50,18 @@ class VoiceActivityDetector:
         capture_limit_seconds: int,
         no_speech_timeout_seconds: int = NO_SPEECH_TIMEOUT_SECONDS,
         aggressiveness: int = VAD_AGGRESSIVENESS,
+        window_frames: int = DEFAULT_WINDOW_FRAMES,
+        window_speech_frames: int = DEFAULT_WINDOW_SPEECH_FRAMES,
+        activity_history: int = DEFAULT_ACTIVITY_HISTORY,
+        active_windows_required: int = DEFAULT_ACTIVE_WINDOWS_REQUIRED,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        if not (1 <= window_speech_frames <= window_frames):
+            raise ValueError("window_speech_frames must fit within window_frames")
+        if not (1 <= active_windows_required <= activity_history):
+            raise ValueError("active_windows_required must fit within activity_history")
+        if window_frames < 1 or activity_history < 1 or end_silence_ms < 1:
+            raise ValueError("VAD window and quiet duration must be positive")
         self._vad = webrtcvad.Vad(aggressiveness)
         self._clock = clock
         self._started_at = clock()
@@ -61,6 +70,9 @@ class VoiceActivityDetector:
         self._no_speech_timeout_seconds = no_speech_timeout_seconds
         self._startup_grace_frames = math.ceil(startup_grace_ms / FRAME_MILLISECONDS)
         self._end_silence_frames = math.ceil(end_silence_ms / FRAME_MILLISECONDS)
+        self._quiet_windows_to_end = math.ceil(
+            end_silence_ms / (window_frames * FRAME_MILLISECONDS)
+        )
         self._grace_frames_seen = 0
         self._start_candidate_frames = 0
         self._silence_frames = 0
@@ -76,12 +88,17 @@ class VoiceActivityDetector:
         self._interval_silence_resets = 0
         self._non_speech_run_frames = 0
         self._interval_longest_non_speech_run_frames = 0
-        self._shadow_tracking = False
-        self._shadow_bucket_frames = 0
-        self._shadow_bucket_speech_frames = 0
-        self._shadow_active_windows: deque[bool] = deque(maxlen=SHADOW_ACTIVITY_HISTORY)
-        self._shadow_quiet_windows = 0
-        self._shadow_predicted_end_ms: int | None = None
+        self._window_frames = window_frames
+        self._window_speech_frames = window_speech_frames
+        self._activity_history = activity_history
+        self._active_windows_required = active_windows_required
+        # end_silence_ms is the user-facing quiet duration, rounded up to windows.
+        self._endpoint_tracking = False
+        self._bucket_frames = 0
+        self._bucket_speech_frames = 0
+        self._active_windows: deque[bool] = deque(maxlen=activity_history)
+        self._quiet_windows = 0
+        self._confirmed_activity = False
         self.state = (
             CaptureState.STARTUP_GRACE
             if self._startup_grace_frames
@@ -146,9 +163,6 @@ class VoiceActivityDetector:
                 if not speech:
                     self.state = CaptureState.WAITING_FOR_SILENCE
                     self._silence_frames = 1
-                    if self._silence_frames >= self._end_silence_frames:
-                        self.state = CaptureState.ENDED
-                        events.append(CaptureEvent.SPEECH_ENDED)
             elif self.state is CaptureState.WAITING_FOR_SILENCE:
                 if speech:
                     self._interval_silence_resets += 1
@@ -156,36 +170,39 @@ class VoiceActivityDetector:
                     self._silence_frames = 0
                 else:
                     self._silence_frames += 1
-                    if self._silence_frames >= self._end_silence_frames:
-                        self.state = CaptureState.ENDED
-                        events.append(CaptureEvent.SPEECH_ENDED)
-            if self._shadow_tracking or CaptureEvent.SPEECH_STARTED in events:
-                self._update_shadow_endpoint(speech, now)
+            if self._endpoint_tracking or CaptureEvent.SPEECH_STARTED in events:
+                fuzzy_end = self._update_endpoint(speech)
+                brief_speech_end = (
+                    not self._confirmed_activity
+                    and self._silence_frames >= self._end_silence_frames
+                )
+                if fuzzy_end or brief_speech_end:
+                    self.state = CaptureState.ENDED
+                    events.append(CaptureEvent.SPEECH_ENDED)
         return events
 
-    def _update_shadow_endpoint(self, speech: bool, now: float) -> None:
-        """Simulate a fuzzier endpoint without changing the live stop decision."""
-        self._shadow_tracking = True
-        self._shadow_bucket_frames += 1
-        self._shadow_bucket_speech_frames += int(speech)
-        if self._shadow_bucket_frames < SHADOW_WINDOW_FRAMES:
-            return
+    def _update_endpoint(self, speech: bool) -> bool:
+        """End after enough mostly quiet windows despite isolated VAD hits."""
+        self._endpoint_tracking = True
+        self._bucket_frames += 1
+        self._bucket_speech_frames += int(speech)
+        if self._bucket_frames < self._window_frames:
+            return False
 
-        active = self._shadow_bucket_speech_frames >= SHADOW_WINDOW_SPEECH_FRAMES
-        self._shadow_active_windows.append(active)
+        active = self._bucket_speech_frames >= self._window_speech_frames
+        self._active_windows.append(active)
         sustained_activity = (
-            len(self._shadow_active_windows) == SHADOW_ACTIVITY_HISTORY
-            and sum(self._shadow_active_windows) >= SHADOW_ACTIVE_WINDOWS_REQUIRED
+            len(self._active_windows) == self._activity_history
+            and sum(self._active_windows) >= self._active_windows_required
         )
-        self._shadow_quiet_windows = 0 if sustained_activity else self._shadow_quiet_windows + 1
-        if (
-            self._shadow_predicted_end_ms is None
-            and self._shadow_quiet_windows >= SHADOW_QUIET_WINDOWS_TO_END
-        ):
-            self._shadow_predicted_end_ms = round((now - self._started_at) * 1000)
+        if sustained_activity:
+            self._confirmed_activity = True
+        if self._confirmed_activity:
+            self._quiet_windows = 0 if sustained_activity else self._quiet_windows + 1
 
-        self._shadow_bucket_frames = 0
-        self._shadow_bucket_speech_frames = 0
+        self._bucket_frames = 0
+        self._bucket_speech_frames = 0
+        return self._confirmed_activity and self._quiet_windows >= self._quiet_windows_to_end
 
     def take_diagnostics(self) -> dict[str, int | float | str | None]:
         """Return and reset one interval of aggregate VAD/audio-level diagnostics."""
@@ -199,8 +216,7 @@ class VoiceActivityDetector:
             "silence_ms": self._silence_frames * FRAME_MILLISECONDS,
             "silence_resets": self._interval_silence_resets,
             "longest_non_speech_ms": self._interval_longest_non_speech_run_frames * FRAME_MILLISECONDS,
-            "shadow_quiet_ms": self._shadow_quiet_windows * SHADOW_WINDOW_FRAMES * FRAME_MILLISECONDS,
-            "shadow_end_elapsed_ms": self._shadow_predicted_end_ms,
+            "endpoint_quiet_ms": self._quiet_windows * self._window_frames * FRAME_MILLISECONDS,
             "rms_avg": round(self._interval_rms_sum / frames, 1) if frames else None,
             "rms_min": round(self._interval_rms_min, 1) if self._interval_rms_min is not None else None,
             "rms_max": round(self._interval_rms_max, 1) if self._interval_rms_max is not None else None,

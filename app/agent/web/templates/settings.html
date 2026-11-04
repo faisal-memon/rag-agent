@@ -131,9 +131,19 @@
             <label for="voice-start-grace-ms">Ignore startup sound (milliseconds)</label>
             <input id="voice-start-grace-ms" name="voice_start_grace_ms" type="number" min="0" max="10000" step="20" required />
             <p class="field-help">Audio is kept. This only delays voice detection. Use 0 when the speaker has no startup beep.</p>
-            <label for="voice-end-silence-ms">Silence before ending speech (milliseconds)</label>
+            <label for="voice-end-silence-ms">Mostly quiet before ending speech (milliseconds)</label>
             <input id="voice-end-silence-ms" name="voice_end_silence_ms" type="number" min="20" max="10000" step="20" required />
-            <p class="field-help">Capture ends after this much continuous silence. Detected speech during the wait clears the silence timer.</p>
+            <p class="field-help">Quiet time is counted in windows below. An isolated speech-like frame will not restart the timer. A sustained voice will.</p>
+            <label for="voice-vad-window-frames">Frames per window</label>
+            <input id="voice-vad-window-frames" name="voice_vad_window_frames" type="number" min="1" max="20" step="1" required />
+            <p class="field-help">Each frame is 20 milliseconds. Five frames make a 100-millisecond window.</p>
+            <label for="voice-vad-window-speech-frames">Speech frames to count a window as active</label>
+            <input id="voice-vad-window-speech-frames" name="voice_vad_window_speech_frames" type="number" min="1" max="20" step="1" required />
+            <label for="voice-vad-activity-history">Recent windows to consider</label>
+            <input id="voice-vad-activity-history" name="voice_vad_activity_history" type="number" min="1" max="10" step="1" required />
+            <label for="voice-vad-active-windows-required">Active windows needed to restart quiet time</label>
+            <input id="voice-vad-active-windows-required" name="voice_vad_active_windows_required" type="number" min="1" max="10" step="1" required />
+            <p class="field-help">Defaults: at least 2 speech frames in a window, and 2 active windows among the last 3. Changes apply to the next voice session.</p>
             <label for="voice-capture-limit-seconds">Maximum capture time (seconds)</label>
             <input id="voice-capture-limit-seconds" name="voice_capture_limit_seconds" type="number" min="0" max="3600" step="1" required />
             <p class="field-help">Use 0 for no maximum. If no speech is detected, capture still ends after 15 seconds.</p>

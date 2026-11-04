@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_validator
 
 from app.core.config import ConfiguredSettings, DatabaseSettings, runtime_settings
 
@@ -49,8 +49,12 @@ class ApiSettings(ConfiguredSettings):
         default=960, ge=0, le=10_000, multiple_of=20, alias="ESPHOME_VOICE_START_GRACE_MS"
     )
     voice_end_silence_ms: int = Field(
-        default=1100, ge=20, le=10_000, multiple_of=20, alias="ESPHOME_VOICE_END_SILENCE_MS"
+        default=800, ge=20, le=10_000, multiple_of=20, alias="ESPHOME_VOICE_END_SILENCE_MS"
     )
+    voice_vad_window_frames: int = Field(default=5, ge=1, le=20)
+    voice_vad_window_speech_frames: int = Field(default=2, ge=1, le=20)
+    voice_vad_activity_history: int = Field(default=3, ge=1, le=10)
+    voice_vad_active_windows_required: int = Field(default=2, ge=1, le=10)
     voice_capture_limit_seconds: int = Field(
         default=20, ge=0, le=3600, alias="ESPHOME_VOICE_CAPTURE_LIMIT_SECONDS"
     )
@@ -81,6 +85,14 @@ class ApiSettings(ConfiguredSettings):
         default=300.0, gt=0, alias="MCP_REGISTRY_REFRESH_INTERVAL"
     )
     remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_vad_windows(self) -> "ApiSettings":
+        if self.voice_vad_window_speech_frames > self.voice_vad_window_frames:
+            raise ValueError("Speech frames cannot exceed frames per window")
+        if self.voice_vad_active_windows_required > self.voice_vad_activity_history:
+            raise ValueError("Active windows cannot exceed recent windows")
+        return self
 
 
 @lru_cache
