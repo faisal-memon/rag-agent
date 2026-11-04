@@ -11,7 +11,7 @@ liteparse==2.18.0
 dateparser==1.5.0
 
 mcp==2.3.0
-aioesphomeapi==46.26.0
+aioesphomeapi==46.27.0
 webrtcvad-wheels==2.0.14.post1
 soundfile==0.14.0
 wyoming==1.11.0
