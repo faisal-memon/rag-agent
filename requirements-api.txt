@@ -8,7 +8,7 @@ pydantic==2.14.2
 pydantic-settings==2.16.2
 python-multipart==0.0.33
 liteparse==2.18.0
-dateparser==1.4.3
+dateparser==1.5.0
 
 mcp==2.3.0
 aioesphomeapi==46.25.1
