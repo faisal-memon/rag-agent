@@ -281,7 +281,8 @@ class ESPHomeVoiceClient:
                 logger.info(
                     "ReSpeaker VAD diagnostics (state=%s, frames=%d, speech=%d, "
                     "non_speech=%d, grace=%d, silence_ms=%d, silence_resets=%d, "
-                    "longest_non_speech_ms=%d, rms_avg=%s, rms_min=%s, rms_max=%s, peak_max=%s)",
+                    "longest_non_speech_ms=%d, shadow_quiet_ms=%d, shadow_end_elapsed_ms=%s, "
+                    "rms_avg=%s, rms_min=%s, rms_max=%s, peak_max=%s)",
                     diagnostic["state"],
                     diagnostic["frames"],
                     diagnostic["speech_frames"],
@@ -290,6 +291,8 @@ class ESPHomeVoiceClient:
                     diagnostic["silence_ms"],
                     diagnostic["silence_resets"],
                     diagnostic["longest_non_speech_ms"],
+                    diagnostic["shadow_quiet_ms"],
+                    diagnostic["shadow_end_elapsed_ms"],
                     diagnostic["rms_avg"],
                     diagnostic["rms_min"],
                     diagnostic["rms_max"],

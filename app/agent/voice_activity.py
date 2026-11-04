@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import struct
 import time
+from collections import deque
 from enum import Enum, auto
 from typing import Callable
 
@@ -17,6 +18,11 @@ FRAME_BYTES = VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH * FRAME_MILLISECONDS // 100
 START_CONFIRMATION_FRAMES = 3
 NO_SPEECH_TIMEOUT_SECONDS = 15
 VAD_AGGRESSIVENESS = 2
+SHADOW_WINDOW_FRAMES = 5  # 100 ms at 20 ms per frame
+SHADOW_WINDOW_SPEECH_FRAMES = 2
+SHADOW_ACTIVITY_HISTORY = 3
+SHADOW_ACTIVE_WINDOWS_REQUIRED = 2
+SHADOW_QUIET_WINDOWS_TO_END = 8
 
 
 class CaptureState(Enum):
@@ -70,6 +76,12 @@ class VoiceActivityDetector:
         self._interval_silence_resets = 0
         self._non_speech_run_frames = 0
         self._interval_longest_non_speech_run_frames = 0
+        self._shadow_tracking = False
+        self._shadow_bucket_frames = 0
+        self._shadow_bucket_speech_frames = 0
+        self._shadow_active_windows: deque[bool] = deque(maxlen=SHADOW_ACTIVITY_HISTORY)
+        self._shadow_quiet_windows = 0
+        self._shadow_predicted_end_ms: int | None = None
         self.state = (
             CaptureState.STARTUP_GRACE
             if self._startup_grace_frames
@@ -147,7 +159,33 @@ class VoiceActivityDetector:
                     if self._silence_frames >= self._end_silence_frames:
                         self.state = CaptureState.ENDED
                         events.append(CaptureEvent.SPEECH_ENDED)
+            if self._shadow_tracking or CaptureEvent.SPEECH_STARTED in events:
+                self._update_shadow_endpoint(speech, now)
         return events
+
+    def _update_shadow_endpoint(self, speech: bool, now: float) -> None:
+        """Simulate a fuzzier endpoint without changing the live stop decision."""
+        self._shadow_tracking = True
+        self._shadow_bucket_frames += 1
+        self._shadow_bucket_speech_frames += int(speech)
+        if self._shadow_bucket_frames < SHADOW_WINDOW_FRAMES:
+            return
+
+        active = self._shadow_bucket_speech_frames >= SHADOW_WINDOW_SPEECH_FRAMES
+        self._shadow_active_windows.append(active)
+        sustained_activity = (
+            len(self._shadow_active_windows) == SHADOW_ACTIVITY_HISTORY
+            and sum(self._shadow_active_windows) >= SHADOW_ACTIVE_WINDOWS_REQUIRED
+        )
+        self._shadow_quiet_windows = 0 if sustained_activity else self._shadow_quiet_windows + 1
+        if (
+            self._shadow_predicted_end_ms is None
+            and self._shadow_quiet_windows >= SHADOW_QUIET_WINDOWS_TO_END
+        ):
+            self._shadow_predicted_end_ms = round((now - self._started_at) * 1000)
+
+        self._shadow_bucket_frames = 0
+        self._shadow_bucket_speech_frames = 0
 
     def take_diagnostics(self) -> dict[str, int | float | str | None]:
         """Return and reset one interval of aggregate VAD/audio-level diagnostics."""
@@ -161,6 +199,8 @@ class VoiceActivityDetector:
             "silence_ms": self._silence_frames * FRAME_MILLISECONDS,
             "silence_resets": self._interval_silence_resets,
             "longest_non_speech_ms": self._interval_longest_non_speech_run_frames * FRAME_MILLISECONDS,
+            "shadow_quiet_ms": self._shadow_quiet_windows * SHADOW_WINDOW_FRAMES * FRAME_MILLISECONDS,
+            "shadow_end_elapsed_ms": self._shadow_predicted_end_ms,
             "rms_avg": round(self._interval_rms_sum / frames, 1) if frames else None,
             "rms_min": round(self._interval_rms_min, 1) if self._interval_rms_min is not None else None,
             "rms_max": round(self._interval_rms_max, 1) if self._interval_rms_max is not None else None,
