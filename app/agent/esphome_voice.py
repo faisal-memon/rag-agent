@@ -222,7 +222,7 @@ class ESPHomeVoiceClient:
             active_windows_required=self._settings.voice_vad_active_windows_required,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
-                self._settings.voice_follow_up_timeout_seconds
+                self._settings.voice_follow_up_start_timeout_seconds
                 if self._session_is_follow_up
                 else 15
             ),
