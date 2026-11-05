@@ -13,7 +13,7 @@ from app.core.config import ConfiguredSettings, DatabaseSettings, runtime_settin
 class RemoteMCPServerSetting(BaseModel):
     """A manually approved remote MCP endpoint, without embedded credentials."""
 
-    name: str = Field(min_length=1, max_length=40, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+    name: str = Field(min_length=1, max_length=40, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9 _-]*$")
     url: AnyHttpUrl
 
     @field_validator("url")

@@ -19,7 +19,7 @@ function addRemoteMCPServer(name = "", url = "") {
   nameInput.name = "remote_mcp_server_name";
   nameInput.required = true;
   nameInput.maxLength = 40;
-  nameInput.pattern = "[A-Za-z0-9][A-Za-z0-9_-]*";
+  nameInput.pattern = "[A-Za-z0-9][A-Za-z0-9 _-]*";
   nameInput.autocomplete = "off";
   nameInput.placeholder = "wikipedia";
   nameInput.value = name;
