@@ -8,6 +8,7 @@ from aioesphomeapi import VoiceAssistantEventType
 from app.agent.config import ApiSettings
 from app.agent.esphome_voice import (
     ESPHomeVoiceClient,
+    _is_non_conversational_transcript,
     _is_unintelligible_transcript,
     _spoken_tool_status,
 )
@@ -57,6 +58,12 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertTrue(_is_unintelligible_transcript("Indistinct"))
         self.assertFalse(_is_unintelligible_transcript("Hi"))
 
+    def test_non_conversational_transcript_filter_recognizes_ambient_captions(self):
+        self.assertTrue(_is_non_conversational_transcript("(door slams)"))
+        self.assertTrue(_is_non_conversational_transcript("[laughing]"))
+        self.assertTrue(_is_non_conversational_transcript("Crowd cheering"))
+        self.assertFalse(_is_non_conversational_transcript("Are any lights on?"))
+
     async def test_follow_up_uses_separate_speech_start_timeout(self):
         self.client._follow_up_pending = True
 
@@ -86,6 +93,22 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             "conversation-inaudible",
         )
         self.assertEqual(self.client._session_audio, bytearray())
+
+    async def test_non_conversational_transcript_skips_agent_and_ends_quietly(self):
+        await self.client._handle_session_start("conversation-noise", 0, None, None)
+        await self.client._handle_audio(b"\x01\x00")
+        self.client._agent = MagicMock()
+
+        with (
+            patch("app.agent.esphome_voice.transcribe_audio", return_value="(door slams)"),
+            patch.object(self.client, "_finish_voice_run") as finish_voice_run,
+            patch.object(self.client, "_speak_reply") as speak_reply,
+        ):
+            await self.client._handle_session_stop(aborted=False)
+
+        self.client._agent.answer.assert_not_called()
+        finish_voice_run.assert_called_once_with()
+        speak_reply.assert_not_awaited()
 
     async def test_synthesis_failure_stops_the_voice_run_and_disables_follow_up(self):
         self.client._media_server = MagicMock()

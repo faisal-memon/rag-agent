@@ -45,6 +45,18 @@ UNINTELLIGIBLE_TRANSCRIPTS = {
     "unintelligible speech",
     "no speech detected",
 }
+NON_CONVERSATIONAL_TRANSCRIPTS = {
+    "applause",
+    "bubble popping",
+    "cheering",
+    "crowd cheering",
+    "door slam",
+    "door slams",
+    "laughing",
+    "laughter",
+    "music",
+    "upbeat music",
+}
 REPEAT_REQUEST = "Sorry, I didn't catch that. Could you please repeat it?"
 
 
@@ -466,6 +478,25 @@ class ESPHomeVoiceClient:
             time.monotonic() - stage_started,
             len(transcript),
         )
+        if _is_non_conversational_transcript(transcript):
+            self._record_activity(
+                "Transcription",
+                "info",
+                duration_ms=self._stage_ms(stage_started),
+                detail="Non-conversational audio caption ignored",
+            )
+            logger.info(
+                "ReSpeaker transcript was a non-conversational audio caption; ending voice run "
+                "without an agent request (conversation=%s)",
+                conversation_id,
+            )
+            if vad_ended and self._client is not None:
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                    {"text": ""},
+                )
+            self._finish_voice_run()
+            return
         if _is_unintelligible_transcript(transcript):
             self._record_activity(
                 "Transcription",
@@ -810,6 +841,12 @@ def _is_unintelligible_transcript(transcript: str) -> bool:
     """Recognize empty audio and common Whisper placeholder transcripts only."""
     normalized = re.sub(r"[^a-z0-9]+", " ", transcript.casefold()).strip()
     return not normalized or normalized in UNINTELLIGIBLE_TRANSCRIPTS
+
+
+def _is_non_conversational_transcript(transcript: str) -> bool:
+    """Recognize Whisper captions for ambient sound, not a spoken request."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", transcript.casefold()).strip()
+    return normalized in NON_CONVERSATIONAL_TRANSCRIPTS
 
 
 def _spoken_tool_status(status: object) -> str:
