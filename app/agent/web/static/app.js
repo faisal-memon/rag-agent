@@ -4,6 +4,12 @@ const recordButton = document.getElementById("record");
 const debugButton = document.getElementById("debug");
 const pipelineButton = document.getElementById("pipeline");
 const question = document.getElementById("question");
+const imageButton = document.getElementById("agent-image");
+const imageInput = document.getElementById("agent-image-input");
+const imagePreview = document.getElementById("agent-image-preview");
+const imageThumbnail = document.getElementById("agent-image-thumbnail");
+const imageName = document.getElementById("agent-image-name");
+const imageRemoveButton = document.getElementById("agent-image-remove");
 const status = document.getElementById("status");
 const result = document.getElementById("result");
 const agentChatToolbar = document.getElementById("agent-chat-toolbar");
@@ -37,6 +43,43 @@ let pendingConversation = false;
 let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
+let selectedImage = null;
+
+function clearSelectedImage() {
+  selectedImage = null;
+  imageInput.value = "";
+  imageThumbnail.removeAttribute("src");
+  imageName.textContent = "";
+  imagePreview.hidden = true;
+}
+
+imageButton.addEventListener("click", () => imageInput.click());
+imageRemoveButton.addEventListener("click", clearSelectedImage);
+imageInput.addEventListener("change", async () => {
+  const file = imageInput.files?.[0];
+  if (!file) return;
+  if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 5 * 1024 * 1024 || !file.size) {
+    clearSelectedImage();
+    status.textContent = "Choose a PNG or JPEG image under 5 MB.";
+    return;
+  }
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Could not read the image."));
+      reader.readAsDataURL(file);
+    });
+    selectedImage = { dataUrl, name: file.name };
+    imageThumbnail.src = dataUrl;
+    imageName.textContent = file.name;
+    imagePreview.hidden = false;
+    status.textContent = "Image attached. Add a question and send it.";
+  } catch (error) {
+    clearSelectedImage();
+    status.textContent = error.message;
+  }
+});
 
 async function loadConversations() {
   if (!conversationList) return;
@@ -777,9 +820,10 @@ async function runAgent() {
     return;
   }
 
+  const imageDataUrl = selectedImage?.dataUrl || null;
   agentConversation.push({
     role: "user",
-    content: value,
+    content: value + (imageDataUrl ? "\n[Image attached for this turn; image not saved]" : ""),
     createdAt: new Date().toISOString(),
   });
   const progressMessage = {
@@ -796,6 +840,7 @@ async function runAgent() {
 
   button.disabled = true;
   agentButton.disabled = true;
+  imageButton.disabled = true;
   debugButton.disabled = true;
   pipelineButton.disabled = true;
   status.textContent = "Agent is planning and calling tools...";
@@ -810,7 +855,7 @@ async function runAgent() {
     const response = await fetch("/agent/query/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_id: agentConversationId, question: value }),
+      body: JSON.stringify({ conversation_id: agentConversationId, question: value, image_data_url: imageDataUrl }),
     });
 
     if (!response.ok) {
@@ -836,6 +881,7 @@ async function runAgent() {
           streaming: false,
         });
         status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
+        if (imageDataUrl) clearSelectedImage();
       } else if (event.type === "error") {
         const errorMessage = event.message || "Agent request failed.";
         Object.assign(progressMessage, {
@@ -875,6 +921,7 @@ async function runAgent() {
     result.classList.add("visible");
     button.disabled = false;
     agentButton.disabled = false;
+    imageButton.disabled = false;
     debugButton.disabled = false;
     pipelineButton.disabled = false;
   }
