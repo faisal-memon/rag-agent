@@ -1443,7 +1443,11 @@ body.agent-only main {
 .conversation-item.active { border-color: var(--accent); }
 .conversation-item small { color: var(--muted); }
 .conversation-delete { width: 30px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
-.conversation-delete:hover { color: var(--danger, #d14); border-color: var(--danger, #d14); }
+.conversation-delete:active { color: var(--danger, #d14); border-color: var(--danger, #d14); }
+
+@media (hover: hover) {
+  .conversation-delete:hover { color: var(--danger, #d14); border-color: var(--danger, #d14); }
+}
 body.agent-only main { margin-left: 300px; }
 body.agent-only main > * { min-width: 0; max-width: 100%; }
 
