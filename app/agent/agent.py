@@ -24,6 +24,7 @@ MAX_REASONING_TOTAL_CHARS = 48000
 MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
 MAX_DOCUMENT_SEARCH_CALLS = 3
+MAX_PLANNER_FORMAT_ATTEMPTS = 2
 DOCUMENT_SEARCH_TOOLS = frozenset(
     {"search_documents", "keyword_search", "semantic_search", "hybrid_search", "grep_documents"}
 )
@@ -489,12 +490,20 @@ def _presentation_guidance(response_mode: Literal["text", "spoken"]) -> str:
     )
 
 
+def _planner_response_format(settings: ApiSettings, planner_schema: str) -> dict[str, Any] | None:
+    """Use llama.cpp's grammar-backed schema mode for planner decisions."""
+    if getattr(settings, "llm_provider", None) != "llamacpp":
+        return None
+    return {"type": "json_schema", "schema": json.loads(planner_schema)}
+
+
 def _decide_next_action(
     agent: Agent,
     turn: TurnContext,
     decision_feedback: str,
 ) -> dict:
     catalog = turn.catalog or tools.STATIC_TOOL_CATALOG
+    planner_schema = protocol.planner_action_schema(catalog)
     prompt = agent.render_prompt(
         "planner.md",
         {
@@ -503,7 +512,7 @@ def _decide_next_action(
             "memory_path": turn.memory_state.get("path") or "not configured",
             "memory": memory.prompt_content(turn.memory_state),
             "tool_descriptions": tools.render_tool_descriptions(catalog),
-            "planner_action_schema": protocol.planner_action_schema(catalog),
+            "planner_action_schema": planner_schema,
             "conversation": turn.conversation or "(none)",
             "question": turn.question,
             "profile_name": turn.profile_name or memory.profile_name(turn.memory_state) or "(not provided)",
@@ -513,103 +522,84 @@ def _decide_next_action(
             "presentation_guidance": _presentation_guidance(turn.response_mode),
         },
     )
-    text = _complete_text(
-        turn.client,
-        turn.model,
-        system=f"{agent.render_system_prompt()}\n\nChoose one safe bounded action at a time. Return JSON only.",
-        prompt=prompt,
-        settings=agent.settings,
-        reasoning=turn.reasoning,
-        phase="planning",
-        **({"image_data_url": turn.image_data_url} if turn.image_data_url else {}),
-    )
-    _append_debug(turn.debug, "model_response", phase="planning", raw_text=text)
-    native_step = protocol.extract_native_tool_call(text, catalog)
-    if native_step:
-        _append_debug(
-            turn.debug,
-            "parsed_action",
+    base_system = f"{agent.render_system_prompt()}\n\nChoose one safe bounded action at a time. Return JSON only."
+    response_format = _planner_response_format(agent.settings, planner_schema)
+    parse_error: Exception | None = None
+    for attempt in range(MAX_PLANNER_FORMAT_ATTEMPTS):
+        system = base_system
+        if attempt:
+            system = f"{base_system}\n\nYour prior response was not valid JSON. Return exactly one object matching the schema."
+        text = _complete_text(
+            turn.client,
+            turn.model,
+            system=system,
+            prompt=prompt,
+            settings=agent.settings,
+            reasoning=turn.reasoning,
             phase="planning",
-            parsed={"action": "tool", **native_step, "format": "native_tool_call"},
+            response_format=response_format,
+            temperature=0,
+            **({"image_data_url": turn.image_data_url} if turn.image_data_url else {}),
         )
-        return {"action": "tool", **native_step}
+        _append_debug(turn.debug, "model_response", phase="planning", attempt=attempt + 1, raw_text=text)
+        native_step = protocol.extract_native_tool_call(text, catalog)
+        if native_step:
+            _append_debug(
+                turn.debug,
+                "parsed_action",
+                phase="planning",
+                parsed={"action": "tool", **native_step, "format": "native_tool_call"},
+            )
+            return {"action": "tool", **native_step}
 
-    try:
-        raw_json = protocol.extract_json_object(text)
-        parsed = json.loads(raw_json)
-        _append_debug(turn.debug, "parsed_action", phase="planning", parsed=parsed)
-        if parsed.get("action") == "answer":
-            answer = str(parsed.get("answer") or "").strip()
-            if answer:
-                evidence_status = str(parsed.get("evidence_status") or "").strip()
-                if evidence_status not in {"supported", "not_found", "casual"}:
-                    evidence_status = "not_found" if _looks_like_not_found(answer) else "supported"
-                    if not turn.tool_results:
-                        evidence_status = "casual"
-                continue_listening = parsed.get("continue_listening")
-                if not isinstance(continue_listening, bool):
-                    continue_listening = False
-                return {
-                    "action": "answer",
-                    "evidence_status": evidence_status,
-                    "answer": answer,
-                    "continue_listening": continue_listening,
-                }
-        if parsed.get("action") == "tool" or catalog.get(str(parsed.get("action") or "")):
-            step = protocol.sanitize_planner_action(parsed, catalog)
-            if step:
-                return {"action": "tool", **step}
+        try:
+            raw_json = protocol.extract_json_object(text)
+            parsed = json.loads(raw_json)
+            _append_debug(turn.debug, "parsed_action", phase="planning", parsed=parsed)
+            if parsed.get("action") == "answer":
+                answer = str(parsed.get("answer") or "").strip()
+                if answer:
+                    evidence_status = str(parsed.get("evidence_status") or "").strip()
+                    if evidence_status not in {"supported", "not_found", "casual"}:
+                        evidence_status = "not_found" if _looks_like_not_found(answer) else "supported"
+                        if not turn.tool_results:
+                            evidence_status = "casual"
+                    continue_listening = parsed.get("continue_listening")
+                    if not isinstance(continue_listening, bool):
+                        continue_listening = False
+                    return {
+                        "action": "answer",
+                        "evidence_status": evidence_status,
+                        "answer": answer,
+                        "continue_listening": continue_listening,
+                    }
+            if parsed.get("action") == "tool" or catalog.get(str(parsed.get("action") or "")):
+                step = protocol.sanitize_planner_action(parsed, catalog)
+                if step:
+                    return {"action": "tool", **step}
+                _append_debug(
+                    turn.debug,
+                    "controller_decision",
+                    phase="planning",
+                    decision="reject_tool",
+                    reason="tool_call_failed_sanitization",
+                    parsed=parsed,
+                )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            parse_error = exc
             _append_debug(
                 turn.debug,
-                "controller_decision",
+                "parse_error",
                 phase="planning",
-                decision="reject_tool",
-                reason="tool_call_failed_sanitization",
-                parsed=parsed,
+                attempt=attempt + 1,
+                reason=str(exc),
+                raw_text=text,
             )
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        if not turn.tool_results and _is_agent_configuration_question(turn.question) and text.strip():
-            _append_debug(
-                turn.debug,
-                "controller_decision",
-                phase="planning",
-                decision="fallback_prose_answer",
-                reason="planner_prose_for_agent_configuration_question",
-            )
-            return {
-                "action": "answer",
-                "evidence_status": "casual",
-                "answer": text.strip(),
-            }
-        if (
-            not turn.tool_results
-            and text.strip()
-            and not _question_requires_tools(turn.question, catalog)
-            and not text.lstrip().startswith(("{", "<|tool_call|>"))
-        ):
-            _append_debug(
-                turn.debug,
-                "controller_decision",
-                phase="planning",
-                decision="fallback_prose_answer",
-                reason="non_json_response_for_casual_request",
-            )
-            return {
-                "action": "answer",
-                "evidence_status": "casual",
-                "answer": text.strip(),
-            }
-        _append_debug(
-            turn.debug,
-            "parse_error",
-            phase="planning",
-            reason=str(exc),
-            raw_text=text,
-        )
-        if not turn.tool_results:
-            raise RuntimeError("Planner returned an invalid action; please try again.") from exc
+            continue
 
     if not turn.tool_results:
+        if parse_error is not None:
+            raise RuntimeError("Planner did not return a valid JSON action after retrying.") from parse_error
         _append_debug(
             turn.debug,
             "controller_decision",
@@ -629,39 +619,6 @@ def _decide_next_action(
         reason="planner_output_unusable_with_existing_tool_results",
     )
     return {"action": "synthesize"}
-
-
-def _is_agent_configuration_question(question: str) -> bool:
-    question_lower = question.lower()
-    return any(
-        phrase in question_lower
-        for phrase in (
-            "system prompt",
-            "prompt",
-            "your instructions",
-            "agent behavior",
-            "your behavior",
-            "your tools",
-            "your configuration",
-        )
-    )
-
-
-def _question_requires_tools(question: str, catalog: tools.ToolCatalog) -> bool:
-    """Keep plain-text planner fallback away from requests needing evidence or actions."""
-    normalized = question.casefold()
-    tool_terms = {
-        "current", "latest", "today", "tomorrow", "weather", "alert", "route",
-        "schedule", "class", "lunch", "news", "document", "file", "search",
-        "find", "look up", "check", "use the", "mcp", "tool", "remember",
-    }
-    if any(term in normalized for term in tool_terms):
-        return True
-    return any(
-        capability in normalized
-        for definition in catalog.tools
-        for capability in definition.capabilities
-    )
 
 
 def _needs_profile_name(question: str) -> bool:
@@ -751,6 +708,8 @@ def _complete_text(
     reasoning: list[dict] | None = None,
     phase: str = "",
     image_data_url: str | None = None,
+    response_format: dict[str, Any] | None = None,
+    temperature: float | None = None,
 ) -> str:
     logger.info(
         "Agent model request (thread=%s, phase=%s, model=%s): system=%r prompt=%r",
@@ -763,12 +722,18 @@ def _complete_text(
                 {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {"url": image_data_url}},
             ]
+        request_options: dict[str, Any] = {}
+        if response_format is not None:
+            request_options["response_format"] = response_format
+        if temperature is not None:
+            request_options["temperature"] = temperature
         response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_content},
             ],
+            **request_options,
         )
         message = response.choices[0].message
         reasoning_text = _message_reasoning_content(message)

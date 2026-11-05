@@ -24,6 +24,7 @@ from app.agent.agent import (
     TurnContext,
     _conversation_context,
     _complete_text,
+    _planner_response_format,
 )
 from app.agent.config import get_api_settings
 from app.agent import tools
@@ -75,6 +76,21 @@ def _turn(
 
 
 class AgentTest(unittest.TestCase):
+    def test_llamacpp_planner_uses_schema_constrained_json(self) -> None:
+        schema = _planner_action_schema()
+
+        response_format = _planner_response_format(
+            SimpleNamespace(llm_provider="llamacpp"), schema
+        )
+
+        self.assertEqual("json_schema", response_format["type"])
+        self.assertEqual(json.loads(schema), response_format["schema"])
+
+    def test_non_llamacpp_planner_does_not_send_llamacpp_response_format(self) -> None:
+        self.assertIsNone(
+            _planner_response_format(SimpleNamespace(llm_provider="openai"), _planner_action_schema())
+        )
+
     def test_turn_context_keeps_mutable_request_state_isolated(self) -> None:
         first = _turn("First question")
         second = _turn("Second question")
@@ -437,7 +453,7 @@ class AgentTest(unittest.TestCase):
             ]
         )
 
-        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase="", **_kwargs):
             prompts.append((system, prompt))
             return next(responses)
 
@@ -478,7 +494,7 @@ class AgentTest(unittest.TestCase):
     def test_agent_includes_saved_memory_in_planning_prompt(self) -> None:
         prompts = []
 
-        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase="", **_kwargs):
             prompts.append((system, prompt))
             return '{"action":"answer","evidence_status":"casual","answer":"Should I remember that?"}'
 
@@ -643,7 +659,7 @@ class AgentTest(unittest.TestCase):
             ]
             prompts = []
 
-            def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
+            def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase="", **_kwargs):
                 prompts.append(prompt)
                 return '{"action":"answer","evidence_status":"supported","answer":"I need document evidence."}'
 
@@ -691,7 +707,7 @@ class AgentTest(unittest.TestCase):
     def test_agent_passes_personal_system_prompt_to_planner(self) -> None:
         prompts = []
 
-        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase="", **_kwargs):
             prompts.append((system, prompt))
             return '{"action":"answer","evidence_status":"casual","answer":"Hi!"}'
 
@@ -751,41 +767,29 @@ class AgentTest(unittest.TestCase):
         self.assertEqual({"type": "object", "keys": ["choices"]}, events[2]["summary"])
         self.assertEqual({"choices": ["Pasta"]}, events[2]["result"])
 
-    def test_agent_accepts_plain_prose_for_agent_configuration_question(self) -> None:
-        prose_answer = "Add the rule to the planner prompt so candidate files are inspected."
+    def test_agent_retries_a_non_json_planner_response(self) -> None:
+        responses = iter(
+            [
+                "The first call checked the light, and the second turned it off.",
+                (
+                    '{"action":"answer","evidence_status":"casual",'
+                    '"answer":"The first call checked the light, and the second turned it off.",'
+                    '"continue_listening":false}'
+                ),
+            ]
+        )
 
         with (
             patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.agent.agent._complete_text", return_value=prose_answer),
+            patch("app.agent.agent._complete_text", side_effect=lambda *_args, **_kwargs: next(responses)) as complete,
             patch("app.agent.agent.Agent._execute_tool") as execute_tool,
         ):
-            result = _answer("What change can I make to your system prompt?")
+            result = _answer("Why did you make two tool calls?")
 
-        self.assertEqual(prose_answer, result["answer"])
+        self.assertEqual("The first call checked the light, and the second turned it off.", result["answer"])
         self.assertEqual([], result["tool_results"])
-        self.assertIn(
-            "fallback_prose_answer",
-            [event.get("decision") for event in result["debug"]],
-        )
-        self.assertNotIn("parse_error", [event["event"] for event in result["debug"]])
-        execute_tool.assert_not_called()
-
-    def test_agent_accepts_plain_text_answer_for_casual_request(self) -> None:
-        prose_answer = "Why don't scientists trust atoms? They make up everything!"
-
-        with (
-            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
-            patch("app.agent.agent._complete_text", return_value=prose_answer),
-            patch("app.agent.agent.Agent._execute_tool") as execute_tool,
-        ):
-            result = _answer("Tell me a short joke.")
-
-        self.assertEqual(prose_answer, result["answer"])
-        self.assertEqual([], result["tool_results"])
-        self.assertIn(
-            "fallback_prose_answer",
-            [event.get("decision") for event in result["debug"]],
-        )
+        self.assertEqual(2, complete.call_count)
+        self.assertIn("parse_error", [event["event"] for event in result["debug"]])
         execute_tool.assert_not_called()
 
     def test_agent_rejects_not_found_after_only_one_search_method(self) -> None:
@@ -811,7 +815,7 @@ class AgentTest(unittest.TestCase):
         )
         prompts = []
 
-        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase="", **_kwargs):
             prompts.append((system, prompt))
             return next(responses)
 
@@ -848,7 +852,7 @@ class AgentTest(unittest.TestCase):
             ]
         )
 
-        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase=""):
+        def complete_text(_client, _model, system, prompt, settings=None, reasoning=None, phase="", **_kwargs):
             return next(responses)
 
         chunk = {
