@@ -263,8 +263,11 @@ def agent_query(request: Request, payload: AgentQueryRequest) -> AgentQueryRespo
     history = saved_history
     profile_name = _conversation_profile_name(request)
     answer_kwargs = {"profile_name": profile_name} if profile_name else {}
+    if payload.image_data_url:
+        answer_kwargs["image_data_url"] = payload.image_data_url
     result = _agent(request).answer(payload.question, history=history, **answer_kwargs)
-    append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
+    saved_question = payload.question + ("\n[Image attached for this turn; image not saved]" if payload.image_data_url else "")
+    append_messages(user, conversation_id, [{"role": "user", "content": saved_question}, {"role": "assistant", "content": result["answer"]}])
     return AgentQueryResponse(conversation_id=conversation_id, **result)
 
 @router.get("/agent/conversations")
@@ -319,8 +322,11 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
         try:
             profile_name = _conversation_profile_name(request)
             answer_kwargs = {"profile_name": profile_name} if profile_name else {}
+            if payload.image_data_url:
+                answer_kwargs["image_data_url"] = payload.image_data_url
             result = agent.answer(payload.question, history=history, on_progress=events.put, **answer_kwargs)
-            append_messages(user, conversation_id, [{"role": "user", "content": payload.question}, {"role": "assistant", "content": result["answer"]}])
+            saved_question = payload.question + ("\n[Image attached for this turn; image not saved]" if payload.image_data_url else "")
+            append_messages(user, conversation_id, [{"role": "user", "content": saved_question}, {"role": "assistant", "content": result["answer"]}])
             result["conversation_id"] = conversation_id
             events.put({"type": "complete", "result": result})
         except Exception as exc:  # pragma: no cover - exercised by the browser error path

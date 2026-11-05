@@ -43,6 +43,7 @@ class TurnContext:
     max_steps: int
     conversation: str
     response_mode: Literal["text", "spoken"] = "text"
+    image_data_url: str | None = None
     memory_state: dict = field(default_factory=dict)
     plan: list[dict] = field(default_factory=list)
     tool_results: list[dict] = field(default_factory=list)
@@ -79,6 +80,7 @@ class Agent:
         on_progress: ProgressCallback | None = None,
         profile_name: str | None = None,
         response_mode: Literal["text", "spoken"] = "text",
+        image_data_url: str | None = None,
     ) -> dict:
         """Answer one user question using bounded model-selected tools."""
         logger.info("Agent input (thread=%s): %r", threading.get_ident(), question)
@@ -90,6 +92,7 @@ class Agent:
             on_progress=on_progress,
             profile_name=profile_name,
             response_mode=response_mode,
+            image_data_url=image_data_url,
             max_steps=self.settings.agent_max_steps,
             conversation=_conversation_context(history or []),
             catalog=self.tool_catalog(),
@@ -518,6 +521,7 @@ def _decide_next_action(
         settings=agent.settings,
         reasoning=turn.reasoning,
         phase="planning",
+        **({"image_data_url": turn.image_data_url} if turn.image_data_url else {}),
     )
     _append_debug(turn.debug, "model_response", phase="planning", raw_text=text)
     native_step = protocol.extract_native_tool_call(text, catalog)
@@ -732,6 +736,7 @@ def _synthesize_answer(agent: Agent, turn: TurnContext) -> str:
         settings=agent.settings,
         reasoning=turn.reasoning,
         phase="answer",
+        **({"image_data_url": turn.image_data_url} if turn.image_data_url else {}),
     )
     _append_debug(turn.debug, "model_response", phase="answer", raw_text=answer)
     return answer
@@ -745,17 +750,24 @@ def _complete_text(
     settings: ApiSettings,
     reasoning: list[dict] | None = None,
     phase: str = "",
+    image_data_url: str | None = None,
 ) -> str:
     logger.info(
         "Agent model request (thread=%s, phase=%s, model=%s): system=%r prompt=%r",
         threading.get_ident(), phase, model, system, prompt,
     )
     if settings.llm_provider == "llamacpp":
+        user_content: str | list[dict[str, object]] = prompt
+        if image_data_url:
+            user_content = [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+            ]
         response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": user_content},
             ],
         )
         message = response.choices[0].message
@@ -767,7 +779,16 @@ def _complete_text(
         )
         return message.content or ""
 
-    response = client.responses.create(model=model, input=f"{system}\n\n{prompt}")
+    response_input: str | list[dict[str, object]] = f"{system}\n\n{prompt}"
+    if image_data_url:
+        response_input = [
+            {"role": "system", "content": [{"type": "input_text", "text": system}]},
+            {"role": "user", "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": image_data_url},
+            ]},
+        ]
+    response = client.responses.create(model=model, input=response_input)
     logger.info(
         "Agent model response (thread=%s, phase=%s): text=%r",
         threading.get_ident(), phase, response.output_text,

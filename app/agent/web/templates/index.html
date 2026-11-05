@@ -46,6 +46,13 @@
         </nav>
       </section>
       <section class="query-card">
+        <input id="agent-image-input" type="file" accept="image/png,image/jpeg" hidden />
+        <input id="agent-camera-input" type="file" accept="image/png,image/jpeg" capture="environment" hidden />
+        <button class="secondary icon-button" id="agent-image" type="button" aria-label="Attach image" aria-controls="agent-image-menu" aria-expanded="false" title="Attach image">+</button>
+        <div id="agent-image-menu" class="agent-image-menu" hidden>
+          <button class="secondary" id="agent-take-photo" type="button">Take photo</button>
+          <button class="secondary" id="agent-choose-photo" type="button">Choose photo</button>
+        </div>
         <label for="question">__INPUT_LABEL__</label>
         <textarea id="question" placeholder="__INPUT_PLACEHOLDER__"></textarea>
         <div class="actions">
@@ -66,6 +73,11 @@
           <button class="secondary" id="debug">Debug retrieval</button>
           <button class="secondary" id="pipeline">Pipeline status</button>
           <span class="status" id="status">Ready</span>
+        </div>
+        <div id="agent-image-preview" class="agent-image-preview" hidden>
+          <img id="agent-image-thumbnail" alt="Selected image" />
+          <span id="agent-image-name"></span>
+          <button class="secondary" id="agent-image-remove" type="button" aria-label="Remove attached image">Remove</button>
         </div>
       </section>
       <section class="result" id="result">

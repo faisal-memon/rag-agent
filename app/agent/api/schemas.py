@@ -1,5 +1,8 @@
 from datetime import datetime
 from typing import Any, Literal
+import base64
+import binascii
+import re
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -31,6 +34,27 @@ class Citation(BaseModel):
 class AgentQueryRequest(BaseModel):
     conversation_id: str | None = None
     question: str = Field(min_length=1)
+    image_data_url: str | None = Field(default=None, max_length=7_000_000)
+
+    @field_validator("image_data_url")
+    @classmethod
+    def validate_image_data_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        match = re.fullmatch(r"data:image/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})", value)
+        if not match:
+            raise ValueError("Attach one PNG or JPEG image.")
+        try:
+            image = base64.b64decode(match.group(2), validate=True)
+        except binascii.Error as exc:
+            raise ValueError("The image could not be read.") from exc
+        if not image or len(image) > 5 * 1024 * 1024:
+            raise ValueError("Keep images under 5 MB.")
+        if match.group(1) == "png" and not image.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("The selected file is not a PNG image.")
+        if match.group(1) == "jpeg" and not image.startswith(b"\xff\xd8\xff"):
+            raise ValueError("The selected file is not a JPEG image.")
+        return value
 
 
 class TranscriptResponse(BaseModel):
