@@ -571,6 +571,11 @@ class ESPHomeVoiceClient:
             self._settings.voice_follow_up_timeout_seconds > 0
             and result.get("continue_listening") is True
         )
+        logger.info(
+            "ReSpeaker follow-up decision (continue_listening=%s, timeout_seconds=%d)",
+            continue_listening,
+            self._settings.voice_follow_up_timeout_seconds,
+        )
         await self._speak_reply(
             answer,
             conversation_id,
