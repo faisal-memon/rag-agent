@@ -870,6 +870,8 @@ async function runAgent() {
   saveAgentConversation();
   renderAgentConversation();
   question.value = "";
+  clearSelectedImage();
+  setImageMenuOpen(false);
 
   button.disabled = true;
   agentButton.disabled = true;
@@ -914,7 +916,6 @@ async function runAgent() {
           streaming: false,
         });
         status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
-        if (imageDataUrl) clearSelectedImage();
       } else if (event.type === "error") {
         const errorMessage = event.message || "Agent request failed.";
         Object.assign(progressMessage, {
