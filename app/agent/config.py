@@ -88,6 +88,7 @@ class ApiSettings(ConfiguredSettings):
         default=300.0, gt=0, alias="MCP_REGISTRY_REFRESH_INTERVAL"
     )
     remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list)
+    remote_mcp_auth_token_file: Path | None = Field(default=None, alias="REMOTE_MCP_AUTH_TOKEN_FILE")
 
     @model_validator(mode="after")
     def validate_vad_windows(self) -> "ApiSettings":
@@ -109,6 +110,7 @@ def get_api_settings() -> ApiSettings:
                 "llamacpp_api_key",
                 "embedding_llamacpp_api_key",
                 "esphome_api_key",
+                "remote_mcp_auth_token_file",
             },
         )
     )
