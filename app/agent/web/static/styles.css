@@ -1698,10 +1698,10 @@ body.agent-only .status {
   }
 
   .page-nav {
-    position: absolute;
+    position: fixed;
     z-index: 6;
-    top: 48px;
-    left: 0;
+    top: calc(env(safe-area-inset-top) + 64px);
+    left: 8px;
     display: none;
     min-width: 190px;
     flex-direction: column;
