@@ -6,10 +6,6 @@ const pipelineButton = document.getElementById("pipeline");
 const question = document.getElementById("question");
 const imageButton = document.getElementById("agent-image");
 const imageInput = document.getElementById("agent-image-input");
-const cameraInput = document.getElementById("agent-camera-input");
-const imageMenu = document.getElementById("agent-image-menu");
-const takePhotoButton = document.getElementById("agent-take-photo");
-const choosePhotoButton = document.getElementById("agent-choose-photo");
 const imagePreview = document.getElementById("agent-image-preview");
 const imageThumbnail = document.getElementById("agent-image-thumbnail");
 const imageName = document.getElementById("agent-image-name");
@@ -52,40 +48,12 @@ let selectedImage = null;
 function clearSelectedImage() {
   selectedImage = null;
   imageInput.value = "";
-  cameraInput.value = "";
   imageThumbnail.removeAttribute("src");
   imageName.textContent = "";
   imagePreview.hidden = true;
 }
 
-function setImageMenuOpen(open) {
-  imageMenu.hidden = !open;
-  imageButton.setAttribute("aria-expanded", String(open));
-}
-
-imageButton.addEventListener("click", () => {
-  setImageMenuOpen(imageMenu.hidden);
-  if (!imageMenu.hidden) takePhotoButton.focus();
-});
-takePhotoButton.addEventListener("click", () => {
-  setImageMenuOpen(false);
-  cameraInput.click();
-});
-choosePhotoButton.addEventListener("click", () => {
-  setImageMenuOpen(false);
-  imageInput.click();
-});
-document.addEventListener("click", (event) => {
-  if (!imageMenu.hidden && !imageMenu.contains(event.target) && event.target !== imageButton) {
-    setImageMenuOpen(false);
-  }
-});
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !imageMenu.hidden) {
-    setImageMenuOpen(false);
-    imageButton.focus();
-  }
-});
+imageButton.addEventListener("click", () => imageInput.click());
 imageRemoveButton.addEventListener("click", clearSelectedImage);
 async function attachImage(file) {
   if (!file) return;
@@ -112,7 +80,6 @@ async function attachImage(file) {
   }
 }
 imageInput.addEventListener("change", () => attachImage(imageInput.files?.[0]));
-cameraInput.addEventListener("change", () => attachImage(cameraInput.files?.[0]));
 
 async function loadConversations() {
   if (!conversationList) return;
@@ -871,7 +838,6 @@ async function runAgent() {
   renderAgentConversation();
   question.value = "";
   clearSelectedImage();
-  setImageMenuOpen(false);
 
   button.disabled = true;
   agentButton.disabled = true;
