@@ -368,17 +368,17 @@ class AgentTest(unittest.TestCase):
             "- grep_documents: Search normalized Markdown with a literal case-insensitive text match.",
             descriptions,
         )
-        self.assertIn("- path_prefix: Optional source document directory prefix", descriptions)
+        self.assertIn("- path_prefix (optional; string): Optional source document directory prefix", descriptions)
         self.assertIn("source path, not a normalized Markdown path", descriptions)
         self.assertIn(
             "- remember: Append a concise Markdown bullet to the personal RAG memory file.",
             descriptions,
         )
-        self.assertIn("- entry: Durable memory bullet", descriptions)
+        self.assertIn("- entry (required; string): Durable memory bullet", descriptions)
         self.assertIn("- get_ocean_schedule: Get publicly listed Yoga Flow SF Ocean Avenue classes for a date.", descriptions)
         self.assertIn("- get_noe_schedule: Get publicly listed Yoga Flow SF Noe Valley classes for a date.", descriptions)
         self.assertIn("- get_upcoming_yoga_classes: Get the next upcoming Yoga Flow SF classes", descriptions)
-        self.assertIn("- day: Optional local calendar date in YYYY-MM-DD format.", descriptions)
+        self.assertIn("- day (optional; string): Optional local calendar date in YYYY-MM-DD format.", descriptions)
 
     def test_grep_documents_returns_bounded_context_and_line(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

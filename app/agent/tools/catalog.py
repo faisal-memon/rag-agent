@@ -45,8 +45,13 @@ class ToolCatalog:
         for tool in self.tools:
             descriptions.append(f"- {tool.name}: {tool.description}")
             descriptions.append("  Arguments:")
-            for name, schema in tool.input_schema.get("properties", {}).items():
-                descriptions.append(f"  - {name}: {schema.get('description') or 'No description provided.'}")
+            schema = tool.input_schema
+            required = set(schema.get("required", []))
+            for name, argument_schema in schema.get("properties", {}).items():
+                details = _render_argument_schema(argument_schema)
+                requirement = "required" if name in required else "optional"
+                description = argument_schema.get("description") or "No description provided."
+                descriptions.append(f"  - {name} ({requirement}; {details}): {description}")
         return "\n".join(descriptions)
 
     @property
@@ -56,6 +61,22 @@ class ToolCatalog:
     @property
     def tools(self) -> tuple[Tool, ...]:
         return tuple(self._tools.values())
+
+
+def _render_argument_schema(schema: dict[str, Any]) -> str:
+    """Render the parts of JSON Schema that prevent ambiguous tool arguments."""
+    value_type = schema.get("type")
+    if value_type == "array":
+        item_type = _render_argument_schema(schema.get("items", {}))
+        value_type = f"array of {item_type}"
+    elif value_type == "object":
+        value_type = "object"
+    elif not value_type:
+        value_type = "value"
+    enum = schema.get("enum")
+    if enum:
+        value_type += " (one of: " + ", ".join(repr(value) for value in enum) + ")"
+    return value_type
 
 
 class ToolCatalogManager:
