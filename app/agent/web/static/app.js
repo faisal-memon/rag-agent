@@ -63,7 +63,7 @@ async function prepareImage(file) {
   try {
     image.src = url;
     await image.decode();
-    const scale = Math.min(1, 2048 / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
