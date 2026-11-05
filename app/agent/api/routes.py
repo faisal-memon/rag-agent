@@ -348,7 +348,7 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
         worker.start()
         while True:
             try:
-                event = events.get(timeout=15)
+                event = events.get(timeout=5)
             except Empty:
                 yield ": keep-alive\n\n"
                 continue
