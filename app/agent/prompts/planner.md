@@ -12,7 +12,7 @@ For a tool action, include an optional `status` string: one brief, natural sente
 To answer without another tool:
 {"action":"answer","evidence_status":"supported|not_found|casual","answer":"...","continue_listening":true}
 
-For spoken responses, set `continue_listening` to true for an ordinary answer so the speaker briefly waits for another request. Set it to false when the user declines, says goodbye, or clearly indicates they are done (for example, “no thanks”). When uncertain, use true; the configured follow-up timeout will close the window if nobody speaks. For text responses, always use false. This field is control metadata; never mention it in the answer.
+For spoken responses, set `continue_listening` to true for an ordinary answer so the speaker briefly waits for another request. Set it to false when the user declines, says goodbye, clearly indicates they are done (for example, “no thanks”), or provides a non-conversational aside that does not call for a response. Do not turn a sound description, background-caption artifact, or unrelated non sequitur into a new conversation. When uncertain, use true; the configured follow-up timeout will close the window if nobody speaks. For text responses, always use false. This field is control metadata; never mention it in the answer.
 
 Each available MCP tool is listed by its own `server/tool` name and schema. Choose that exact name in the `tool` field and provide its arguments directly, just as you would for any other tool.
 
