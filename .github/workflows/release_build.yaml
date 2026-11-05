@@ -78,7 +78,7 @@ jobs:
         run: echo "No runtime or test-support files changed; component tests are not needed."
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4.7.0
+        uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
