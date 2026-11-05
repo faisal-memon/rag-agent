@@ -22,6 +22,34 @@ class ToolCatalogTest(unittest.TestCase):
         self.assertEqual("integer", tool.input_schema["properties"]["limit"]["type"])
         self.assertEqual(["query"], tool.input_schema["required"])
 
+    def test_rendered_descriptions_include_argument_shapes_and_required_status(self) -> None:
+        catalog = tools.ToolCatalog()
+        catalog.register(
+            MCPTool(
+                server="homeassistant",
+                tool_name="turn_off",
+                url="https://homeassistant.example/api/mcp",
+                tool_description="Turn off a device.",
+                schema={
+                    "type": "object",
+                    "required": ["domain"],
+                    "properties": {
+                        "domain": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Domains to turn off.",
+                        },
+                        "area": {"type": "string", "description": "Area name."},
+                    },
+                },
+            )
+        )
+
+        rendered = catalog.render_descriptions()
+
+        self.assertIn("domain (required; array of string): Domains to turn off.", rendered)
+        self.assertIn("area (optional; string): Area name.", rendered)
+
     def test_catalog_dispatches_static_tool(self) -> None:
         expected = [{"chunk_id": 1}]
         with patch("app.agent.tools.builtin.semantic_search", return_value=expected) as implementation:
