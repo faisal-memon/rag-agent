@@ -44,6 +44,7 @@ def build_tool_catalog(registry: dict | None = None) -> ToolCatalog:
                     url=str(server["url"]),
                     tool_description=str(definition.get("description") or ""),
                     schema=definition.get("inputSchema") or definition.get("input_schema") or {},
+                    auth_token_file=str(server.get("auth_token_file")) if server.get("auth_token_file") else None,
                 )
             )
     return catalog

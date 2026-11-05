@@ -29,6 +29,7 @@ class MCPTool(Tool):
     url: str = field(repr=False)
     tool_description: str
     schema: dict[str, Any]
+    auth_token_file: str | None = field(default=None, repr=False)
 
     @property
     def name(self) -> str:
@@ -47,7 +48,13 @@ class MCPTool(Tool):
         from app.agent.tools.integrations.mcp_registry import _call_tool_with_timeout
 
         try:
-            result = anyio.run(_call_tool_with_timeout, self.url, self.tool_name, arguments)
+            result = anyio.run(
+                _call_tool_with_timeout,
+                self.url,
+                self.tool_name,
+                arguments,
+                self.auth_token_file,
+            )
         except Exception as error:
             detail = "; ".join(_exception_messages(error))
             raise RuntimeError(f"MCP transport failed: {detail}") from error
