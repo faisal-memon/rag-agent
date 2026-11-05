@@ -44,6 +44,7 @@ let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 let selectedImage = null;
+let imagePreparing = false;
 
 function clearSelectedImage() {
   selectedImage = null;
@@ -55,19 +56,51 @@ function clearSelectedImage() {
 
 imageButton.addEventListener("click", () => imageInput.click());
 imageRemoveButton.addEventListener("click", clearSelectedImage);
+
+async function prepareImage(file) {
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    image.src = url;
+    await image.decode();
+    const scale = Math.min(1, 2048 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not prepare this photo.");
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.85, 0.7, 0.5]) {
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && blob.size <= 5 * 1024 * 1024) return blob;
+    }
+    throw new Error("Could not make this photo small enough. Try a cropped copy.");
+  } finally {
+    URL.revokeObjectURL(url);
+    image.src = "";
+  }
+}
+
 async function attachImage(file) {
   if (!file) return;
-  if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 5 * 1024 * 1024 || !file.size) {
+  if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 40 * 1024 * 1024 || !file.size) {
     clearSelectedImage();
-    status.textContent = "Choose a PNG or JPEG image under 5 MB.";
+    status.textContent = "Choose a PNG or JPEG photo under 40 MB.";
     return;
   }
+  clearSelectedImage();
+  imagePreparing = true;
+  imageButton.disabled = true;
+  status.textContent = "Preparing photo…";
   try {
+    const prepared = await prepareImage(file);
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = () => reject(new Error("Could not read the image."));
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(prepared);
     });
     selectedImage = { dataUrl, name: file.name };
     imageThumbnail.src = dataUrl;
@@ -77,6 +110,9 @@ async function attachImage(file) {
   } catch (error) {
     clearSelectedImage();
     status.textContent = error.message;
+  } finally {
+    imagePreparing = false;
+    imageButton.disabled = false;
   }
 }
 imageInput.addEventListener("change", () => attachImage(imageInput.files?.[0]));
@@ -814,6 +850,10 @@ async function runQuery(requestedOffset = 0) {
 }
 
 async function runAgent() {
+  if (imagePreparing) {
+    status.textContent = "Wait for the photo to finish preparing.";
+    return;
+  }
   const value = question.value.trim();
   if (!value) {
     status.textContent = "Type a question first.";
