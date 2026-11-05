@@ -126,6 +126,7 @@ form.addEventListener("submit", async (event) => {
   data.voice_vad_active_windows_required = Number(data.voice_vad_active_windows_required);
   data.voice_capture_limit_seconds = Number(data.voice_capture_limit_seconds);
   data.voice_follow_up_timeout_seconds = Number(data.voice_follow_up_timeout_seconds);
+  data.voice_follow_up_start_timeout_seconds = Number(data.voice_follow_up_start_timeout_seconds);
   data.home_latitude = data.home_latitude === "" ? null : Number(data.home_latitude);
   data.home_longitude = data.home_longitude === "" ? null : Number(data.home_longitude);
   data.memory_enabled = form.elements.memory_enabled.checked;

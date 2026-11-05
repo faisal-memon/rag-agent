@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import anyio
 import time
+from pathlib import Path
 from urllib.request import Request, urlopen
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
@@ -74,7 +75,12 @@ def get_mcp_registry() -> dict:
                     "description": "Manually configured remote MCP endpoint.",
                     "enabled": True,
                     "source": "remote",
-                    "tools": _list_tools(str(server.url)),
+                    "tools": _list_tools(str(server.url), settings.remote_mcp_auth_token_file),
+                    "auth_token_file": (
+                        str(settings.remote_mcp_auth_token_file)
+                        if settings.remote_mcp_auth_token_file
+                        else None
+                    ),
                 }
             )
         _registry_cache = {"servers": servers}
@@ -87,42 +93,59 @@ def get_mcp_registry() -> dict:
         return {"error": f"MCP registry request failed: {exc}"}
 
 
-async def _list_tools_async(url: str) -> list[dict]:
+def _auth_headers(token_file: Path | str | None) -> dict[str, str]:
+    if token_file is None:
+        return {}
+    token = Path(token_file).read_text(encoding="utf-8").strip()
+    if not token:
+        raise ValueError("MCP authentication token file is empty")
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def _list_tools_async(url: str, token_file: Path | str | None = None) -> list[dict]:
+    import httpx2
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
 
-    async with streamable_http_client(url) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.list_tools()
-            return [tool.model_dump(mode="json") for tool in result.tools]
+    async with httpx2.AsyncClient(headers=_auth_headers(token_file)) as http_client:
+        async with streamable_http_client(url, http_client=http_client) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.list_tools()
+                return [tool.model_dump(mode="json") for tool in result.tools]
 
 
-async def _list_tools_with_timeout(url: str) -> list[dict]:
+async def _list_tools_with_timeout(url: str, token_file: Path | str | None = None) -> list[dict]:
     with anyio.fail_after(5):
-        return await _list_tools_async(url)
+        return await _list_tools_async(url, token_file)
 
 
-def _list_tools(url: str) -> list[dict] | dict:
+def _list_tools(url: str, token_file: Path | str | None = None) -> list[dict] | dict:
     if not url:
         return {"error": "MCP server has no URL."}
     try:
-        return anyio.run(_list_tools_with_timeout, url)
+        return anyio.run(_list_tools_with_timeout, url, token_file)
     except Exception as exc:  # pragma: no cover - network failures
         return {"error": f"MCP tool discovery failed: {exc}"}
 
 
-async def _call_tool_async(url: str, name: str, arguments: dict) -> object:
+async def _call_tool_async(
+    url: str, name: str, arguments: dict, token_file: Path | str | None = None
+) -> object:
+    import httpx2
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
 
-    async with streamable_http_client(url) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool(name, arguments)
-            return result.model_dump(mode="json")
+    async with httpx2.AsyncClient(headers=_auth_headers(token_file)) as http_client:
+        async with streamable_http_client(url, http_client=http_client) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(name, arguments)
+                return result.model_dump(mode="json")
 
 
-async def _call_tool_with_timeout(url: str, name: str, arguments: dict) -> object:
+async def _call_tool_with_timeout(
+    url: str, name: str, arguments: dict, token_file: Path | str | None = None
+) -> object:
     with anyio.fail_after(10):
-        return await _call_tool_async(url, name, arguments)
+        return await _call_tool_async(url, name, arguments, token_file)

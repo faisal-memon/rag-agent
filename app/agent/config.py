@@ -61,6 +61,9 @@ class ApiSettings(ConfiguredSettings):
     voice_follow_up_timeout_seconds: int = Field(
         default=8, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
     )
+    voice_follow_up_start_timeout_seconds: int = Field(
+        default=3, ge=0, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
+    )
     piper_host: str = Field(default="piper-piper-1", alias="PIPER_HOST")
     piper_port: int = Field(default=10200, ge=1, le=65535, alias="PIPER_PORT")
     piper_voice: str = Field(default="en_US-lessac-medium", alias="PIPER_VOICE")
@@ -85,6 +88,7 @@ class ApiSettings(ConfiguredSettings):
         default=300.0, gt=0, alias="MCP_REGISTRY_REFRESH_INTERVAL"
     )
     remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list)
+    remote_mcp_auth_token_file: Path | None = Field(default=None, alias="REMOTE_MCP_AUTH_TOKEN_FILE")
 
     @model_validator(mode="after")
     def validate_vad_windows(self) -> "ApiSettings":
@@ -106,6 +110,7 @@ def get_api_settings() -> ApiSettings:
                 "llamacpp_api_key",
                 "embedding_llamacpp_api_key",
                 "esphome_api_key",
+                "remote_mcp_auth_token_file",
             },
         )
     )

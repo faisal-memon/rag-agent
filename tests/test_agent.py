@@ -1000,6 +1000,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn('src="/static/settings.js"', page)
         self.assertIn('aria-controls="voice-panel"', page)
         self.assertIn('name="voice_capture_limit_seconds"', page)
+        self.assertIn('name="voice_follow_up_start_timeout_seconds"', page)
 
 
 if __name__ == "__main__":
