@@ -43,6 +43,15 @@ let pendingConversation = false;
 let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
+
+function redirectToLoginIfNeeded(response) {
+  const contentType = response.headers.get("content-type") || "";
+  const followedLoginRedirect = response.redirected && contentType.includes("text/html");
+  if (response.status !== 401 && !followedLoginRedirect) return false;
+
+  window.location.assign(response.redirected && response.url ? response.url : window.location.href);
+  return true;
+}
 let selectedImage = null;
 let imagePreparing = false;
 
@@ -121,6 +130,7 @@ async function loadConversations() {
   if (!conversationList) return;
   try {
     const response = await fetch("/agent/conversations");
+    if (redirectToLoginIfNeeded(response)) return;
     if (!response.ok) {
       conversationList.innerHTML = response.status === 401
         ? '<div class="conversation-empty">Sign in to load conversations.</div>'
@@ -144,6 +154,7 @@ async function loadConversations() {
 async function deleteConversation(conversationId) {
   if (!window.confirm("Delete this conversation?")) return;
   const response = await fetch(`/agent/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
+  if (redirectToLoginIfNeeded(response)) return;
   if (!response.ok) {
     status.textContent = "Unable to delete that conversation.";
     status.classList.add("error");
@@ -162,6 +173,7 @@ async function deleteConversation(conversationId) {
 async function loadConversation(conversationId) {
   try {
     const response = await fetch(`/agent/conversations/${encodeURIComponent(conversationId)}`);
+    if (redirectToLoginIfNeeded(response)) return;
     if (!response.ok) throw new Error(`conversation load failed (${response.status})`);
     agentConversationId = conversationId;
     agentConversation = restoreAgentConversation(await response.json());
@@ -814,6 +826,7 @@ async function runQuery(requestedOffset = 0) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: value, mode: retrievalMode, limit: debugLimit, offset }),
     });
+    if (redirectToLoginIfNeeded(response)) return;
 
     if (!response.ok) {
       throw new Error(`Retrieval failed with HTTP ${response.status}`);
@@ -898,6 +911,8 @@ async function runAgent() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ conversation_id: agentConversationId, question: value, image_data_url: imageDataUrl }),
     });
+
+    if (redirectToLoginIfNeeded(response)) return;
 
     if (!response.ok) {
       throw new Error(`Agent query failed with HTTP ${response.status}`);
@@ -999,6 +1014,7 @@ async function toggleRecording() {
         const form = new FormData();
         form.append("audio", audio, "recording.webm");
         const response = await fetch("/agent/transcribe", { method: "POST", body: form });
+        if (redirectToLoginIfNeeded(response)) return;
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.detail || "Transcription failed.");
@@ -1039,6 +1055,7 @@ async function loadPipelineStatus() {
 
   try {
     const response = await fetch("/debug/pipeline?limit=10");
+    if (redirectToLoginIfNeeded(response)) return;
     if (!response.ok) {
       throw new Error(`Pipeline status failed with HTTP ${response.status}`);
     }

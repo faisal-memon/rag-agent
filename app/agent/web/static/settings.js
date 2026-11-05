@@ -19,7 +19,7 @@ function addRemoteMCPServer(name = "", url = "") {
   nameInput.name = "remote_mcp_server_name";
   nameInput.required = true;
   nameInput.maxLength = 40;
-  nameInput.pattern = "[A-Za-z0-9][A-Za-z0-9_-]*";
+  nameInput.pattern = "[A-Za-z0-9][A-Za-z0-9 _-]*";
   nameInput.autocomplete = "off";
   nameInput.placeholder = "wikipedia";
   nameInput.value = name;
@@ -74,6 +74,25 @@ function setStatus(message) {
   status.textContent = message;
 }
 
+async function responseErrorMessage(response, fallback) {
+  try {
+    const payload = await response.json();
+    const detail = payload?.detail;
+    if (Array.isArray(detail)) {
+      return detail.map((item) => {
+        if (typeof item === "string") return item;
+        const location = Array.isArray(item?.loc) ? item.loc.join(".") : "Settings";
+        return `${location}: ${item?.msg || "Invalid value"}`;
+      }).join("; ");
+    }
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object") return detail.message || JSON.stringify(detail);
+  } catch (error) {
+    console.warn("Unable to read settings error", error);
+  }
+  return fallback;
+}
+
 function fillForm(settings) {
   for (const [name, value] of Object.entries(settings)) {
     const input = form.elements.namedItem(name);
@@ -125,7 +144,7 @@ form.addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    if (!response.ok) throw new Error((await response.json()).detail || "Could not save settings");
+    if (!response.ok) throw new Error(await responseErrorMessage(response, "Could not save settings"));
     fillForm(await response.json());
     setStatus("Saved. New chats will use these settings.");
   } catch (error) {
