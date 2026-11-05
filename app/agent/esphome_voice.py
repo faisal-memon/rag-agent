@@ -166,6 +166,7 @@ class ESPHomeVoiceClient:
             handle_stop=self._handle_session_stop,
             handle_audio=self._handle_audio,
         )
+        self._finish_voice_run(error="api-reconnected")
         device_id = _stable_device_id(info.mac_address, self._settings.esphome_device_host)
         self._device_id = device_id
         self._device_name = info.name or self._device_name
@@ -527,6 +528,7 @@ class ESPHomeVoiceClient:
                 await self._speak_progress(message, conversation_id)
 
         progress_task = asyncio.create_task(announce_progress())
+        result = None
         try:
             self._record_activity("Assistant", "started")
             result = await asyncio.to_thread(
@@ -542,15 +544,25 @@ class ESPHomeVoiceClient:
                 "ReSpeaker agent request failed (conversation=%s)",
                 conversation_id,
             )
-            return
         finally:
-            progress_queue.put_nowait(None)
-            await progress_task
+            if result is None:
+                progress_task.cancel()
+            else:
+                progress_queue.put_nowait(None)
+            try:
+                await progress_task
+            except asyncio.CancelledError:
+                pass
+
+        if result is None:
+            self._finish_voice_run(error="assistant-failed")
+            return
 
         answer = str(result.get("answer") or "").strip()
         if not answer:
             self._record_activity("Assistant", "failed", detail="Empty response")
             logger.warning("ReSpeaker agent returned an empty answer (conversation=%s)", conversation_id)
+            self._finish_voice_run(error="empty-answer")
             return
         assistant_created_at = datetime.now(timezone.utc)
         try:
@@ -686,12 +698,17 @@ class ESPHomeVoiceClient:
             self._record_activity("Speech generation", "failed", duration_ms=self._stage_ms(stage_started))
             self._finish_voice_run()
 
-    def _finish_voice_run(self) -> None:
+    def _finish_voice_run(self, *, error: str | None = None) -> None:
         """End the speaker's active turn after playback cannot be completed."""
         self._follow_up_pending = False
         if self._client is None:
             return
         try:
+            if error:
+                self._client.send_voice_assistant_event(
+                    VoiceAssistantEventType.VOICE_ASSISTANT_ERROR,
+                    {"code": error, "message": "Voice request ended. Please try again."},
+                )
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
                 {"conversation_id": "", "continue_conversation": "0"},

@@ -109,6 +109,25 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
         self.assertIsNone(self.client._activity_write)
 
+    async def test_model_failure_ends_speaker_run_without_follow_up(self):
+        await self.client._handle_session_start("model-failure", 0, None, None)
+        await self.client._handle_audio(b"\x01\x00")
+        self.client._client = MagicMock()
+        self.client._device_id = "speaker-test"
+        self.client._agent = MagicMock()
+        self.client._agent.answer.side_effect = ConnectionError("Model restarted")
+        self.client._follow_up_pending = True
+        with (
+            patch("app.agent.esphome_voice.transcribe_audio", return_value="What is the weather?"),
+            patch("app.agent.esphome_voice.voice_devices.load_history", return_value=[]),
+            self.assertLogs("app.agent.esphome_voice", level="ERROR"),
+        ):
+            await self.client._handle_session_stop(aborted=False)
+        events = [call.args[0] for call in self.client._client.send_voice_assistant_event.call_args_list]
+        self.assertIn(VoiceAssistantEventType.VOICE_ASSISTANT_ERROR, events)
+        self.assertIn(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, events)
+        self.assertFalse(self.client._follow_up_pending)
+
     async def test_audio_chunks_can_split_pcm_samples_and_secondary_channel_is_ignored(self):
         await self.client._handle_session_start("conversation-chunked", 0, None, None)
         await self.client._handle_audio(b"\x01", b"secondary channel with different chunking")
