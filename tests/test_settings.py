@@ -63,6 +63,7 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(0, result.voice_capture_limit_seconds)
         self.assertEqual(0, result.voice_start_grace_ms)
         self.assertEqual(600, result.voice_end_silence_ms)
+        self.assertEqual(3, result.voice_follow_up_start_timeout_seconds)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
         catalog_manager_class.assert_called_once_with(get_api_settings().mcp_registry_refresh_interval)

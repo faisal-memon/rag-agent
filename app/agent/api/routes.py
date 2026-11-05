@@ -95,6 +95,7 @@ def _runtime_settings() -> AgentRuntimeSettings:
         voice_capture_limit_seconds=settings.voice_capture_limit_seconds,
         remote_mcp_servers=settings.remote_mcp_servers,
         voice_follow_up_timeout_seconds=settings.voice_follow_up_timeout_seconds,
+        voice_follow_up_start_timeout_seconds=settings.voice_follow_up_start_timeout_seconds,
     )
 
 
