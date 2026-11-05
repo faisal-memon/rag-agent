@@ -493,6 +493,23 @@ body.tools-console .page-nav .tools-nav {
 
 #agent-image { display: none; }
 
+.agent-image-menu[hidden] { display: none; }
+.agent-image-menu {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 8px);
+  left: 14px;
+  display: grid;
+  gap: 6px;
+  min-width: 156px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+}
+.agent-image-menu button { text-align: left; }
+
 .agent-image-preview[hidden] { display: none; }
 .agent-image-preview {
   display: flex;
