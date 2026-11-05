@@ -653,7 +653,7 @@ def _question_requires_tools(question: str, catalog: tools.ToolCatalog) -> bool:
     tool_terms = {
         "current", "latest", "today", "tomorrow", "weather", "alert", "route",
         "schedule", "class", "lunch", "news", "document", "file", "search",
-        "find", "look up", "check", "remember",
+        "find", "look up", "check", "use the", "mcp", "tool", "remember",
     }
     if any(term in normalized for term in tool_terms):
         return True
