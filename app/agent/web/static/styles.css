@@ -545,11 +545,13 @@ textarea:focus {
 
 .settings-form {
   display: grid;
+  min-width: 0;
   gap: 20px;
 }
 
 .settings-form fieldset {
   display: grid;
+  min-width: 0;
   gap: 8px;
   margin: 0;
   border: 1px solid var(--line);
@@ -566,6 +568,8 @@ textarea:focus {
 .settings-form input,
 .settings-form select {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 10px 12px;
@@ -1857,6 +1861,8 @@ body.agent-only .status {
 
 .settings-tabs {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   flex-wrap: wrap;
   gap: 8px;
   margin: 20px 0 12px;
@@ -1952,6 +1958,17 @@ body.agent-only .status {
 }
 
 @media (max-width: 700px) {
+  body.settings-console {
+    overflow-x: clip;
+  }
+
+  body.settings-console main > *,
+  body.settings-console .settings-panel,
+  body.settings-console .theme-picker-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .remote-mcp-server-row {
     grid-template-columns: 1fr;
   }
