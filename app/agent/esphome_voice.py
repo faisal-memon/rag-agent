@@ -44,6 +44,16 @@ UNINTELLIGIBLE_TRANSCRIPTS = {
     "unintelligible",
     "unintelligible speech",
     "no speech detected",
+    "applause",
+    "crowd cheering",
+    "cheering",
+    "music",
+    "upbeat music",
+    "background music",
+    "laughter",
+    "laughing",
+    "silence",
+    "noise",
 }
 REPEAT_REQUEST = "Sorry, I didn't catch that. Could you please repeat it?"
 
@@ -211,6 +221,8 @@ class ESPHomeVoiceClient:
             0 if self._session_is_follow_up else self._settings.voice_start_grace_ms
         )
         self._session_id = conversation_id
+        # Keep audio from the beginning so follow-up start-gate confirmation
+        # can include a small pre-roll and never clip the first syllable.
         self._session_audio.clear()
         self._session_audio_truncated = False
         self._vad = VoiceActivityDetector(
@@ -220,6 +232,7 @@ class ESPHomeVoiceClient:
             window_speech_frames=self._settings.voice_vad_window_speech_frames,
             activity_history=self._settings.voice_vad_activity_history,
             active_windows_required=self._settings.voice_vad_active_windows_required,
+            start_gate=self._session_is_follow_up,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
                 self._settings.voice_follow_up_start_timeout_seconds
@@ -287,7 +300,9 @@ class ESPHomeVoiceClient:
                     "ReSpeaker VAD diagnostics (state=%s, frames=%d, speech=%d, "
                     "non_speech=%d, grace=%d, silence_ms=%d, silence_resets=%d, "
                     "longest_non_speech_ms=%d, endpoint_quiet_ms=%d, "
-                    "rms_avg=%s, rms_min=%s, rms_max=%s, peak_max=%s)",
+                    "rms_avg=%s, rms_min=%s, rms_max=%s, peak_max=%s, "
+                    "start_gate=%s, start_gate_windows=%d, "
+                    "start_gate_active_windows=%d, start_gate_confirmed=%s)",
                     diagnostic["state"],
                     diagnostic["frames"],
                     diagnostic["speech_frames"],
@@ -301,6 +316,10 @@ class ESPHomeVoiceClient:
                     diagnostic["rms_min"],
                     diagnostic["rms_max"],
                     diagnostic["peak_max"],
+                    diagnostic["start_gate"],
+                    diagnostic["start_gate_windows"],
+                    diagnostic["start_gate_active_windows"],
+                    diagnostic["start_gate_confirmed"],
                 )
             self._last_vad_diagnostic_at = now
         for event in events:
@@ -337,7 +356,11 @@ class ESPHomeVoiceClient:
             elif event is CaptureEvent.NO_SPEECH_TIMEOUT:
                 self._vad_ended = True
                 self._vad_no_speech_timeout = True
-                logger.info("ReSpeaker capture ended: no speech detected")
+                logger.info(
+                    "ReSpeaker capture ended: no speech detected (follow_up=%s, start_gate=%s)",
+                    self._session_is_follow_up,
+                    self._session_is_follow_up,
+                )
                 self._record_activity(
                     "Capture", "info", duration_ms=self._elapsed_ms(), detail="No speech detected"
                 )

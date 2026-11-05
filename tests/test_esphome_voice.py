@@ -55,6 +55,8 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertTrue(_is_unintelligible_transcript(""))
         self.assertTrue(_is_unintelligible_transcript("[inaudible]"))
         self.assertTrue(_is_unintelligible_transcript("Indistinct"))
+        self.assertTrue(_is_unintelligible_transcript("Crowd cheering"))
+        self.assertTrue(_is_unintelligible_transcript("[upbeat music]"))
         self.assertFalse(_is_unintelligible_transcript("Hi"))
 
     async def test_follow_up_uses_separate_speech_start_timeout(self):

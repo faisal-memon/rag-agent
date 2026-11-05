@@ -115,6 +115,35 @@ class VoiceActivityDetectorTest(unittest.TestCase):
             [CaptureEvent.NO_SPEECH_TIMEOUT], detector.process(self.frame(False))
         )
 
+    def test_start_gate_confirms_speech_across_sliding_windows(self) -> None:
+        detector = self.make_detector(
+            start_gate=True,
+            window_frames=5,
+            window_speech_frames=2,
+            activity_history=3,
+            active_windows_required=2,
+            no_speech_timeout_seconds=3,
+        )
+
+        self.assertEqual([], detector.process(self.frame(True) + self.frame(False) * 4))
+        self.assertEqual([], detector.process(self.frame(True) * 2 + self.frame(False) * 3))
+        self.assertEqual(
+            [CaptureEvent.SPEECH_STARTED],
+            detector.process(self.frame(True) * 2 + self.frame(False) * 3),
+        )
+
+    def test_start_gate_times_out_without_confirmed_speech(self) -> None:
+        detector = self.make_detector(
+            start_gate=True,
+            capture_limit_seconds=0,
+            no_speech_timeout_seconds=3,
+        )
+        self.clock.now = 3
+
+        self.assertEqual(
+            [CaptureEvent.NO_SPEECH_TIMEOUT], detector.process(self.frame(False))
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

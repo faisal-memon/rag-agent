@@ -62,7 +62,7 @@ class ApiSettings(ConfiguredSettings):
         default=8, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
     )
     voice_follow_up_start_timeout_seconds: int = Field(
-        default=3, ge=0, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
+        default=3, ge=1, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
     )
     piper_host: str = Field(default="piper-piper-1", alias="PIPER_HOST")
     piper_port: int = Field(default=10200, ge=1, le=65535, alias="PIPER_PORT")

@@ -54,6 +54,7 @@ class VoiceActivityDetector:
         window_speech_frames: int = DEFAULT_WINDOW_SPEECH_FRAMES,
         activity_history: int = DEFAULT_ACTIVITY_HISTORY,
         active_windows_required: int = DEFAULT_ACTIVE_WINDOWS_REQUIRED,
+        start_gate: bool = False,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not (1 <= window_speech_frames <= window_frames):
@@ -85,6 +86,8 @@ class VoiceActivityDetector:
         self._interval_rms_min: float | None = None
         self._interval_rms_max: float | None = None
         self._interval_peak_max = 0
+        self._interval_start_gate_windows = 0
+        self._interval_start_gate_active_windows = 0
         self._interval_silence_resets = 0
         self._non_speech_run_frames = 0
         self._interval_longest_non_speech_run_frames = 0
@@ -92,6 +95,11 @@ class VoiceActivityDetector:
         self._window_speech_frames = window_speech_frames
         self._activity_history = activity_history
         self._active_windows_required = active_windows_required
+        self._start_gate = start_gate
+        self._start_gate_bucket_frames = 0
+        self._start_gate_bucket_speech_frames = 0
+        self._start_gate_windows: deque[bool] = deque(maxlen=activity_history)
+        self._start_gate_confirmed = False
         # end_silence_ms is the user-facing quiet duration, rounded up to windows.
         self._endpoint_tracking = False
         self._bucket_frames = 0
@@ -150,13 +158,35 @@ class VoiceActivityDetector:
                     self._non_speech_run_frames,
                 )
             if self.state is CaptureState.WAITING_FOR_SPEECH:
-                self._start_candidate_frames = (
-                    self._start_candidate_frames + 1 if speech else 0
-                )
-                if self._start_candidate_frames >= START_CONFIRMATION_FRAMES:
-                    self.state = CaptureState.SPEAKING
-                    events.append(CaptureEvent.SPEECH_STARTED)
-                elif now - self._speech_wait_started_at >= self._no_speech_timeout_seconds:
+                if self._start_gate:
+                    self._start_gate_bucket_frames += 1
+                    self._start_gate_bucket_speech_frames += int(speech)
+                    if self._start_gate_bucket_frames >= self._window_frames:
+                        active = self._start_gate_bucket_speech_frames >= self._window_speech_frames
+                        self._start_gate_windows.append(active)
+                        self._interval_start_gate_windows += 1
+                        self._interval_start_gate_active_windows += int(active)
+                        sustained_activity = (
+                            len(self._start_gate_windows) == self._activity_history
+                            and sum(self._start_gate_windows) >= self._active_windows_required
+                        )
+                        self._start_gate_bucket_frames = 0
+                        self._start_gate_bucket_speech_frames = 0
+                        if sustained_activity:
+                            self._start_gate_confirmed = True
+                            self.state = CaptureState.SPEAKING
+                            events.append(CaptureEvent.SPEECH_STARTED)
+                else:
+                    self._start_candidate_frames = (
+                        self._start_candidate_frames + 1 if speech else 0
+                    )
+                    if self._start_candidate_frames >= START_CONFIRMATION_FRAMES:
+                        self.state = CaptureState.SPEAKING
+                        events.append(CaptureEvent.SPEECH_STARTED)
+                if (
+                    self.state is CaptureState.WAITING_FOR_SPEECH
+                    and now - self._speech_wait_started_at >= self._no_speech_timeout_seconds
+                ):
                     self.state = CaptureState.ENDED
                     events.append(CaptureEvent.NO_SPEECH_TIMEOUT)
             elif self.state is CaptureState.SPEAKING:
@@ -221,6 +251,10 @@ class VoiceActivityDetector:
             "rms_min": round(self._interval_rms_min, 1) if self._interval_rms_min is not None else None,
             "rms_max": round(self._interval_rms_max, 1) if self._interval_rms_max is not None else None,
             "peak_max": self._interval_peak_max,
+            "start_gate": self._start_gate,
+            "start_gate_windows": self._interval_start_gate_windows,
+            "start_gate_active_windows": self._interval_start_gate_active_windows,
+            "start_gate_confirmed": self._start_gate_confirmed,
         }
         self._interval_frames = 0
         self._interval_grace_frames = 0
@@ -230,6 +264,8 @@ class VoiceActivityDetector:
         self._interval_rms_min = None
         self._interval_rms_max = None
         self._interval_peak_max = 0
+        self._interval_start_gate_windows = 0
+        self._interval_start_gate_active_windows = 0
         self._interval_silence_resets = 0
         self._interval_longest_non_speech_run_frames = 0
         return diagnostics
