@@ -650,12 +650,10 @@ def _is_agent_configuration_question(question: str) -> bool:
 def _question_requires_tools(question: str, catalog: tools.ToolCatalog) -> bool:
     """Keep plain-text planner fallback away from requests needing evidence or actions."""
     normalized = question.casefold()
-    if re.search(r"\bwhy\b.*\btool calls?\b|\bhow many\b.*\btool calls?\b", normalized):
-        return False
     tool_terms = {
         "current", "latest", "today", "tomorrow", "weather", "alert", "route",
         "schedule", "class", "lunch", "news", "document", "file", "search",
-        "find", "look up", "check", "use the", "mcp", "tool", "remember",
+        "find", "look up", "check", "remember",
     }
     if any(term in normalized for term in tool_terms):
         return True
