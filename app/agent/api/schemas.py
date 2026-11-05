@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import Any, Literal
+import base64
+import binascii
+import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.agent.config import RemoteMCPServerSetting
 
@@ -31,6 +34,27 @@ class Citation(BaseModel):
 class AgentQueryRequest(BaseModel):
     conversation_id: str | None = None
     question: str = Field(min_length=1)
+    image_data_url: str | None = Field(default=None, max_length=7_000_000)
+
+    @field_validator("image_data_url")
+    @classmethod
+    def validate_image_data_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        match = re.fullmatch(r"data:image/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})", value)
+        if not match:
+            raise ValueError("Attach one PNG or JPEG image.")
+        try:
+            image = base64.b64decode(match.group(2), validate=True)
+        except binascii.Error as exc:
+            raise ValueError("The image could not be read.") from exc
+        if not image or len(image) > 5 * 1024 * 1024:
+            raise ValueError("Keep images under 5 MB.")
+        if match.group(1) == "png" and not image.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("The selected file is not a PNG image.")
+        if match.group(1) == "jpeg" and not image.startswith(b"\xff\xd8\xff"):
+            raise ValueError("The selected file is not a JPEG image.")
+        return value
 
 
 class TranscriptResponse(BaseModel):
@@ -85,7 +109,11 @@ class AgentRuntimeSettings(BaseModel):
     memory_enabled: bool = True
     memory_require_approval: bool = True
     voice_start_grace_ms: int = Field(default=960, ge=0, le=10_000, multiple_of=20)
-    voice_end_silence_ms: int = Field(default=1100, ge=20, le=10_000, multiple_of=20)
+    voice_end_silence_ms: int = Field(default=800, ge=20, le=10_000, multiple_of=20)
+    voice_vad_window_frames: int = Field(default=5, ge=1, le=20)
+    voice_vad_window_speech_frames: int = Field(default=2, ge=1, le=20)
+    voice_vad_activity_history: int = Field(default=3, ge=1, le=10)
+    voice_vad_active_windows_required: int = Field(default=2, ge=1, le=10)
     voice_capture_limit_seconds: int = Field(default=20, ge=0, le=3600)
     remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list, max_length=20)
 
@@ -99,6 +127,14 @@ class AgentRuntimeSettings(BaseModel):
             raise ValueError("Remote MCP server names must be unique.")
         return servers
     voice_follow_up_timeout_seconds: int = Field(default=8, ge=0, le=60)
+
+    @model_validator(mode="after")
+    def validate_vad_windows(self) -> "AgentRuntimeSettings":
+        if self.voice_vad_window_speech_frames > self.voice_vad_window_frames:
+            raise ValueError("Speech frames cannot exceed frames per window")
+        if self.voice_vad_active_windows_required > self.voice_vad_activity_history:
+            raise ValueError("Active windows cannot exceed recent windows")
+        return self
 
 
 class RetrievalDebugResponse(BaseModel):
