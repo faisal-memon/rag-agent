@@ -72,6 +72,7 @@ class ApiSettings(ConfiguredSettings):
     esphome_media_server_port: int = Field(default=18081, ge=1, le=65535, alias="ESPHOME_MEDIA_SERVER_PORT")
     query_limit: int = Field(default=8, alias="RAG_QUERY_LIMIT")
     agent_max_steps: int = Field(default=6, ge=1, le=12, alias="RAG_AGENT_MAX_STEPS")
+    system_prompt: str | None = Field(default=None, min_length=1, max_length=20_000)
     home_latitude: float | None = Field(default=None, ge=-90, le=90, alias="HOME_LATITUDE")
     home_longitude: float | None = Field(default=None, ge=-180, le=180, alias="HOME_LONGITUDE")
     memory_path: Path = Field(default=Path("/memory/MEMORY.md"), alias="RAG_MEMORY_PATH")

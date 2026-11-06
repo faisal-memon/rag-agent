@@ -349,6 +349,12 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn("get_ocean_schedule", prompt)
         self.assertNotIn("semantic_search", prompt)
 
+    def test_agent_uses_runtime_system_prompt_override(self) -> None:
+        agent = Agent.__new__(Agent)
+        agent.settings = SimpleNamespace(system_prompt="Answer in haiku form.")
+
+        self.assertEqual("Answer in haiku form.", agent.render_system_prompt())
+
     def test_planner_owns_tool_routing_rules(self) -> None:
         prompt = render_prompt(
             "planner.md",
@@ -984,6 +990,8 @@ class AgentTest(unittest.TestCase):
         self.assertIn('<body class="settings-console">', page)
         self.assertIn('id="settings-form"', page)
         self.assertIn('src="/static/settings.js"', page)
+        self.assertIn('name="system_prompt"', page)
+        self.assertIn('id="reset-system-prompt"', page)
         self.assertIn('aria-controls="voice-panel"', page)
         self.assertIn('name="voice_capture_limit_seconds"', page)
         self.assertIn('name="voice_follow_up_start_timeout_seconds"', page)

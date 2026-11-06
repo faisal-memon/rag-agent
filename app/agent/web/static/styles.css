@@ -566,7 +566,8 @@ textarea:focus {
 }
 
 .settings-form input,
-.settings-form select {
+.settings-form select,
+.settings-form textarea {
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -579,9 +580,15 @@ textarea:focus {
 }
 
 .settings-form input:focus,
-.settings-form select:focus {
+.settings-form select:focus,
+.settings-form textarea:focus {
   border-color: var(--accent);
   outline: none;
+}
+
+.settings-form textarea {
+  min-height: 220px;
+  resize: vertical;
 }
 
 .actions {

@@ -1,8 +1,21 @@
 const form = document.getElementById("settings-form");
 const status = document.getElementById("settings-status");
 const saveButton = document.getElementById("save-settings");
+const systemPromptInput = document.getElementById("system-prompt");
+const systemPromptStatus = document.getElementById("system-prompt-status");
+const resetSystemPromptButton = document.getElementById("reset-system-prompt");
 const remoteMCPServerList = document.getElementById("remote-mcp-servers");
 const remoteMCPFormStatus = document.getElementById("remote-mcp-form-status");
+let systemPromptIsDefault = true;
+let defaultSystemPrompt = "";
+
+function updateSystemPromptStatus() {
+  if (!systemPromptInput) return;
+  systemPromptStatus.textContent = systemPromptIsDefault
+    ? "Using the built-in default prompt."
+    : "Using a custom prompt. Saving applies it to new chats.";
+  resetSystemPromptButton.disabled = systemPromptIsDefault;
+}
 
 function renderRemoteMCPServers(servers = []) {
   remoteMCPServerList.replaceChildren();
@@ -101,8 +114,23 @@ function fillForm(settings) {
       else input.value = value;
     }
   }
+  defaultSystemPrompt = settings.default_system_prompt || "";
+  systemPromptIsDefault = Boolean(settings.system_prompt_is_default);
+  updateSystemPromptStatus();
   renderRemoteMCPServers(settings.remote_mcp_servers || []);
 }
+
+systemPromptInput?.addEventListener("input", () => {
+  systemPromptIsDefault = false;
+  updateSystemPromptStatus();
+});
+
+resetSystemPromptButton?.addEventListener("click", () => {
+  systemPromptInput.value = defaultSystemPrompt;
+  systemPromptIsDefault = true;
+  updateSystemPromptStatus();
+  setStatus("Default system prompt restored. Click Save settings to apply it.");
+});
 
 async function loadSettings() {
   const response = await fetch("/api/settings");
@@ -116,6 +144,7 @@ form.addEventListener("submit", async (event) => {
   saveButton.disabled = true;
   setStatus("Saving…");
   const data = Object.fromEntries(new FormData(form));
+  data.system_prompt_is_default = systemPromptIsDefault;
   data.query_limit = Number(data.query_limit);
   data.agent_max_steps = Number(data.agent_max_steps);
   data.voice_start_grace_ms = Number(data.voice_start_grace_ms);

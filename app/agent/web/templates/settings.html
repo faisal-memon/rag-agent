@@ -110,6 +110,10 @@
         <section id="general-panel" class="settings-panel" role="tabpanel" hidden>
           <fieldset>
             <legend>agent behavior</legend>
+            <label for="system-prompt">System prompt</label>
+            <textarea id="system-prompt" name="system_prompt" rows="10" maxlength="20000" required></textarea>
+            <p class="field-help" id="system-prompt-status"></p>
+            <button class="secondary" id="reset-system-prompt" type="button">Reset</button>
             <label for="query-limit">Retrieval results per search</label>
             <input id="query-limit" name="query_limit" type="number" min="1" max="100" required />
             <label for="agent-max-steps">Maximum tool steps per chat</label>
