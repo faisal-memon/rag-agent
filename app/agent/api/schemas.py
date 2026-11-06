@@ -104,6 +104,9 @@ class AgentRuntimeSettings(BaseModel):
     embedding_llamacpp_model: str = Field(min_length=1)
     query_limit: int = Field(ge=1, le=100)
     agent_max_steps: int = Field(ge=1, le=12)
+    system_prompt: str = Field(default="", max_length=20_000)
+    default_system_prompt: str = Field(default="", max_length=20_000)
+    system_prompt_is_default: bool = True
     home_latitude: float | None = Field(default=None, ge=-90, le=90)
     home_longitude: float | None = Field(default=None, ge=-180, le=180)
     memory_enabled: bool = True
@@ -131,6 +134,8 @@ class AgentRuntimeSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_vad_windows(self) -> "AgentRuntimeSettings":
+        if not self.system_prompt_is_default and not self.system_prompt.strip():
+            raise ValueError("System prompt cannot be empty unless it is reset to the default.")
         if self.voice_vad_window_speech_frames > self.voice_vad_window_frames:
             raise ValueError("Speech frames cannot exceed frames per window")
         if self.voice_vad_active_windows_required > self.voice_vad_activity_history:

@@ -29,6 +29,7 @@ from app.agent.pipeline import pipeline_status
 from app.agent.search import search_debug
 from app.agent.web.routes import debug_page, devices_page, index_page, settings_page, tools_page
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
+from app.agent.prompts import render_prompt
 from app.core.config import read_runtime_settings, write_runtime_settings
 
 router = APIRouter()
@@ -71,6 +72,8 @@ def _load_conversation(request: Request, payload: AgentQueryRequest) -> tuple[st
 
 def _runtime_settings() -> AgentRuntimeSettings:
     settings = get_api_settings()
+    system_prompt_is_default = settings.system_prompt is None
+    default_system_prompt = render_prompt("system.md", {})
     return AgentRuntimeSettings(
         llm_provider=settings.llm_provider,
         openai_chat_model=settings.openai_chat_model,
@@ -82,6 +85,9 @@ def _runtime_settings() -> AgentRuntimeSettings:
         embedding_llamacpp_model=get_embed_settings().llamacpp_model,
         query_limit=settings.query_limit,
         agent_max_steps=settings.agent_max_steps,
+        system_prompt=settings.system_prompt or default_system_prompt,
+        default_system_prompt=default_system_prompt,
+        system_prompt_is_default=system_prompt_is_default,
         home_latitude=settings.home_latitude,
         home_longitude=settings.home_longitude,
         memory_enabled=settings.memory_enabled,
@@ -242,13 +248,18 @@ def get_settings() -> AgentRuntimeSettings:
 async def update_settings(request: Request, payload: AgentRuntimeSettings) -> AgentRuntimeSettings:
     settings = read_runtime_settings()
     values = payload.model_dump(mode="json")
+    system_prompt_is_default = values.pop("system_prompt_is_default")
+    values.pop("default_system_prompt")
     embed_values = {
         "provider": values.pop("embedding_provider"),
         "openai_embedding_model": values.pop("openai_embedding_model"),
         "llamacpp_base_url": values.pop("embedding_llamacpp_base_url"),
         "llamacpp_model": values.pop("embedding_llamacpp_model"),
     }
-    settings["api"] = {**settings.get("api", {}), **values}
+    api_settings = {**settings.get("api", {}), **values}
+    if system_prompt_is_default:
+        api_settings.pop("system_prompt", None)
+    settings["api"] = api_settings
     settings["embed"] = {**settings.get("embed", {}), **embed_values}
     write_runtime_settings(settings)
     await _reload_agent(request)

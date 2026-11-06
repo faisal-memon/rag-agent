@@ -66,12 +66,53 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(3, result.voice_follow_up_start_timeout_seconds)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
+        self.assertNotIn("system_prompt", saved_settings["api"])
         catalog_manager_class.assert_called_once_with(get_api_settings().mcp_registry_refresh_interval)
         catalog_manager_class.return_value.start.assert_awaited_once()
         agent_class.assert_called_once_with(get_api_settings(), catalog_manager_class.return_value)
         agent_class.return_value.startup.assert_called_once()
         previous_agent.tool_catalog_manager.stop.assert_awaited_once()
         voice_client.update_settings.assert_called_once_with(get_api_settings())
+
+    def test_reset_system_prompt_removes_saved_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "runtime-settings.json"
+            os.environ["RAG_SETTINGS_PATH"] = str(path)
+            write_runtime_settings({"api": {"system_prompt": "Be unusually formal."}})
+            request = SimpleNamespace(
+                app=SimpleNamespace(
+                    state=SimpleNamespace(
+                        agent=SimpleNamespace(tool_catalog_manager=SimpleNamespace(stop=AsyncMock())),
+                        esphome_voice_client=None,
+                    )
+                )
+            )
+            payload = AgentRuntimeSettings(
+                llm_provider="llamacpp",
+                openai_chat_model="gpt-4.1-mini",
+                llamacpp_base_url="http://model.local/v1",
+                llamacpp_chat_model="gemma-4",
+                embedding_provider="llamacpp",
+                openai_embedding_model="text-embedding-3-small",
+                embedding_llamacpp_base_url="http://embed.local/v1",
+                embedding_llamacpp_model="mxbai",
+                query_limit=8,
+                agent_max_steps=6,
+                system_prompt="Be unusually formal.",
+                default_system_prompt="Built-in prompt.",
+                system_prompt_is_default=True,
+            )
+
+            with (
+                patch("app.agent.api.routes.Agent"),
+                patch("app.agent.api.routes.tools.ToolCatalogManager") as catalog_manager_class,
+            ):
+                catalog_manager_class.return_value.start = AsyncMock()
+                asyncio.run(routes.update_settings(request, payload))
+
+            saved_settings = read_runtime_settings()
+
+        self.assertNotIn("system_prompt", saved_settings["api"])
 
     def test_agent_stream_emits_progress_before_the_final_response(self) -> None:
         class StreamingAgent:

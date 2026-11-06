@@ -142,7 +142,7 @@ class Agent:
         return self.prompts.render(name, values)
 
     def render_system_prompt(self) -> str:
-        return self.render_prompt("system.md", {})
+        return getattr(self.settings, "system_prompt", None) or self.render_prompt("system.md", {})
 
     def _execute_tool(
         self,
