@@ -77,7 +77,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertEqual("I'm checking that now.", _spoken_tool_status("x" * 121))
         self.assertEqual("Checking the forecast.", _spoken_tool_status("  Checking   the forecast. "))
 
-    async def test_unintelligible_transcript_skips_agent_and_speaks_repeat_prompt(self):
+    async def test_initial_unintelligible_transcript_skips_agent_and_speaks_one_retry(self):
         await self.client._handle_session_start("conversation-inaudible", 0, None, None)
         await self.client._handle_audio(b"\x01\x00")
         self.client._agent = object()
@@ -91,8 +91,27 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         speak_reply.assert_awaited_once_with(
             "Sorry, I didn't catch that. Could you please repeat it?",
             "conversation-inaudible",
+            continue_conversation=False,
         )
         self.assertEqual(self.client._session_audio, bytearray())
+
+    async def test_unintelligible_follow_up_ends_quietly(self):
+        self.client._follow_up_pending = True
+        self.client._client = MagicMock()
+        await self.client._handle_session_start("follow-up-inaudible", 0, None, None)
+        await self.client._handle_audio(b"\x01\x00")
+        self.client._agent = MagicMock()
+
+        with (
+            patch("app.agent.esphome_voice.transcribe_audio", return_value="[inaudible]"),
+            patch.object(self.client, "_speak_reply") as speak_reply,
+            patch.object(self.client, "_finish_voice_run") as finish_voice_run,
+        ):
+            await self.client._handle_session_stop(aborted=False)
+
+        self.client._agent.answer.assert_not_called()
+        speak_reply.assert_not_awaited()
+        finish_voice_run.assert_called_once_with()
 
     async def test_non_conversational_transcript_skips_agent_and_ends_quietly(self):
         await self.client._handle_session_start("conversation-noise", 0, None, None)

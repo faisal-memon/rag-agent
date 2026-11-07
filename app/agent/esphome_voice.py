@@ -514,7 +514,27 @@ class ESPHomeVoiceClient:
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
                 )
-            await self._speak_reply(REPEAT_REQUEST, conversation_id)
+            # A follow-up capture can be triggered by room noise or the
+            # speaker's own playback.  Do not turn an unusable follow-up into
+            # another spoken retry and another follow-up window: that creates
+            # a self-sustaining "I didn't catch that" loop.  Return quietly
+            # to wake-word listening instead.
+            if session_is_follow_up:
+                self._record_activity(
+                    "Follow-up listening",
+                    "completed",
+                    duration_ms=round(capture_seconds * 1000),
+                    detail="Unintelligible audio; returned to wake-word listening",
+                )
+                self._finish_voice_run()
+                return
+            # An initial wake-word request may still receive one helpful retry,
+            # but it must not create a follow-up session of its own.
+            await self._speak_reply(
+                REPEAT_REQUEST,
+                conversation_id,
+                continue_conversation=False,
+            )
             return
         self._record_activity("Transcription", "completed", duration_ms=self._stage_ms(stage_started))
 
