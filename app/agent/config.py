@@ -64,6 +64,12 @@ class ApiSettings(ConfiguredSettings):
     voice_follow_up_start_timeout_seconds: int = Field(
         default=3, ge=0, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
     )
+    voice_vad_diagnostics_enabled: bool = Field(
+        default=False, alias="ESPHOME_VAD_DIAGNOSTICS_ENABLED"
+    )
+    voice_vad_diagnostics_dir: Path = Field(
+        default=Path("/data/vad-diagnostics"), alias="ESPHOME_VAD_DIAGNOSTICS_DIR"
+    )
     piper_host: str = Field(default="piper-piper-1", alias="PIPER_HOST")
     piper_port: int = Field(default=10200, ge=1, le=65535, alias="PIPER_PORT")
     piper_voice: str = Field(default="en_US-lessac-medium", alias="PIPER_VOICE")

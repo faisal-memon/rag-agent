@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import io
 import logging
 import re
@@ -10,6 +11,7 @@ import time
 import wave
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 
 from aioesphomeapi import (
     APIClient,
@@ -28,6 +30,7 @@ from app.agent.transcription import TranscriptionUnavailableError, transcribe_au
 from app.agent.voice_activity import (
     VOICE_SAMPLE_RATE,
     CaptureEvent,
+    VoiceActivityFrame,
     VoiceActivityDetector,
 )
 
@@ -90,6 +93,7 @@ class ESPHomeVoiceClient:
         self._session_id: str | None = None
         self._session_audio_truncated = False
         self._vad: VoiceActivityDetector | None = None
+        self._vad_frames: list[VoiceActivityFrame] = []
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._last_vad_diagnostic_at = 0.0
@@ -224,6 +228,7 @@ class ESPHomeVoiceClient:
         )
         self._session_id = conversation_id
         self._session_audio.clear()
+        self._vad_frames = []
         self._session_audio_truncated = False
         self._vad = VoiceActivityDetector(
             startup_grace_ms=startup_grace_ms,
@@ -238,6 +243,7 @@ class ESPHomeVoiceClient:
                 if self._session_is_follow_up
                 else 15
             ),
+            on_frame=self._record_vad_frame if self._settings.voice_vad_diagnostics_enabled else None,
         )
         self._vad_ended = False
         self._vad_no_speech_timeout = False
@@ -386,7 +392,9 @@ class ESPHomeVoiceClient:
         vad_ended = self._vad_ended
         no_speech_timeout = self._vad_no_speech_timeout
         session_is_follow_up = self._session_is_follow_up
+        vad_frames = list(self._vad_frames)
         self._reset_session()
+        self._write_vad_diagnostics(conversation_id, vad_frames)
         logger.info(
             "ESPHome voice session ended (conversation=%s, aborted=%s, "
             "audio_bytes=%d, truncated=%s, capture_seconds=%.2f)",
@@ -835,10 +843,62 @@ class ESPHomeVoiceClient:
         self._session_audio.clear()
         self._session_audio_truncated = False
         self._vad = None
+        self._vad_frames = []
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._session_is_follow_up = False
         self._session_started_at = 0.0
+
+    def _record_vad_frame(self, frame: VoiceActivityFrame) -> None:
+        """Collect frame decisions when temporary VAD diagnostics are enabled."""
+        self._vad_frames.append(frame)
+
+    def _write_vad_diagnostics(
+        self, conversation_id: str | None, frames: list[VoiceActivityFrame]
+    ) -> None:
+        """Write one frame-level CSV without retaining or writing microphone audio."""
+        if not self._settings.voice_vad_diagnostics_enabled or not frames:
+            return
+        try:
+            output_dir = Path(self._settings.voice_vad_diagnostics_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            safe_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", conversation_id or "session")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            output_path = output_dir / f"vad-{safe_id}-{timestamp}.csv"
+            with output_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=(
+                        "frame",
+                        "elapsed_ms",
+                        "webrtc_speech",
+                        "audio_level_dbfs",
+                        "state",
+                        "silence_run",
+                    ),
+                )
+                writer.writeheader()
+                for frame in frames:
+                    writer.writerow(
+                        {
+                            "frame": frame.frame_index,
+                            "elapsed_ms": frame.elapsed_ms,
+                            "webrtc_speech": (
+                                "" if frame.webrtc_speech is None else int(frame.webrtc_speech)
+                            ),
+                            "audio_level_dbfs": frame.audio_level_dbfs,
+                            "state": frame.state,
+                            "silence_run": frame.silence_run,
+                        }
+                    )
+            logger.info(
+                "Wrote VAD diagnostics CSV (conversation=%s, frames=%d, path=%s)",
+                conversation_id,
+                len(frames),
+                output_path,
+            )
+        except Exception:
+            logger.warning("Could not write VAD diagnostics CSV", exc_info=True)
 
     def _unsubscribe(self) -> None:
         unsubscribe = self._unsubscribe_voice
