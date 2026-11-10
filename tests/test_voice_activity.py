@@ -115,6 +115,18 @@ class VoiceActivityDetectorTest(unittest.TestCase):
             [CaptureEvent.NO_SPEECH_TIMEOUT], detector.process(self.frame(False))
         )
 
+    def test_frame_callback_records_each_decision_and_audio_level(self) -> None:
+        frames = []
+        detector = self.make_detector(on_frame=frames.append, startup_grace_ms=20)
+
+        detector.process(self.frame(False) + self.frame(True))
+
+        self.assertEqual([1, 2], [frame.frame_index for frame in frames])
+        self.assertIsNone(frames[0].webrtc_speech)
+        self.assertTrue(frames[1].webrtc_speech)
+        self.assertEqual("waiting_for_speech", frames[0].state)
+        self.assertLessEqual(frames[0].audio_level_dbfs, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

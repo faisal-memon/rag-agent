@@ -6,6 +6,7 @@ import math
 import struct
 import time
 from collections import deque
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Callable
 
@@ -39,6 +40,18 @@ class CaptureEvent(Enum):
     NO_SPEECH_TIMEOUT = auto()
 
 
+@dataclass(frozen=True)
+class VoiceActivityFrame:
+    """One detector decision, suitable for temporary diagnostics."""
+
+    frame_index: int
+    elapsed_ms: int
+    webrtc_speech: bool | None
+    audio_level_dbfs: float
+    state: str
+    silence_run: int
+
+
 class VoiceActivityDetector:
     """Turn PCM frames into simple speech-start and capture-end events."""
 
@@ -54,6 +67,7 @@ class VoiceActivityDetector:
         window_speech_frames: int = DEFAULT_WINDOW_SPEECH_FRAMES,
         activity_history: int = DEFAULT_ACTIVITY_HISTORY,
         active_windows_required: int = DEFAULT_ACTIVE_WINDOWS_REQUIRED,
+        on_frame: Callable[[VoiceActivityFrame], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not (1 <= window_speech_frames <= window_frames):
@@ -64,6 +78,7 @@ class VoiceActivityDetector:
             raise ValueError("VAD window and quiet duration must be positive")
         self._vad = webrtcvad.Vad(aggressiveness)
         self._clock = clock
+        self._on_frame = on_frame
         self._started_at = clock()
         self._speech_wait_started_at = self._started_at
         self._capture_limit_seconds = capture_limit_seconds
@@ -99,6 +114,7 @@ class VoiceActivityDetector:
         self._active_windows: deque[bool] = deque(maxlen=activity_history)
         self._quiet_windows = 0
         self._confirmed_activity = False
+        self._frame_index = 0
         self.state = (
             CaptureState.STARTUP_GRACE
             if self._startup_grace_frames
@@ -116,6 +132,10 @@ class VoiceActivityDetector:
             samples = struct.unpack(f"<{FRAME_BYTES // VOICE_SAMPLE_WIDTH}h", frame)
             rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
             peak = max(abs(sample) for sample in samples)
+            rms_dbfs = (
+                20 * math.log10(rms / 32768.0) if rms > 0 else -120.0
+            )
+            self._frame_index += 1
             self._interval_frames += 1
             self._interval_rms_sum += rms
             self._interval_rms_min = rms if self._interval_rms_min is None else min(self._interval_rms_min, rms)
@@ -128,6 +148,7 @@ class VoiceActivityDetector:
             ):
                 self.state = CaptureState.ENDED
                 events.append(CaptureEvent.MAX_DURATION_REACHED)
+                self._emit_frame(None, now, rms_dbfs)
                 break
 
             if self.state is CaptureState.STARTUP_GRACE:
@@ -136,6 +157,7 @@ class VoiceActivityDetector:
                 if self._grace_frames_seen >= self._startup_grace_frames:
                     self.state = CaptureState.WAITING_FOR_SPEECH
                     self._speech_wait_started_at = now
+                self._emit_frame(None, now, rms_dbfs)
                 continue
 
             speech = self._vad.is_speech(frame, VOICE_SAMPLE_RATE)
@@ -179,7 +201,26 @@ class VoiceActivityDetector:
                 if fuzzy_end or brief_speech_end:
                     self.state = CaptureState.ENDED
                     events.append(CaptureEvent.SPEECH_ENDED)
+            self._emit_frame(speech, now, rms_dbfs)
         return events
+
+    def _emit_frame(self, speech: bool | None, now: float, rms_dbfs: float) -> None:
+        if self._on_frame is None:
+            return
+        try:
+            self._on_frame(
+                VoiceActivityFrame(
+                    frame_index=self._frame_index,
+                    elapsed_ms=max(0, round((now - self._started_at) * 1000)),
+                    webrtc_speech=speech,
+                    audio_level_dbfs=round(rms_dbfs, 2),
+                    state=self.state.name.lower(),
+                    silence_run=self._silence_frames,
+                )
+            )
+        except Exception:
+            # Diagnostics must never interfere with endpointing or audio handling.
+            pass
 
     def _update_endpoint(self, speech: bool) -> bool:
         """End after enough mostly quiet windows despite isolated VAD hits."""

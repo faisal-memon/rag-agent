@@ -1,5 +1,8 @@
 import io
+import csv
+import tempfile
 import wave
+from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +15,7 @@ from app.agent.esphome_voice import (
     _is_unintelligible_transcript,
     _spoken_tool_status,
 )
+from app.agent.voice_activity import VoiceActivityFrame
 
 
 class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
@@ -76,6 +80,28 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertEqual("I'm checking that now.", _spoken_tool_status(None))
         self.assertEqual("I'm checking that now.", _spoken_tool_status("x" * 121))
         self.assertEqual("Checking the forecast.", _spoken_tool_status("  Checking   the forecast. "))
+
+    def test_vad_diagnostics_writes_one_row_per_frame(self):
+        with tempfile.TemporaryDirectory() as output_dir:
+            self.client._settings = ApiSettings(
+                ESPHOME_VAD_DIAGNOSTICS_ENABLED=True,
+                ESPHOME_VAD_DIAGNOSTICS_DIR=output_dir,
+            )
+            self.client._write_vad_diagnostics(
+                "conversation/1",
+                [
+                    VoiceActivityFrame(1, 20, None, -120.0, "startup_grace", 0),
+                    VoiceActivityFrame(2, 40, True, -18.5, "speaking", 0),
+                ],
+            )
+            paths = list(Path(output_dir).glob("vad-*.csv"))
+            self.assertEqual(1, len(paths))
+            with paths[0].open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(2, len(rows))
+            self.assertEqual("", rows[0]["webrtc_speech"])
+            self.assertEqual("1", rows[1]["webrtc_speech"])
+            self.assertEqual("speaking", rows[1]["state"])
 
     async def test_initial_unintelligible_transcript_skips_agent_and_speaks_one_retry(self):
         await self.client._handle_session_start("conversation-inaudible", 0, None, None)
