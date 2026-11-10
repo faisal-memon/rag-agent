@@ -66,6 +66,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertTrue(_is_non_conversational_transcript("(door slams)"))
         self.assertTrue(_is_non_conversational_transcript("[laughing]"))
         self.assertTrue(_is_non_conversational_transcript("Crowd cheering"))
+        self.assertTrue(_is_non_conversational_transcript("[END PLAYBACK]"))
         self.assertFalse(_is_non_conversational_transcript("Are any lights on?"))
 
     async def test_follow_up_uses_separate_speech_start_timeout(self):

@@ -55,6 +55,7 @@ NON_CONVERSATIONAL_TRANSCRIPTS = {
     "crowd cheering",
     "door slam",
     "door slams",
+    "end playback",
     "laughing",
     "laughter",
     "music",
