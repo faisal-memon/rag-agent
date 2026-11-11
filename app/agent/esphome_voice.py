@@ -55,6 +55,7 @@ NON_CONVERSATIONAL_TRANSCRIPTS = {
     "crowd cheering",
     "door slam",
     "door slams",
+    "end playback",
     "laughing",
     "laughter",
     "music",
@@ -925,6 +926,8 @@ def _is_unintelligible_transcript(transcript: str) -> bool:
 
 def _is_non_conversational_transcript(transcript: str) -> bool:
     """Recognize Whisper captions for ambient sound, not a spoken request."""
+    if re.fullmatch(r"(?:\s*\[[^\]\r\n]{1,120}\]\s*)+", transcript):
+        return True
     normalized = re.sub(r"[^a-z0-9]+", " ", transcript.casefold()).strip()
     return normalized in NON_CONVERSATIONAL_TRANSCRIPTS
 

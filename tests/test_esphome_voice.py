@@ -66,6 +66,9 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertTrue(_is_non_conversational_transcript("(door slams)"))
         self.assertTrue(_is_non_conversational_transcript("[laughing]"))
         self.assertTrue(_is_non_conversational_transcript("Crowd cheering"))
+        self.assertTrue(_is_non_conversational_transcript("[END PLAYBACK]"))
+        self.assertTrue(_is_non_conversational_transcript("[strange noise] [laughter]"))
+        self.assertFalse(_is_non_conversational_transcript("[door closes] turn on the lights"))
         self.assertFalse(_is_non_conversational_transcript("Are any lights on?"))
 
     async def test_follow_up_uses_separate_speech_start_timeout(self):
@@ -103,7 +106,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             self.assertEqual("1", rows[1]["webrtc_speech"])
             self.assertEqual("speaking", rows[1]["state"])
 
-    async def test_initial_unintelligible_transcript_skips_agent_and_speaks_one_retry(self):
+    async def test_bracketed_unintelligible_transcript_ends_quietly(self):
         await self.client._handle_session_start("conversation-inaudible", 0, None, None)
         await self.client._handle_audio(b"\x01\x00")
         self.client._agent = object()
@@ -111,14 +114,12 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         with (
             patch("app.agent.esphome_voice.transcribe_audio", return_value="[inaudible]"),
             patch.object(self.client, "_speak_reply") as speak_reply,
+            patch.object(self.client, "_finish_voice_run") as finish_voice_run,
         ):
             await self.client._handle_session_stop(aborted=False)
 
-        speak_reply.assert_awaited_once_with(
-            "Sorry, I didn't catch that. Could you please repeat it?",
-            "conversation-inaudible",
-            continue_conversation=False,
-        )
+        speak_reply.assert_not_awaited()
+        finish_voice_run.assert_called_once_with()
         self.assertEqual(self.client._session_audio, bytearray())
 
     async def test_unintelligible_follow_up_ends_quietly(self):
