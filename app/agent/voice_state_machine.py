@@ -112,15 +112,15 @@ class VoiceModeStateMachine:
         previous = self.state
 
         # Get the next transition for this state and event.
-        current = _TRANSITIONS.get((previous, event)) or _handle_global_event(event)
+        next_state = _TRANSITIONS.get((previous, event)) or _handle_global_event(event)
 
         # Reject events that are not valid from the current state.
-        if current is None:
+        if next_state is None:
             logger.warning("Rejected ESPHome voice state transition: %s + %s", previous.name, event.name)
             return VoiceModeTransition(previous, previous, event, False)
 
         # Commit and report the accepted transition.
-        self.state = current
-        logger.info("ESPHome voice state transition: %s + %s -> %s", previous.name, event.name, current.name)
+        self.state = next_state
+        logger.info("ESPHome voice state transition: %s + %s -> %s", previous.name, event.name, next_state.name)
 
-        return VoiceModeTransition(previous, current, event, True)
+        return VoiceModeTransition(previous, next_state, event, True)
