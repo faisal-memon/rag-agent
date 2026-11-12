@@ -108,6 +108,7 @@ class AgentRuntimeSettings(BaseModel):
     embedding_llamacpp_model: str = Field(min_length=1)
     query_limit: int = Field(ge=1, le=100)
     agent_max_steps: int = Field(ge=1, le=12)
+    piper_voice: str = Field(default="en_GB-alba-medium", min_length=1, max_length=120)
     system_prompt: str = Field(default="", max_length=20_000)
     default_system_prompt: str = Field(default="", max_length=20_000)
     system_prompt_is_default: bool = True

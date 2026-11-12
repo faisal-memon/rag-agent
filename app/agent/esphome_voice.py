@@ -369,6 +369,7 @@ class ESPHomeVoiceClient:
     def update_settings(self, settings: ApiSettings) -> None:
         """Apply settings updates to subsequent voice sessions."""
         self._settings = settings
+        self._piper = PiperClient(settings.piper_host, settings.piper_port, settings.piper_voice)
 
     def status(self) -> dict:
         """Return the currently configured speaker's live connection details."""

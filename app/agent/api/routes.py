@@ -1,5 +1,6 @@
 """HTTP routes that adapt FastAPI requests to the agent runtime."""
 
+import asyncio
 import json
 import logging
 from queue import Empty, Queue
@@ -87,6 +88,7 @@ def _runtime_settings() -> AgentRuntimeSettings:
         embedding_llamacpp_model=get_embed_settings().llamacpp_model,
         query_limit=settings.query_limit,
         agent_max_steps=settings.agent_max_steps,
+        piper_voice=settings.piper_voice,
         system_prompt=settings.system_prompt or default_system_prompt,
         default_system_prompt=default_system_prompt,
         system_prompt_is_default=system_prompt_is_default,
@@ -244,6 +246,21 @@ def healthcheck() -> dict:
 @router.get("/api/settings", response_model=AgentRuntimeSettings)
 def get_settings() -> AgentRuntimeSettings:
     return _runtime_settings()
+
+
+@router.get("/api/piper/voices")
+async def piper_voices() -> dict[str, list[str]]:
+    """List voices currently installed in the configured Piper service."""
+    settings = get_api_settings()
+    try:
+        voices = await asyncio.wait_for(
+            PiperClient(settings.piper_host, settings.piper_port, settings.piper_voice).list_voices(),
+            timeout=5,
+        )
+    except (ConnectionError, OSError, RuntimeError, TimeoutError) as exc:
+        logger.warning("Could not discover Piper voices: %s", exc)
+        raise HTTPException(status_code=502, detail="Piper voice discovery is unavailable.") from exc
+    return {"voices": voices}
 
 
 @router.put("/api/settings", response_model=AgentRuntimeSettings)
