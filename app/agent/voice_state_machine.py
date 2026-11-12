@@ -49,30 +49,28 @@ class VoiceModeTransition:
     accepted: bool
 
 
-_TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = {
-    (VoiceModeState.UNAVAILABLE, VoiceModeEvent.CONNECTION_READY): VoiceModeState.IDLE,
-    (VoiceModeState.IDLE, VoiceModeEvent.WAKE_WORD_DETECTED): VoiceModeState.CAPTURING,
-    (VoiceModeState.CAPTURING, VoiceModeEvent.CAPTURE_ENDED): VoiceModeState.PROCESSING,
-    (VoiceModeState.PROCESSING, VoiceModeEvent.RESPONSE_READY): VoiceModeState.PLAYING,
-    (
-        VoiceModeState.PLAYING,
-        VoiceModeEvent.PLAYBACK_FINISHED_CONTINUE,
-    ): VoiceModeState.FOLLOWUP_LISTENING,
-    (
-        VoiceModeState.PLAYING,
-        VoiceModeEvent.PLAYBACK_FINISHED_STOP,
-    ): VoiceModeState.COOLDOWN,
-    (
-        VoiceModeState.FOLLOWUP_LISTENING,
-        VoiceModeEvent.FOLLOWUP_STARTED,
-    ): VoiceModeState.CAPTURING,
-    (
-        VoiceModeState.FOLLOWUP_LISTENING,
-        VoiceModeEvent.FOLLOWUP_TIMEOUT,
-    ): VoiceModeState.COOLDOWN,
-    (VoiceModeState.COOLDOWN, VoiceModeEvent.COOLDOWN_EXPIRED): VoiceModeState.IDLE,
-    (VoiceModeState.ERROR, VoiceModeEvent.RESET): VoiceModeState.IDLE,
-}
+_TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = dict([
+    ((VoiceModeState.UNAVAILABLE, VoiceModeEvent.CONNECTION_READY),
+     VoiceModeState.IDLE),
+    ((VoiceModeState.IDLE, VoiceModeEvent.WAKE_WORD_DETECTED),
+     VoiceModeState.CAPTURING),
+    ((VoiceModeState.CAPTURING, VoiceModeEvent.CAPTURE_ENDED),
+     VoiceModeState.PROCESSING),
+    ((VoiceModeState.PROCESSING, VoiceModeEvent.RESPONSE_READY),
+     VoiceModeState.PLAYING),
+    ((VoiceModeState.PLAYING, VoiceModeEvent.PLAYBACK_FINISHED_CONTINUE),
+     VoiceModeState.FOLLOWUP_LISTENING),
+    ((VoiceModeState.PLAYING, VoiceModeEvent.PLAYBACK_FINISHED_STOP),
+     VoiceModeState.COOLDOWN),
+    ((VoiceModeState.FOLLOWUP_LISTENING, VoiceModeEvent.FOLLOWUP_STARTED),
+     VoiceModeState.CAPTURING),
+    ((VoiceModeState.FOLLOWUP_LISTENING, VoiceModeEvent.FOLLOWUP_TIMEOUT),
+     VoiceModeState.COOLDOWN),
+    ((VoiceModeState.COOLDOWN, VoiceModeEvent.COOLDOWN_EXPIRED),
+     VoiceModeState.IDLE),
+    ((VoiceModeState.ERROR, VoiceModeEvent.RESET),
+     VoiceModeState.IDLE),
+])
 
 
 class VoiceModeStateMachine:
