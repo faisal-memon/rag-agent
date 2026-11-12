@@ -6,6 +6,8 @@ const systemPromptStatus = document.getElementById("system-prompt-status");
 const resetSystemPromptButton = document.getElementById("reset-system-prompt");
 const remoteMCPServerList = document.getElementById("remote-mcp-servers");
 const remoteMCPFormStatus = document.getElementById("remote-mcp-form-status");
+const piperVoiceSelect = document.getElementById("piper-voice");
+const piperVoiceStatus = document.getElementById("piper-voice-status");
 let systemPromptIsDefault = true;
 let defaultSystemPrompt = "";
 
@@ -20,6 +22,30 @@ function updateSystemPromptStatus() {
 function renderRemoteMCPServers(servers = []) {
   remoteMCPServerList.replaceChildren();
   for (const server of servers) addRemoteMCPServer(server.name, server.url);
+}
+
+function renderPiperVoices(voices = []) {
+  if (!piperVoiceSelect || !voices.length) return;
+  const selected = piperVoiceSelect.value;
+  piperVoiceSelect.replaceChildren(...voices.map((voice) => {
+    const option = document.createElement("option");
+    option.value = voice;
+    option.textContent = voice;
+    return option;
+  }));
+  piperVoiceSelect.value = voices.includes(selected) ? selected : voices[0];
+  piperVoiceStatus.textContent = `${voices.length} Piper voice${voices.length === 1 ? "" : "s"} installed.`;
+}
+
+async function loadPiperVoices() {
+  try {
+    const response = await fetch("/api/piper/voices");
+    if (!response.ok) return;
+    const data = await response.json();
+    renderPiperVoices(data.voices || []);
+  } catch (_error) {
+    // Keep the built-in choices when Piper is temporarily unavailable.
+  }
 }
 
 function addRemoteMCPServer(name = "", url = "") {
@@ -136,6 +162,7 @@ async function loadSettings() {
   const response = await fetch("/api/settings");
   if (!response.ok) throw new Error("Could not load settings");
   fillForm(await response.json());
+  await loadPiperVoices();
   setStatus("Ready");
 }
 

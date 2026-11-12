@@ -131,6 +131,16 @@
 
         <section id="voice-panel" class="settings-panel" role="tabpanel" hidden>
           <fieldset>
+            <legend>speech voice</legend>
+            <label for="piper-voice">Piper voice</label>
+            <select id="piper-voice" name="piper_voice">
+              <option value="en_GB-alba-medium">English (British), Alba medium</option>
+              <option value="en_US-lessac-medium">English (US), Lessac medium</option>
+              <option value="en_US-amy-medium">English (US), Amy medium</option>
+            </select>
+            <p class="field-help" id="piper-voice-status">Choose from voices installed in Piper. New models are installed by the deployment.</p>
+          </fieldset>
+          <fieldset>
             <legend>voice activity detection</legend>
             <label for="voice-start-grace-ms">Ignore startup sound (milliseconds)</label>
             <input id="voice-start-grace-ms" name="voice_start_grace_ms" type="number" min="0" max="10000" step="20" required />

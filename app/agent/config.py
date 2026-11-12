@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -30,6 +31,7 @@ class RemoteMCPServerSetting(BaseModel):
 
 
 class ApiSettings(ConfiguredSettings):
+    DEFAULT_PIPER_VOICE: ClassVar[str] = "en_GB-alba-medium"
     timezone: ZoneInfo = Field(default=ZoneInfo("UTC"), alias="TZ")
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     normalized_output_dir: Path = Field(default=Path("/data/normalized"), alias="NORMALIZED_OUTPUT_DIR")
@@ -72,7 +74,7 @@ class ApiSettings(ConfiguredSettings):
     )
     piper_host: str = Field(default="piper-piper-1", alias="PIPER_HOST")
     piper_port: int = Field(default=10200, ge=1, le=65535, alias="PIPER_PORT")
-    piper_voice: str = Field(default="en_US-lessac-medium", alias="PIPER_VOICE")
+    piper_voice: str = Field(default=DEFAULT_PIPER_VOICE, min_length=1)
     esphome_media_url_base: str = Field(default="", alias="ESPHOME_MEDIA_URL_BASE")
     esphome_media_server_host: str = Field(default="0.0.0.0", alias="ESPHOME_MEDIA_SERVER_HOST")
     esphome_media_server_port: int = Field(default=18081, ge=1, le=65535, alias="ESPHOME_MEDIA_SERVER_PORT")
@@ -108,8 +110,7 @@ class ApiSettings(ConfiguredSettings):
 
 @lru_cache
 def get_api_settings() -> ApiSettings:
-    return ApiSettings(
-        **runtime_settings(
+    values = runtime_settings(
             "api",
             excluded={
                 "database",
@@ -120,4 +121,7 @@ def get_api_settings() -> ApiSettings:
                 "remote_mcp_auth_token_file",
             },
         )
-    )
+    # Piper voice selection is persisted with the agent settings. Keep the
+    # deployment environment from silently choosing a different voice.
+    values.setdefault("piper_voice", ApiSettings.DEFAULT_PIPER_VOICE)
+    return ApiSettings(**values)

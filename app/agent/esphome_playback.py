@@ -15,6 +15,7 @@ import soundfile
 from wyoming.audio import AudioChunk, AudioStop
 from wyoming.client import AsyncTcpClient
 from wyoming.error import Error
+from wyoming.info import Describe, Info
 from wyoming.tts import Synthesize, SynthesizeVoice
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,26 @@ class PiperClient:
         self._host = host
         self._port = port
         self._voice = voice
+
+    async def list_voices(self) -> list[str]:
+        """Return installed Piper voice identifiers advertised by Wyoming."""
+        async with AsyncTcpClient(self._host, self._port) as client:
+            await client.write_event(Describe().event())
+            while True:
+                event = await client.read_event()
+                if event is None:
+                    raise RuntimeError("Piper disconnected while listing voices")
+                if Error.is_type(event.type):
+                    raise RuntimeError(f"Piper voice discovery failed: {Error.from_event(event)}")
+                if Info.is_type(event.type):
+                    info = Info.from_event(event)
+                    voices = {
+                        voice.name
+                        for program in info.tts
+                        for voice in program.voices
+                        if voice.installed
+                    }
+                    return sorted(voices)
 
     async def synthesize_flac(self, text: str) -> bytes:
         """Synthesize text as mono FLAC for the speaker's announcement pipeline."""

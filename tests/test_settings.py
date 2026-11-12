@@ -44,6 +44,7 @@ class SettingsApiTest(unittest.TestCase):
                 embedding_llamacpp_model="mxbai",
                 query_limit=10,
                 agent_max_steps=5,
+                piper_voice="en_GB-alba-medium",
                 voice_start_grace_ms=0,
                 voice_end_silence_ms=600,
                 voice_capture_limit_seconds=0,
@@ -63,9 +64,11 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(0, result.voice_capture_limit_seconds)
         self.assertEqual(0, result.voice_start_grace_ms)
         self.assertEqual(600, result.voice_end_silence_ms)
+        self.assertEqual("en_GB-alba-medium", result.piper_voice)
         self.assertEqual(3, result.voice_follow_up_start_timeout_seconds)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
+        self.assertEqual("en_GB-alba-medium", saved_settings["api"]["piper_voice"])
         self.assertNotIn("system_prompt", saved_settings["api"])
         catalog_manager_class.assert_called_once_with(get_api_settings().mcp_registry_refresh_interval)
         catalog_manager_class.return_value.start.assert_awaited_once()
@@ -161,6 +164,15 @@ class SettingsApiTest(unittest.TestCase):
             get_api_settings().piper_voice,
         )
         piper_class.return_value.synthesize_flac.assert_awaited_once_with("Hello there")
+
+    def test_piper_voices_lists_installed_models(self) -> None:
+        with patch("app.agent.api.routes.PiperClient") as piper_class:
+            piper_class.return_value.list_voices = AsyncMock(
+                return_value=["en_GB-alba-medium", "en_US-lessac-medium"]
+            )
+            result = asyncio.run(routes.piper_voices())
+
+        self.assertEqual({"voices": ["en_GB-alba-medium", "en_US-lessac-medium"]}, result)
 
     def test_agent_stream_keeps_progress_when_the_agent_fails(self) -> None:
         class FailingAgent:
