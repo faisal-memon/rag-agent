@@ -773,6 +773,30 @@ class AgentTest(unittest.TestCase):
         self.assertEqual({"type": "object", "keys": ["choices"]}, events[2]["summary"])
         self.assertEqual({"choices": ["Pasta"]}, events[2]["result"])
 
+    def test_agent_turns_tool_failure_into_a_human_readable_answer(self) -> None:
+        settings = _settings_with_api(agent_max_steps=3, memory_path=Path(tempfile.mkdtemp()) / "MEMORY.md")
+        responses = iter(
+            [
+                '{"action":"tool","tool":"get_weather","arguments":{"day":"2026-11-12"},'
+                '"status":"Checking the weather."}',
+                '{"action":"answer","evidence_status":"supported",'
+                '"answer":"I could not contact the weather service. Please try again later."}',
+            ]
+        )
+
+        with (
+            patch("app.agent.agent.get_llm_client", return_value=(object(), "test-model")),
+            patch("app.agent.agent._complete_text", side_effect=lambda *_args, **_kwargs: next(responses)),
+            patch(
+                "app.agent.agent.Agent._execute_tool",
+                return_value={"tool": "get_weather", "arguments": {}, "result": {"error": "TLS timeout"}},
+            ),
+        ):
+            result = _agent(settings).answer("What's the weather?", response_mode="spoken")
+
+        self.assertEqual("I could not contact the weather service. Please try again later.", result["answer"])
+        self.assertIn("tool_failure", [event["event"] for event in result["debug"]])
+
     def test_agent_retries_a_non_json_planner_response(self) -> None:
         responses = iter(
             [

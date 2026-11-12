@@ -33,6 +33,7 @@ from app.agent.voice_activity import (
     VoiceActivityFrame,
     VoiceActivityDetector,
 )
+from app.agent.voice_state_machine import VoiceModeEvent, VoiceModeStateMachine
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class ESPHomeVoiceClient:
     def __init__(self, settings: ApiSettings, agent: Agent | None = None) -> None:
         self._settings = settings
         self._agent = agent
+        self._voice_mode = VoiceModeStateMachine()
         self._piper = PiperClient(
             settings.piper_host,
             settings.piper_port,
@@ -183,6 +185,7 @@ class ESPHomeVoiceClient:
             handle_stop=self._handle_session_stop,
             handle_audio=self._handle_audio,
         )
+        self._voice_mode.dispatch(VoiceModeEvent.CONNECTION_READY)
         self._finish_voice_run(error="api-reconnected")
         device_id = _stable_device_id(info.mac_address, self._settings.esphome_device_host)
         self._device_id = device_id
@@ -208,6 +211,7 @@ class ESPHomeVoiceClient:
     async def _on_disconnect(self, expected: bool) -> None:
         self._connected = False
         self._unsubscribe()
+        self._voice_mode.dispatch(VoiceModeEvent.CONNECTION_LOST)
         logger.info("ESPHome Native API disconnected (expected=%s)", expected)
 
     async def _on_connect_error(self, error: Exception) -> None:
@@ -251,6 +255,11 @@ class ESPHomeVoiceClient:
         self._session_started_at = time.monotonic()
         self._last_vad_diagnostic_at = self._session_started_at
         self._turn_started_at = self._session_started_at
+        self._voice_mode.dispatch(
+            VoiceModeEvent.FOLLOWUP_STARTED
+            if self._session_is_follow_up
+            else VoiceModeEvent.WAKE_WORD_DETECTED
+        )
         logger.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
             "wake_word=%s, follow_up=%s, audio_settings=%s)",
@@ -333,6 +342,7 @@ class ESPHomeVoiceClient:
                 logger.info("ReSpeaker VAD state: waiting_for_speech -> speaking")
             elif event is CaptureEvent.SPEECH_ENDED:
                 self._vad_ended = True
+                self._voice_mode.dispatch(VoiceModeEvent.CAPTURE_ENDED)
                 logger.info("ReSpeaker VAD state: waiting_for_silence -> ended")
                 self._record_activity(
                     "Capture", "completed", duration_ms=self._elapsed_ms(), detail="Ended after silence"
@@ -344,6 +354,7 @@ class ESPHomeVoiceClient:
                 return
             elif event is CaptureEvent.MAX_DURATION_REACHED:
                 self._vad_ended = True
+                self._voice_mode.dispatch(VoiceModeEvent.CAPTURE_ENDED)
                 logger.warning("ReSpeaker capture reached its configured time limit")
                 self._record_activity(
                     "Capture", "completed", duration_ms=self._elapsed_ms(), detail="Capture limit reached"
@@ -356,6 +367,7 @@ class ESPHomeVoiceClient:
             elif event is CaptureEvent.NO_SPEECH_TIMEOUT:
                 self._vad_ended = True
                 self._vad_no_speech_timeout = True
+                self._voice_mode.dispatch(VoiceModeEvent.CAPTURE_ENDED)
                 logger.info("ReSpeaker capture ended: no speech detected")
                 self._record_activity(
                     "Capture", "info", duration_ms=self._elapsed_ms(), detail="No speech detected"
@@ -616,6 +628,7 @@ class ESPHomeVoiceClient:
                 pass
 
         if result is None:
+            self._voice_mode.dispatch(VoiceModeEvent.FAILURE)
             self._finish_voice_run(error="assistant-failed")
             return
 
@@ -655,6 +668,7 @@ class ESPHomeVoiceClient:
             continue_listening,
             self._settings.voice_follow_up_timeout_seconds,
         )
+        self._voice_mode.dispatch(VoiceModeEvent.RESPONSE_READY)
         await self._speak_reply(
             answer,
             conversation_id,
@@ -753,10 +767,16 @@ class ESPHomeVoiceClient:
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
             )
+            self._voice_mode.dispatch(
+                VoiceModeEvent.PLAYBACK_FINISHED_CONTINUE
+                if should_continue
+                else VoiceModeEvent.PLAYBACK_FINISHED_STOP
+            )
             logger.info("ReSpeaker agent reply queued for speaker playback (conversation=%s)", conversation_id)
         except Exception:
             logger.exception("ReSpeaker reply synthesis or playback request failed")
             self._record_activity("Speech generation", "failed", duration_ms=self._stage_ms(stage_started))
+            self._voice_mode.dispatch(VoiceModeEvent.FAILURE)
             self._finish_voice_run()
 
     def _finish_voice_run(self, *, error: str | None = None) -> None:
