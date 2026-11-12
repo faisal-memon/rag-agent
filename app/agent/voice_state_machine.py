@@ -50,24 +50,43 @@ class VoiceModeTransition:
 
 
 _TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = dict([
+    # The connection is ready, so begin waiting for a wake word.
     ((VoiceModeState.UNAVAILABLE, VoiceModeEvent.CONNECTION_READY),
      VoiceModeState.IDLE),
+
+    # A wake word starts a new audio capture.
     ((VoiceModeState.IDLE, VoiceModeEvent.WAKE_WORD_DETECTED),
      VoiceModeState.CAPTURING),
+
+    # Ended audio is handed to transcription and agent processing.
     ((VoiceModeState.CAPTURING, VoiceModeEvent.CAPTURE_ENDED),
      VoiceModeState.PROCESSING),
+
+    # A completed response moves into speaker playback.
     ((VoiceModeState.PROCESSING, VoiceModeEvent.RESPONSE_READY),
      VoiceModeState.PLAYING),
+
+    # Playback can continue directly into the short follow-up window.
     ((VoiceModeState.PLAYING, VoiceModeEvent.PLAYBACK_FINISHED_CONTINUE),
      VoiceModeState.FOLLOWUP_LISTENING),
+
+    # Playback that does not continue enters the cooldown guard.
     ((VoiceModeState.PLAYING, VoiceModeEvent.PLAYBACK_FINISHED_STOP),
      VoiceModeState.COOLDOWN),
+
+    # Confirmed follow-up speech starts another capture.
     ((VoiceModeState.FOLLOWUP_LISTENING, VoiceModeEvent.FOLLOWUP_STARTED),
      VoiceModeState.CAPTURING),
+
+    # An empty follow-up window ends safely in cooldown.
     ((VoiceModeState.FOLLOWUP_LISTENING, VoiceModeEvent.FOLLOWUP_TIMEOUT),
      VoiceModeState.COOLDOWN),
+
+    # Once the echo-protection cooldown expires, wait for a new wake word.
     ((VoiceModeState.COOLDOWN, VoiceModeEvent.COOLDOWN_EXPIRED),
      VoiceModeState.IDLE),
+
+    # Reset a failed run back to the normal idle state.
     ((VoiceModeState.ERROR, VoiceModeEvent.RESET),
      VoiceModeState.IDLE),
 ])
