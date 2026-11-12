@@ -92,15 +92,6 @@ _TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = dict
 ])
 
 
-def _handle_global_event(event: VoiceModeEvent) -> VoiceModeState | None:
-    """Return the state forced by an event that applies from any state."""
-    if event is VoiceModeEvent.CONNECTION_LOST:
-        return VoiceModeState.UNAVAILABLE
-    if event is VoiceModeEvent.FAILURE:
-        return VoiceModeState.ERROR
-    return None
-
-
 class VoiceModeStateMachine:
     """Small event-driven state machine for the ESPHome voice client."""
 
@@ -124,3 +115,12 @@ class VoiceModeStateMachine:
         logger.info("ESPHome voice state transition: %s + %s -> %s", previous.name, event.name, next_state.name)
 
         return VoiceModeTransition(previous, next_state, event, True)
+
+
+def _handle_global_event(event: VoiceModeEvent) -> VoiceModeState | None:
+    """Return the state forced by an event that applies from any state."""
+    if event is VoiceModeEvent.CONNECTION_LOST:
+        return VoiceModeState.UNAVAILABLE
+    if event is VoiceModeEvent.FAILURE:
+        return VoiceModeState.ERROR
+    return None
