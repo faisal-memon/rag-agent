@@ -232,7 +232,19 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
         tool_result = _execute_planned_tool(agent, decision, turn)
         result = tool_result.get("result") or {}
         if isinstance(result, dict) and result.get("error"):
-            raise RuntimeError(f"Tool {decision['tool']} failed: {result['error']}")
+            error = str(result["error"])
+            decision_feedback = (
+                f"The tool {decision['tool']} failed with this error: {error}. "
+                "Do not repeat the same tool call. Explain the problem briefly in a human-readable answer "
+                "and, if appropriate, suggest trying again later."
+            )
+            _append_debug(
+                turn.debug,
+                "tool_failure",
+                phase="execution",
+                tool=decision["tool"],
+                error=error,
+            )
 
     return answer or ""
 
