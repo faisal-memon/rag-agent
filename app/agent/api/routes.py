@@ -7,12 +7,13 @@ from threading import Thread
 from typing import Iterator
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.agent import tools, voice_devices
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
+from app.agent.esphome_playback import PiperClient
 from app.embed.config import get_embed_settings
 from app.agent.conversations import append_messages, delete_conversation, get_conversation, list_conversations, load_or_create
 from app.agent.api.schemas import (
@@ -23,6 +24,7 @@ from app.agent.api.schemas import (
     QueryRequest,
     ReindexResponse,
     RetrievalDebugResponse,
+    SpeakRequest,
     TranscriptResponse,
 )
 from app.agent.pipeline import pipeline_status
@@ -324,6 +326,22 @@ async def transcribe(request: Request, audio: UploadFile = File(...)) -> Transcr
     except TranscriptionUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return TranscriptResponse(text=text)
+
+
+@router.post("/api/tts", response_class=Response)
+async def text_to_speech(payload: SpeakRequest) -> Response:
+    """Synthesize one browser-requested reply with the configured Piper voice."""
+    settings = get_api_settings()
+    try:
+        audio = await PiperClient(
+            settings.piper_host,
+            settings.piper_port,
+            settings.piper_voice,
+        ).synthesize_flac(payload.text)
+    except (ConnectionError, OSError, RuntimeError, TimeoutError) as exc:
+        logger.warning("Browser speech synthesis failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Speech synthesis is unavailable.") from exc
+    return Response(content=audio, media_type="audio/flac", headers={"Cache-Control": "no-store"})
 
 
 @router.post("/agent/query/stream")

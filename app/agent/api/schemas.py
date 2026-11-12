@@ -61,6 +61,10 @@ class TranscriptResponse(BaseModel):
     text: str
 
 
+class SpeakRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4_000)
+
+
 class AgentToolCall(BaseModel):
     tool: str
     arguments: dict[str, Any]
