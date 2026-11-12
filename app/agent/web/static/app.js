@@ -43,6 +43,7 @@ let pendingConversation = false;
 let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
+let activeSpeech = null;
 
 function redirectToLoginIfNeeded(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -739,7 +740,10 @@ function renderAgentConversation() {
       : "";
     return `
       <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
-        <div class="chat-role">rag agent</div>
+        <div class="chat-heading">
+          <div class="chat-role">rag agent</div>
+          ${message.streaming || !message.content ? "" : '<button class="speak-response" type="button" aria-label="Speak response" title="Speak response">🔊</button>'}
+        </div>
         ${agentProgressTimelineHtml(message.progress, message.streaming)}
         ${message.streaming ? "" : `<div class="chat-content">${renderChatMarkdown(message.content)}</div>`}
         ${agentTraceTimelineHtml(message)}
@@ -759,6 +763,66 @@ function renderAgentConversation() {
     }
   }
 }
+
+function stopSpeech() {
+  if (!activeSpeech) return;
+  activeSpeech.audio.pause();
+  activeSpeech.audio.currentTime = 0;
+  if (activeSpeech.url) URL.revokeObjectURL(activeSpeech.url);
+  activeSpeech.button.textContent = "🔊";
+  activeSpeech.button.setAttribute("aria-label", "Speak response");
+  activeSpeech.button.title = "Speak response";
+  activeSpeech = null;
+}
+
+async function speakResponse(button) {
+  stopSpeech();
+  const message = button.closest(".chat-message");
+  const content = message?.querySelector(".chat-content")?.textContent?.trim();
+  if (!content) return;
+
+  const audio = new Audio();
+  activeSpeech = { audio, button, url: null };
+  button.textContent = "■";
+  button.setAttribute("aria-label", "Stop speaking");
+  button.title = "Stop speaking";
+  try {
+    const response = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: content }),
+    });
+    if (redirectToLoginIfNeeded(response)) {
+      stopSpeech();
+      return;
+    }
+    if (!response.ok) {
+      let detail = "Speech synthesis failed.";
+      try { detail = (await response.json()).detail || detail; } catch (_error) { /* use default */ }
+      throw new Error(detail);
+    }
+    const blob = await response.blob();
+    if (!activeSpeech || activeSpeech.audio !== audio) return;
+    const url = URL.createObjectURL(blob);
+    activeSpeech.url = url;
+    audio.src = url;
+    audio.addEventListener("ended", stopSpeech, { once: true });
+    await audio.play();
+  } catch (error) {
+    if (activeSpeech?.audio === audio) {
+      stopSpeech();
+      status.textContent = error.message || "Speech synthesis failed.";
+      status.classList.add("error");
+    }
+  }
+}
+
+agentChat?.addEventListener("click", (event) => {
+  const button = event.target.closest(".speak-response");
+  if (!button) return;
+  if (activeSpeech?.button === button) stopSpeech();
+  else speakResponse(button);
+});
 
 function hideAgentConversation() {
   agentChat.classList.remove("visible");

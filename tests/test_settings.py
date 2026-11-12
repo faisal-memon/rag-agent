@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.agent.api import routes
-from app.agent.api.schemas import AgentQueryRequest, AgentRuntimeSettings
+from app.agent.api.schemas import AgentQueryRequest, AgentRuntimeSettings, SpeakRequest
 from app.agent.config import get_api_settings
 from app.core.config import read_runtime_settings, write_runtime_settings
 
@@ -145,6 +145,22 @@ class SettingsApiTest(unittest.TestCase):
         self.assertIn('"type":"thinking"', body)
         self.assertIn('"type":"tool_call"', body)
         self.assertIn('"type":"complete"', body)
+
+    def test_text_to_speech_returns_piper_audio(self) -> None:
+        with patch("app.agent.api.routes.PiperClient") as piper_class:
+            piper_class.return_value.synthesize_flac = AsyncMock(return_value=b"flac bytes")
+            response = asyncio.run(routes.text_to_speech(SpeakRequest(text="Hello there")))
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("audio/flac", response.media_type)
+        self.assertEqual(b"flac bytes", response.body)
+        self.assertEqual("no-store", response.headers["cache-control"])
+        piper_class.assert_called_once_with(
+            get_api_settings().piper_host,
+            get_api_settings().piper_port,
+            get_api_settings().piper_voice,
+        )
+        piper_class.return_value.synthesize_flac.assert_awaited_once_with("Hello there")
 
     def test_agent_stream_keeps_progress_when_the_agent_fails(self) -> None:
         class FailingAgent:
