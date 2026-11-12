@@ -49,6 +49,7 @@ class VoiceModeTransition:
     accepted: bool
 
 
+# Normal transitions match the current state and event, then return the next state.
 _TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = dict([
     # The connection is ready, so begin waiting for a wake word.
     ((VoiceModeState.UNAVAILABLE, VoiceModeEvent.CONNECTION_READY),
