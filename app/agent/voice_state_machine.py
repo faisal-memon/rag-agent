@@ -39,16 +39,6 @@ class VoiceModeEvent(Enum):
     RESET = auto()
 
 
-@dataclass(frozen=True)
-class VoiceModeTransition:
-    """Result of dispatching one event."""
-
-    previous: VoiceModeState
-    current: VoiceModeState
-    event: VoiceModeEvent
-    accepted: bool
-
-
 # Normal transitions match the current state and event, then return the next state.
 _TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = dict([
     # The connection is ready, so begin waiting for a wake word.
@@ -91,6 +81,16 @@ _TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = dict
     ((VoiceModeState.ERROR, VoiceModeEvent.RESET),
      VoiceModeState.IDLE),
 ])
+
+
+@dataclass(frozen=True)
+class VoiceModeTransition:
+    """Result of dispatching one event."""
+
+    previous: VoiceModeState
+    current: VoiceModeState
+    event: VoiceModeEvent
+    accepted: bool
 
 
 class VoiceModeStateMachine:
