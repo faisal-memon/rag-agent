@@ -110,21 +110,10 @@ class VoiceModeStateMachine:
     def dispatch(self, event: VoiceModeEvent) -> VoiceModeTransition:
         """Apply one event and log rejected transitions without changing state."""
         previous = self.state
-        current = _TRANSITIONS.get((previous, event))
+        current = _TRANSITIONS.get((previous, event)) or _handle_global_event(event)
         if current is None:
-            current = _handle_global_event(event)
-        if current is None:
-            logger.warning(
-                "Rejected ESPHome voice state transition: %s + %s",
-                previous.name,
-                event.name,
-            )
+            logger.warning("Rejected ESPHome voice state transition: %s + %s", previous.name, event.name)
             return VoiceModeTransition(previous, previous, event, False)
         self.state = current
-        logger.info(
-            "ESPHome voice state transition: %s + %s -> %s",
-            previous.name,
-            event.name,
-            current.name,
-        )
+        logger.info("ESPHome voice state transition: %s + %s -> %s", previous.name, event.name, current.name)
         return VoiceModeTransition(previous, current, event, True)
