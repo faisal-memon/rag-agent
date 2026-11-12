@@ -108,13 +108,23 @@ class VoiceModeStateMachine:
         # Reject events that are not valid from the current state.
         if next_state is None:
             logger.warning("Rejected ESPHome voice state transition: %s + %s", previous.name, event.name)
-            return VoiceModeTransition(previous, previous, event, False)
+            return VoiceModeTransition(
+                previous=previous,
+                current=previous,
+                event=event,
+                accepted=False,
+            )
 
         # Commit and report the accepted transition.
         self.state = next_state
         logger.info("ESPHome voice state transition: %s + %s -> %s", previous.name, event.name, next_state.name)
 
-        return VoiceModeTransition(previous, next_state, event, True)
+        return VoiceModeTransition(
+            previous=previous,
+            current=next_state,
+            event=event,
+            accepted=True,
+        )
 
 
 def _handle_global_event(event: VoiceModeEvent) -> VoiceModeState | None:
