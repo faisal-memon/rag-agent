@@ -92,6 +92,15 @@ _TRANSITIONS: dict[tuple[VoiceModeState, VoiceModeEvent], VoiceModeState] = dict
 ])
 
 
+def _handle_global_event(event: VoiceModeEvent) -> VoiceModeState | None:
+    """Return the state forced by an event that applies from any state."""
+    if event is VoiceModeEvent.CONNECTION_LOST:
+        return VoiceModeState.UNAVAILABLE
+    if event is VoiceModeEvent.FAILURE:
+        return VoiceModeState.ERROR
+    return None
+
+
 class VoiceModeStateMachine:
     """Small event-driven state machine for the ESPHome voice client."""
 
@@ -101,12 +110,9 @@ class VoiceModeStateMachine:
     def dispatch(self, event: VoiceModeEvent) -> VoiceModeTransition:
         """Apply one event and log rejected transitions without changing state."""
         previous = self.state
-        if event is VoiceModeEvent.CONNECTION_LOST:
-            current = VoiceModeState.UNAVAILABLE
-        elif event is VoiceModeEvent.FAILURE:
-            current = VoiceModeState.ERROR
-        else:
-            current = _TRANSITIONS.get((previous, event))
+        current = _TRANSITIONS.get((previous, event))
+        if current is None:
+            current = _handle_global_event(event)
         if current is None:
             logger.warning(
                 "Rejected ESPHome voice state transition: %s + %s",
