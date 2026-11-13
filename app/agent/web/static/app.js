@@ -45,6 +45,9 @@ let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 let activeSpeech = null;
+const speechAudio = new Audio();
+speechAudio.preload = "auto";
+let speechGeneration = 0;
 const speakRepliesKey = "rag-agent-speak-replies-v1";
 let speakReplies = localStorage.getItem(speakRepliesKey) === "1";
 
@@ -774,8 +777,12 @@ function updateSpeakRepliesButton() {
   speakRepliesButton.classList.toggle("active", speakReplies);
 }
 
-function stopSpeech(expectedAudio = null) {
-  if (!activeSpeech || (expectedAudio && activeSpeech.audio !== expectedAudio)) return;
+function stopSpeech(expectedAudio = null, expectedGeneration = null) {
+  if (
+    !activeSpeech
+    || (expectedAudio && activeSpeech.audio !== expectedAudio)
+    || (expectedGeneration !== null && activeSpeech.generation !== expectedGeneration)
+  ) return;
   activeSpeech.audio.pause();
   activeSpeech.audio.currentTime = 0;
   if (activeSpeech.url) URL.revokeObjectURL(activeSpeech.url);
@@ -790,9 +797,9 @@ async function speakText(text) {
   const content = text?.trim();
   if (!content) return;
 
-  const audio = new Audio();
-  audio.preload = "auto";
-  activeSpeech = { audio, button: speakRepliesButton, url: null };
+  const audio = speechAudio;
+  const generation = ++speechGeneration;
+  activeSpeech = { audio, button: speakRepliesButton, generation, url: null };
   if (speakRepliesButton) {
     speakRepliesButton.textContent = "■";
     speakRepliesButton.setAttribute("aria-label", "Stop speaking");
@@ -805,7 +812,7 @@ async function speakText(text) {
       body: JSON.stringify({ text: content }),
     });
     if (redirectToLoginIfNeeded(response)) {
-      stopSpeech(audio);
+      stopSpeech(audio, generation);
       return;
     }
     if (!response.ok) {
@@ -814,25 +821,25 @@ async function speakText(text) {
       throw new Error(detail);
     }
     const blob = await response.blob();
-    if (!activeSpeech || activeSpeech.audio !== audio) return;
+    if (!activeSpeech || activeSpeech.audio !== audio || activeSpeech.generation !== generation) return;
     const url = URL.createObjectURL(blob);
     activeSpeech.url = url;
     audio.src = url;
     // An older reply can finish after a newer one has started. Only let the
     // audio instance that actually ended clear the active playback state.
-    audio.addEventListener("ended", () => stopSpeech(audio), { once: true });
+    audio.addEventListener("ended", () => stopSpeech(audio, generation), { once: true });
     audio.addEventListener("error", () => {
-      if (activeSpeech?.audio !== audio) return;
+      if (activeSpeech?.audio !== audio || activeSpeech.generation !== generation) return;
       const mediaError = audio.error;
-      stopSpeech(audio);
+      stopSpeech(audio, generation);
       status.textContent = mediaError?.message || "The browser could not play the speech audio.";
       status.classList.add("error");
     }, { once: true });
     audio.load();
     await audio.play();
   } catch (error) {
-    if (activeSpeech?.audio === audio) {
-      stopSpeech();
+    if (activeSpeech?.audio === audio && activeSpeech.generation === generation) {
+      stopSpeech(audio, generation);
       status.textContent = error.message || "Speech synthesis failed.";
       status.classList.add("error");
     }
@@ -847,6 +854,7 @@ speakRepliesButton?.addEventListener("click", () => {
   }
   speakReplies = !speakReplies;
   localStorage.setItem(speakRepliesKey, speakReplies ? "1" : "0");
+  if (speakReplies) speechAudio.load();
   updateSpeakRepliesButton();
 });
 
