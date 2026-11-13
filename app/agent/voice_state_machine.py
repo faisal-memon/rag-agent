@@ -134,4 +134,6 @@ def _handle_global_event(event: VoiceModeEvent) -> VoiceModeState | None:
         return VoiceModeState.UNAVAILABLE
     if event is VoiceModeEvent.FAILURE:
         return VoiceModeState.ERROR
+    if event is VoiceModeEvent.RESET:
+        return VoiceModeState.IDLE
     return None

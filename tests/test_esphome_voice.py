@@ -16,6 +16,7 @@ from app.agent.esphome_voice import (
     _spoken_tool_status,
 )
 from app.agent.voice_activity import VoiceActivityFrame
+from app.agent.voice_state_machine import VoiceModeEvent, VoiceModeState
 
 
 class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
@@ -26,6 +27,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
                 WHISPERCPP_BASE_URL="http://whisper.test:8080",
             )
         )
+        self.client._voice_mode.dispatch(VoiceModeEvent.CONNECTION_READY)
 
     async def test_completed_session_is_wrapped_as_wav_and_transcribed(self):
         pcm = b"\x01\x00\x02\x00"
@@ -73,6 +75,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
     async def test_follow_up_uses_separate_speech_start_timeout(self):
         self.client._follow_up_pending = True
+        self.client._voice_mode.state = VoiceModeState.FOLLOWUP_LISTENING
 
         await self.client._handle_session_start("follow-up-timeout", 0, None, None)
 
@@ -124,6 +127,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
     async def test_unintelligible_follow_up_ends_quietly(self):
         self.client._follow_up_pending = True
+        self.client._voice_mode.state = VoiceModeState.FOLLOWUP_LISTENING
         self.client._client = MagicMock()
         await self.client._handle_session_start("follow-up-inaudible", 0, None, None)
         await self.client._handle_audio(b"\x01\x00")
