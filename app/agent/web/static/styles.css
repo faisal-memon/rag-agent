@@ -615,6 +615,12 @@ button.secondary {
   background: var(--panel-strong);
 }
 
+button.secondary.active {
+  border-color: var(--accent);
+  color: var(--button-ink);
+  background: var(--accent);
+}
+
 button.icon-button {
   display: inline-grid;
   width: 38px;

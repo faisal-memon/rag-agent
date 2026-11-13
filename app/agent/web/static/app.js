@@ -1,6 +1,7 @@
 const button = document.getElementById("ask");
 const agentButton = document.getElementById("agent");
 const recordButton = document.getElementById("record");
+const speakRepliesButton = document.getElementById("speak-replies");
 const debugButton = document.getElementById("debug");
 const pipelineButton = document.getElementById("pipeline");
 const question = document.getElementById("question");
@@ -44,6 +45,8 @@ let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 let activeSpeech = null;
+const speakRepliesKey = "rag-agent-speak-replies-v1";
+let speakReplies = localStorage.getItem(speakRepliesKey) === "1";
 
 function redirectToLoginIfNeeded(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -742,7 +745,6 @@ function renderAgentConversation() {
       <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
         <div class="chat-heading">
           <div class="chat-role">rag agent</div>
-          ${message.streaming || !message.content ? "" : '<button class="speak-response" type="button" aria-label="Speak response" title="Speak response">🔊</button>'}
         </div>
         ${agentProgressTimelineHtml(message.progress, message.streaming)}
         ${message.streaming ? "" : `<div class="chat-content">${renderChatMarkdown(message.content)}</div>`}
@@ -764,6 +766,14 @@ function renderAgentConversation() {
   }
 }
 
+function updateSpeakRepliesButton() {
+  if (!speakRepliesButton) return;
+  speakRepliesButton.setAttribute("aria-pressed", String(speakReplies));
+  speakRepliesButton.setAttribute("aria-label", `Speak replies is ${speakReplies ? "on" : "off"}`);
+  speakRepliesButton.title = `Speak replies: ${speakReplies ? "on" : "off"}`;
+  speakRepliesButton.classList.toggle("active", speakReplies);
+}
+
 function stopSpeech() {
   if (!activeSpeech) return;
   activeSpeech.audio.pause();
@@ -775,17 +785,18 @@ function stopSpeech() {
   activeSpeech = null;
 }
 
-async function speakResponse(button) {
+async function speakText(text) {
   stopSpeech();
-  const message = button.closest(".chat-message");
-  const content = message?.querySelector(".chat-content")?.textContent?.trim();
+  const content = text?.trim();
   if (!content) return;
 
   const audio = new Audio();
-  activeSpeech = { audio, button, url: null };
-  button.textContent = "■";
-  button.setAttribute("aria-label", "Stop speaking");
-  button.title = "Stop speaking";
+  activeSpeech = { audio, button: speakRepliesButton, url: null };
+  if (speakRepliesButton) {
+    speakRepliesButton.textContent = "■";
+    speakRepliesButton.setAttribute("aria-label", "Stop speaking");
+    speakRepliesButton.title = "Stop speaking";
+  }
   try {
     const response = await fetch("/api/tts", {
       method: "POST",
@@ -817,12 +828,18 @@ async function speakResponse(button) {
   }
 }
 
-agentChat?.addEventListener("click", (event) => {
-  const button = event.target.closest(".speak-response");
-  if (!button) return;
-  if (activeSpeech?.button === button) stopSpeech();
-  else speakResponse(button);
+speakRepliesButton?.addEventListener("click", () => {
+  if (activeSpeech?.button === speakRepliesButton) {
+    stopSpeech();
+    updateSpeakRepliesButton();
+    return;
+  }
+  speakReplies = !speakReplies;
+  localStorage.setItem(speakRepliesKey, speakReplies ? "1" : "0");
+  updateSpeakRepliesButton();
 });
+
+updateSpeakRepliesButton();
 
 function hideAgentConversation() {
   agentChat.classList.remove("visible");
@@ -1001,6 +1018,7 @@ async function runAgent() {
           streaming: false,
         });
         status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
+        if (speakReplies && data.answer) speakText(data.answer);
       } else if (event.type === "error") {
         const errorMessage = event.message || "Agent request failed.";
         Object.assign(progressMessage, {
