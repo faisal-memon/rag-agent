@@ -112,10 +112,6 @@ class Agent:
             return memory_approval_response
 
         turn.client, turn.model = get_llm_client(self.settings)
-        catalog = self.tool_catalog()
-        if not _wants_document_retrieval(question):
-            turn.catalog = _catalog_without_document_tools(catalog)
-            logger.info("Agent routing: document retrieval disabled; request has no document reference")
         answer = _run_agent_loop(self, turn)
 
         if not answer:
@@ -247,39 +243,6 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
             )
 
     return answer or ""
-
-
-def _catalog_without_document_tools(catalog: tools.ToolCatalog) -> tools.ToolCatalog:
-    """Return a turn-local catalog that cannot route general requests into personal files."""
-    filtered = tools.ToolCatalog()
-    for tool in catalog.tools:
-        if "document_retrieval" not in tool.capabilities:
-            filtered.register(tool)
-    return filtered
-
-
-def _wants_document_retrieval(question: str) -> bool:
-    """Require a clear document or personal-record reference before exposing RAG tools."""
-    if _needs_profile_name(question):
-        return True
-    normalized = " ".join(question.casefold().split())
-    document_terms = (
-        r"documents?|files?|folders?|pdfs?|paperwork|records?(?:ed|ing)?|receipts?|invoices?|contracts?|"
-        r"leases?|tax returns?|insurance policies|warranties|statements?|deeds?|forms?|manuals?|"
-        r"spreadsheets?|attachments?"
-    )
-    explicit_reference = rf"\b(?:my|our|the|this|that|these|those|attached|uploaded)\s+(?:\w+\s+){{0,2}}(?:{document_terms})\b"
-    explicit_source = rf"\b(?:in|from|inside|within)\s+(?:my|our|the|this|that|attached|uploaded)\s+(?:{document_terms})\b"
-    document_action = rf"\b(?:search|find|look|check|read|summarize)\b.*\b(?:{document_terms})\b"
-    recorded_fact = r"\b(?:what|which|where|who)\b.*\b(?:is|are|was|were)\b.*\b(?:recorded|listed|registered|saved|on file)\b"
-    dated_tax_figure = r"\b(?:19|20)\d{2}\s+(?:agi|adjusted gross income)\b"
-    return bool(
-        re.search(explicit_reference, normalized)
-        or re.search(explicit_source, normalized)
-        or re.search(document_action, normalized)
-        or re.search(recorded_fact, normalized)
-        or re.search(dated_tax_figure, normalized)
-    )
 
 
 def _handle_planner_decision(

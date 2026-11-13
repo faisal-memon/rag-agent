@@ -77,6 +77,23 @@ def _turn(
 
 
 class AgentTest(unittest.TestCase):
+    def test_document_tools_remain_available_for_planner_decision(self) -> None:
+        seen = {}
+
+        def capture_catalog(_agent, turn):
+            seen["catalog"] = turn.catalog
+            return "Done."
+
+        with (
+            patch("app.agent.agent.get_llm_client", return_value=(MagicMock(), "test-model")),
+            patch("app.agent.agent._run_agent_loop", side_effect=capture_catalog),
+        ):
+            _agent(get_api_settings()).answer(
+                "Do you see any manuals on a Zephyr hood range?"
+            )
+
+        self.assertIsNotNone(seen["catalog"].get("semantic_search"))
+
     def test_duplicate_tool_call_is_recoverable(self) -> None:
         step = {"tool": "semantic_search", "arguments": {"query": "weather", "limit": 1}}
         turn = _turn("What is the weather?")
