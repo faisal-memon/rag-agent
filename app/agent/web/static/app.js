@@ -48,6 +48,8 @@ let activeSpeech = null;
 const speechAudio = new Audio();
 speechAudio.preload = "auto";
 let speechGeneration = 0;
+const playbackUnlockAudio = new Audio();
+let playbackUnlockUrl = null;
 const speakRepliesKey = "rag-agent-speak-replies-v1";
 let speakReplies = localStorage.getItem(speakRepliesKey) === "1";
 
@@ -58,6 +60,53 @@ function redirectToLoginIfNeeded(response) {
 
   window.location.assign(response.redirected && response.url ? response.url : window.location.href);
   return true;
+}
+
+function createSilentWavUrl() {
+  const sampleRate = 8000;
+  const sampleCount = 800;
+  const dataBytes = sampleCount * 2;
+  const buffer = new ArrayBuffer(44 + dataBytes);
+  const view = new DataView(buffer);
+  const writeText = (offset, text) => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  };
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeText(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeText(36, "data");
+  view.setUint32(40, dataBytes, true);
+  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+}
+
+function unlockSpeechPlayback() {
+  const url = createSilentWavUrl();
+  playbackUnlockAudio.pause();
+  if (playbackUnlockUrl) URL.revokeObjectURL(playbackUnlockUrl);
+  playbackUnlockUrl = url;
+  playbackUnlockAudio.muted = true;
+  playbackUnlockAudio.src = url;
+  const cleanup = () => {
+    if (playbackUnlockUrl !== url) return;
+    playbackUnlockAudio.pause();
+    playbackUnlockAudio.removeAttribute("src");
+    playbackUnlockAudio.load();
+    playbackUnlockAudio.muted = false;
+    URL.revokeObjectURL(url);
+    playbackUnlockUrl = null;
+  };
+  const playAttempt = playbackUnlockAudio.play();
+  if (playAttempt) playAttempt.catch(cleanup);
+  window.setTimeout(cleanup, 120);
 }
 let selectedImage = null;
 let imagePreparing = false;
@@ -854,7 +903,7 @@ speakRepliesButton?.addEventListener("click", () => {
   }
   speakReplies = !speakReplies;
   localStorage.setItem(speakRepliesKey, speakReplies ? "1" : "0");
-  if (speakReplies) speechAudio.load();
+  if (speakReplies) unlockSpeechPlayback();
   updateSpeakRepliesButton();
 });
 
