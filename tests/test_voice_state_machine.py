@@ -64,6 +64,16 @@ class VoiceModeStateMachineTest(unittest.TestCase):
         self.assertIs(result.previous, VoiceModeState.UNAVAILABLE)
         self.assertIs(result.current, VoiceModeState.UNAVAILABLE)
 
+    def test_entry_handler_runs_for_accepted_transition(self) -> None:
+        entered = []
+        machine = VoiceModeStateMachine(entry_handlers={
+            VoiceModeState.IDLE: entered.append,
+        })
+
+        result = machine.dispatch(VoiceModeEvent.CONNECTION_READY)
+
+        self.assertEqual([result], entered)
+
 
 if __name__ == "__main__":
     unittest.main()
