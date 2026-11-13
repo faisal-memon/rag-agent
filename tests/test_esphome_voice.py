@@ -16,6 +16,7 @@ from app.agent.esphome_voice import (
     _spoken_tool_status,
 )
 from app.agent.voice_activity import VoiceActivityFrame
+from app.agent.silero_shadow import SileroShadowVAD
 
 
 class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
@@ -105,6 +106,12 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             self.assertEqual("", rows[0]["webrtc_speech"])
             self.assertEqual("1", rows[1]["webrtc_speech"])
             self.assertEqual("speaking", rows[1]["state"])
+            self.assertEqual("", rows[0]["silero_probability"])
+
+    def test_silero_shadow_is_safe_when_disabled(self):
+        scorer = SileroShadowVAD(False)
+        self.assertFalse(scorer.available)
+        self.assertIsNone(scorer.score(b"\x00" * 640))
 
     async def test_bracketed_unintelligible_transcript_ends_quietly(self):
         await self.client._handle_session_start("conversation-inaudible", 0, None, None)

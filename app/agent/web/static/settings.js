@@ -180,6 +180,7 @@ form.addEventListener("submit", async (event) => {
   data.voice_vad_window_speech_frames = Number(data.voice_vad_window_speech_frames);
   data.voice_vad_activity_history = Number(data.voice_vad_activity_history);
   data.voice_vad_active_windows_required = Number(data.voice_vad_active_windows_required);
+  data.voice_vad_silero_shadow_enabled = form.elements.voice_vad_silero_shadow_enabled.checked;
   data.voice_capture_limit_seconds = Number(data.voice_capture_limit_seconds);
   data.voice_follow_up_timeout_seconds = Number(data.voice_follow_up_timeout_seconds);
   data.voice_follow_up_start_timeout_seconds = Number(data.voice_follow_up_start_timeout_seconds);

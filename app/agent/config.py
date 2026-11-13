@@ -69,6 +69,9 @@ class ApiSettings(ConfiguredSettings):
     voice_vad_diagnostics_enabled: bool = Field(
         default=False, alias="ESPHOME_VAD_DIAGNOSTICS_ENABLED"
     )
+    voice_vad_silero_shadow_enabled: bool = Field(
+        default=False, alias="ESPHOME_VAD_SILERO_SHADOW_ENABLED"
+    )
     voice_vad_diagnostics_dir: Path = Field(
         default=Path("/data/vad-diagnostics"), alias="ESPHOME_VAD_DIAGNOSTICS_DIR"
     )
