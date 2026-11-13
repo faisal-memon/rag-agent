@@ -774,8 +774,8 @@ function updateSpeakRepliesButton() {
   speakRepliesButton.classList.toggle("active", speakReplies);
 }
 
-function stopSpeech() {
-  if (!activeSpeech) return;
+function stopSpeech(expectedAudio = null) {
+  if (!activeSpeech || (expectedAudio && activeSpeech.audio !== expectedAudio)) return;
   activeSpeech.audio.pause();
   activeSpeech.audio.currentTime = 0;
   if (activeSpeech.url) URL.revokeObjectURL(activeSpeech.url);
@@ -804,7 +804,7 @@ async function speakText(text) {
       body: JSON.stringify({ text: content }),
     });
     if (redirectToLoginIfNeeded(response)) {
-      stopSpeech();
+      stopSpeech(audio);
       return;
     }
     if (!response.ok) {
@@ -817,7 +817,9 @@ async function speakText(text) {
     const url = URL.createObjectURL(blob);
     activeSpeech.url = url;
     audio.src = url;
-    audio.addEventListener("ended", stopSpeech, { once: true });
+    // An older reply can finish after a newer one has started. Only let the
+    // audio instance that actually ended clear the active playback state.
+    audio.addEventListener("ended", () => stopSpeech(audio), { once: true });
     await audio.play();
   } catch (error) {
     if (activeSpeech?.audio === audio) {
