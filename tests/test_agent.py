@@ -26,7 +26,6 @@ from app.agent.agent import (
     _complete_text,
     _planner_response_format,
     _run_agent_loop,
-    _wants_document_retrieval,
 )
 from app.agent.config import get_api_settings
 from app.agent import tools
@@ -78,8 +77,22 @@ def _turn(
 
 
 class AgentTest(unittest.TestCase):
-    def test_document_availability_question_exposes_document_tools(self) -> None:
-        self.assertTrue(_wants_document_retrieval("Do you see any manuals on a Zephyr hood range?"))
+    def test_document_tools_remain_available_for_planner_decision(self) -> None:
+        seen = {}
+
+        def capture_catalog(_agent, turn):
+            seen["catalog"] = turn.catalog
+            return "Done."
+
+        with (
+            patch("app.agent.agent.get_llm_client", return_value=(MagicMock(), "test-model")),
+            patch("app.agent.agent._run_agent_loop", side_effect=capture_catalog),
+        ):
+            _agent(get_api_settings()).answer(
+                "Do you see any manuals on a Zephyr hood range?"
+            )
+
+        self.assertIsNotNone(seen["catalog"].get("semantic_search"))
 
     def test_duplicate_tool_call_is_recoverable(self) -> None:
         step = {"tool": "semantic_search", "arguments": {"query": "weather", "limit": 1}}
