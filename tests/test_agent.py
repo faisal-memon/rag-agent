@@ -25,6 +25,7 @@ from app.agent.agent import (
     _conversation_context,
     _complete_text,
     _planner_response_format,
+    _run_agent_loop,
 )
 from app.agent.config import get_api_settings
 from app.agent import tools
@@ -76,6 +77,22 @@ def _turn(
 
 
 class AgentTest(unittest.TestCase):
+    def test_duplicate_tool_call_is_recoverable(self) -> None:
+        step = {"tool": "semantic_search", "arguments": {"query": "weather", "limit": 1}}
+        turn = _turn("What is the weather?")
+        turn.seen_calls.add(json.dumps(step, sort_keys=True))
+        decisions = iter([
+            {"action": "tool", **step},
+            {"action": "answer", "evidence_status": "supported", "answer": "The existing result is sufficient."},
+        ])
+
+        with patch("app.agent.agent._decide_next_action", side_effect=lambda *_args, **_kwargs: next(decisions)):
+            answer = _run_agent_loop(MagicMock(), turn)
+
+        self.assertEqual("The existing result is sufficient.", answer)
+        self.assertEqual(1, len(turn.tool_results))
+        self.assertTrue(any(event.get("decision") == "reject_duplicate_tool_call" for event in turn.debug))
+
     def test_llamacpp_planner_uses_schema_constrained_json(self) -> None:
         schema = _planner_action_schema()
 
