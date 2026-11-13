@@ -791,6 +791,7 @@ async function speakText(text) {
   if (!content) return;
 
   const audio = new Audio();
+  audio.preload = "auto";
   activeSpeech = { audio, button: speakRepliesButton, url: null };
   if (speakRepliesButton) {
     speakRepliesButton.textContent = "■";
@@ -820,6 +821,14 @@ async function speakText(text) {
     // An older reply can finish after a newer one has started. Only let the
     // audio instance that actually ended clear the active playback state.
     audio.addEventListener("ended", () => stopSpeech(audio), { once: true });
+    audio.addEventListener("error", () => {
+      if (activeSpeech?.audio !== audio) return;
+      const mediaError = audio.error;
+      stopSpeech(audio);
+      status.textContent = mediaError?.message || "The browser could not play the speech audio.";
+      status.classList.add("error");
+    }, { once: true });
+    audio.load();
     await audio.play();
   } catch (error) {
     if (activeSpeech?.audio === audio) {
