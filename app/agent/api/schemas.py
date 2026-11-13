@@ -122,6 +122,7 @@ class AgentRuntimeSettings(BaseModel):
     voice_vad_window_speech_frames: int = Field(default=2, ge=1, le=20)
     voice_vad_activity_history: int = Field(default=3, ge=1, le=10)
     voice_vad_active_windows_required: int = Field(default=2, ge=1, le=10)
+    voice_vad_silero_shadow_enabled: bool = False
     voice_capture_limit_seconds: int = Field(default=20, ge=0, le=3600)
     remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list, max_length=20)
 

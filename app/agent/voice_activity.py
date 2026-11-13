@@ -50,6 +50,7 @@ class VoiceActivityFrame:
     audio_level_dbfs: float
     state: str
     silence_run: int
+    silero_probability: float | None = None
 
 
 class VoiceActivityDetector:

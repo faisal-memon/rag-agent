@@ -142,6 +142,8 @@
           </fieldset>
           <fieldset>
             <legend>voice activity detection</legend>
+            <label class="checkbox-label"><input id="voice-vad-silero-shadow-enabled" name="voice_vad_silero_shadow_enabled" type="checkbox" /> Log Silero shadow probabilities</label>
+            <p class="field-help">Runs Silero alongside WebRTC VAD for diagnostics only. WebRTC still controls capture. Requires the Silero VAD runtime in the API image.</p>
             <label for="voice-start-grace-ms">Ignore startup sound (milliseconds)</label>
             <input id="voice-start-grace-ms" name="voice_start_grace_ms" type="number" min="0" max="10000" step="20" required />
             <p class="field-help">Audio is kept. This only delays voice detection. Use 0 when the speaker has no startup beep.</p>

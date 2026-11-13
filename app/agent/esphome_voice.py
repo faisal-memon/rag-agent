@@ -10,6 +10,7 @@ import re
 import time
 import wave
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from app.agent.voice_activity import (
     VoiceActivityDetector,
 )
 from app.agent.voice_state_machine import VoiceModeEvent, VoiceModeStateMachine
+from app.agent.silero_shadow import SileroShadowVAD
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +99,8 @@ class ESPHomeVoiceClient:
         self._session_audio_truncated = False
         self._vad: VoiceActivityDetector | None = None
         self._vad_frames: list[VoiceActivityFrame] = []
+        self._silero_shadow = SileroShadowVAD(settings.voice_vad_silero_shadow_enabled)
+        self._silero_probability: float | None = None
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._last_vad_diagnostic_at = 0.0
@@ -234,6 +238,8 @@ class ESPHomeVoiceClient:
         self._session_id = conversation_id
         self._session_audio.clear()
         self._vad_frames = []
+        self._silero_shadow.reset()
+        self._silero_probability = None
         self._session_audio_truncated = False
         self._vad = VoiceActivityDetector(
             startup_grace_ms=startup_grace_ms,
@@ -300,6 +306,7 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
+        self._silero_probability = self._silero_shadow.score(data)
         await self._update_vad(data)
 
     async def _update_vad(self, data: bytes) -> None:
@@ -382,6 +389,7 @@ class ESPHomeVoiceClient:
         """Apply settings updates to subsequent voice sessions."""
         self._settings = settings
         self._piper = PiperClient(settings.piper_host, settings.piper_port, settings.piper_voice)
+        self._silero_shadow = SileroShadowVAD(settings.voice_vad_silero_shadow_enabled)
 
     def status(self) -> dict:
         """Return the currently configured speaker's live connection details."""
@@ -873,7 +881,7 @@ class ESPHomeVoiceClient:
 
     def _record_vad_frame(self, frame: VoiceActivityFrame) -> None:
         """Collect frame decisions when temporary VAD diagnostics are enabled."""
-        self._vad_frames.append(frame)
+        self._vad_frames.append(replace(frame, silero_probability=self._silero_probability))
 
     def _write_vad_diagnostics(
         self, conversation_id: str | None, frames: list[VoiceActivityFrame]
@@ -897,6 +905,7 @@ class ESPHomeVoiceClient:
                         "audio_level_dbfs",
                         "state",
                         "silence_run",
+                        "silero_probability",
                     ),
                 )
                 writer.writeheader()
@@ -911,6 +920,7 @@ class ESPHomeVoiceClient:
                             "audio_level_dbfs": frame.audio_level_dbfs,
                             "state": frame.state,
                             "silence_run": frame.silence_run,
+                            "silero_probability": frame.silero_probability,
                         }
                     )
             logger.info(
