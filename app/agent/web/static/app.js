@@ -108,6 +108,15 @@ function unlockSpeechPlayback() {
   if (playAttempt) playAttempt.catch(cleanup);
   window.setTimeout(cleanup, 120);
 }
+
+function reportSpeechPlayback(stage, detail = "") {
+  fetch("/api/tts/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage, detail: String(detail).slice(0, 240) }),
+    keepalive: true,
+  }).catch(() => {});
+}
 let selectedImage = null;
 let imagePreparing = false;
 
@@ -845,6 +854,7 @@ async function speakText(text) {
   stopSpeech();
   const content = text?.trim();
   if (!content) return;
+  reportSpeechPlayback("request", `characters=${content.length}`);
 
   const audio = speechAudio;
   const generation = ++speechGeneration;
@@ -864,6 +874,7 @@ async function speakText(text) {
       stopSpeech(audio, generation);
       return;
     }
+    reportSpeechPlayback("response", `status=${response.status}`);
     if (!response.ok) {
       let detail = "Speech synthesis failed.";
       try { detail = (await response.json()).detail || detail; } catch (_error) { /* use default */ }
@@ -871,6 +882,7 @@ async function speakText(text) {
     }
     const blob = await response.blob();
     if (!activeSpeech || activeSpeech.audio !== audio || activeSpeech.generation !== generation) return;
+    reportSpeechPlayback("audio_ready", `bytes=${blob.size}`);
     const url = URL.createObjectURL(blob);
     activeSpeech.url = url;
     audio.src = url;
@@ -881,14 +893,17 @@ async function speakText(text) {
       if (activeSpeech?.audio !== audio || activeSpeech.generation !== generation) return;
       const mediaError = audio.error;
       stopSpeech(audio, generation);
+      reportSpeechPlayback("playback_error", mediaError?.message || "media error");
       status.textContent = mediaError?.message || "The browser could not play the speech audio.";
       status.classList.add("error");
     }, { once: true });
     audio.load();
     await audio.play();
+    reportSpeechPlayback("playback_started");
   } catch (error) {
     if (activeSpeech?.audio === audio && activeSpeech.generation === generation) {
       stopSpeech(audio, generation);
+      reportSpeechPlayback("playback_rejected", error?.message || "playback rejected");
       status.textContent = error.message || "Speech synthesis failed.";
       status.classList.add("error");
     }
