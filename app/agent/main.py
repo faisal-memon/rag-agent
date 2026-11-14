@@ -70,15 +70,18 @@ async def lifespan(app: FastAPI):
     settings = get_api_settings()
     tool_catalog_manager = tools.ToolCatalogManager(settings.mcp_registry_refresh_interval)
     await tool_catalog_manager.start()
+
     # Requests share this agent and its initialized tool catalog manager.
     agent = Agent(settings, tool_catalog_manager)
     app.state.agent = agent
-    error = agent.startup()
-    if error:
+    if error := agent.startup():
         logging.getLogger("app.agent").warning("Could not load agent memory: %s", error)
+
+    # Setup ESP Home Client
     esphome_voice_client = ESPHomeVoiceClient(settings, agent)
     app.state.esphome_voice_client = esphome_voice_client
     await esphome_voice_client.start()
+
     try:
         yield
     finally:
