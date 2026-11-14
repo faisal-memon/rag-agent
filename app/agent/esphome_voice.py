@@ -11,6 +11,7 @@ import time
 import wave
 from collections.abc import Callable
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 
 from aioesphomeapi import (
@@ -33,7 +34,13 @@ from app.agent.voice_activity import (
     VoiceActivityFrame,
     VoiceActivityDetector,
 )
-from app.agent.voice_state_machine import VoiceModeEvent, VoiceModeState, VoiceModeStateMachine
+from app.agent.voice_state_machine import (
+    VoiceActivityCoordinator,
+    VoiceModeEvent,
+    VoiceModeState,
+    VoiceModeStateMachine,
+    VoiceProgressCoordinator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +111,8 @@ class ESPHomeVoiceClient:
         self._session_is_follow_up = False
         self._session_started_at = 0.0
         self._turn_started_at = 0.0
-        self._activity_write: asyncio.Task | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._activity: VoiceActivityCoordinator | None = None
         self._device_id: str | None = None
         self._progress_audio_fetched: asyncio.Event | None = None
         self._device_name = settings.esphome_device_name or "ESPHome speaker"
@@ -125,6 +132,7 @@ class ESPHomeVoiceClient:
     async def start(self) -> None:
         """Start reconnecting to the configured device; leave it disabled by default."""
         self._loop = asyncio.get_running_loop()
+        self._activity = VoiceActivityCoordinator(self._loop)
         if not self._settings.esphome_device_host:
             logger.info("ESPHome voice client disabled; ESPHOME_DEVICE_HOST is unset")
             return
@@ -613,22 +621,12 @@ class ESPHomeVoiceClient:
             history = []
         history.append({"role": "user", "content": transcript})
         stage_started = time.monotonic()
-        progress_queue: asyncio.Queue[str | None] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-
-        def on_progress(event: dict) -> None:
-            if event.get("type") != "tool_call":
-                return
-            loop.call_soon_threadsafe(
-                progress_queue.put_nowait,
-                _spoken_tool_status(event.get("status")),
-            )
-
-        async def announce_progress() -> None:
-            while (message := await progress_queue.get()) is not None:
-                await self._speak_progress(message, conversation_id)
-
-        progress_task = asyncio.create_task(announce_progress())
+        progress = VoiceProgressCoordinator(
+            asyncio.get_running_loop(),
+            partial(self._speak_progress, conversation_id=conversation_id),
+            _spoken_tool_status,
+        )
+        progress_task = asyncio.create_task(progress.run())
         result = None
         try:
             self._record_activity("Assistant", "started")
@@ -636,7 +634,7 @@ class ESPHomeVoiceClient:
                 self._agent.answer,
                 transcript,
                 history=history,
-                on_progress=on_progress,
+                on_progress=progress.report,
                 response_mode="spoken",
             )
         except Exception:
@@ -649,7 +647,7 @@ class ESPHomeVoiceClient:
             if result is None:
                 progress_task.cancel()
             else:
-                progress_queue.put_nowait(None)
+                progress.finish()
             try:
                 await progress_task
             except asyncio.CancelledError:
@@ -850,38 +848,17 @@ class ESPHomeVoiceClient:
         device_id = self._device_id
         if not device_id:
             return
-        loop = self._loop
-        if loop is None or loop.is_closed():
+        if self._activity is None:
             logger.debug("Skipping device activity write because its event loop is unavailable")
             return
-
-        def schedule_write() -> None:
-            previous = self._activity_write
-
-            async def persist() -> None:
-                try:
-                    if previous is not None:
-                        await previous
-                    await asyncio.to_thread(
-                        voice_devices.record_activity,
-                        device_id,
-                        stage,
-                        status,
-                        duration_ms=duration_ms,
-                        detail=detail,
-                    )
-                except Exception:
-                    logger.debug("Could not persist device activity event", exc_info=True)
-
-            self._activity_write = loop.create_task(persist())
-
-        try:
-            if asyncio.get_running_loop() is loop:
-                schedule_write()
-            else:
-                loop.call_soon_threadsafe(schedule_write)
-        except RuntimeError:
-            logger.debug("Skipping device activity write because its event loop is unavailable")
+        self._activity.record(
+            voice_devices.record_activity,
+            device_id,
+            stage,
+            status,
+            duration_ms=duration_ms,
+            detail=detail,
+        )
 
     def _on_audio_fetched(self, successful: bool, duration_ms: int) -> None:
         if successful and self._progress_audio_fetched is not None:

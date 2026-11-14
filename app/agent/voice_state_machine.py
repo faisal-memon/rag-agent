@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Callable
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,93 @@ class VoiceModeStateMachine:
         if handler is not None:
             handler(transition)
         return transition
+
+
+class VoiceProgressCoordinator:
+    """Bridge synchronous agent progress events to spoken async updates.
+
+    The agent runs in a worker thread.  This coordinator owns the queue that
+    safely carries its tool-progress events back onto the voice event loop.
+    Keeping that bridge beside the lifecycle state machine makes the active
+    voice-turn machinery visible without burying callback closures in a turn.
+    """
+
+    def __init__(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        announce: Callable[[str], Awaitable[None]],
+        status_message: Callable[[object], str],
+    ) -> None:
+        self._loop = loop
+        self._announce = announce
+        self._status_message = status_message
+        self._queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    def report(self, event: dict[str, Any]) -> None:
+        """Accept a synchronous agent event and queue a spoken tool update."""
+        message = self._status_message(event.get("status"))
+        if event.get("type") != "tool_call" or not message:
+            return
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, message)
+
+    async def run(self) -> None:
+        """Speak queued progress updates until the active turn finishes."""
+        while (message := await self._queue.get()) is not None:
+            await self._announce(message)
+
+    def finish(self) -> None:
+        """Close the progress stream after a successful agent request."""
+        self._queue.put_nowait(None)
+
+
+class VoiceActivityCoordinator:
+    """Serialize asynchronous activity writes for one speaker connection."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+        self._write_task: asyncio.Task[None] | None = None
+
+    def record(
+        self,
+        write: Callable[..., None],
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        """Schedule a write without blocking the voice event loop."""
+        if self._loop.is_closed():
+            logger.debug("Skipping device activity write because its event loop is unavailable")
+            return
+        try:
+            if asyncio.get_running_loop() is self._loop:
+                self._schedule(write, args, kwargs)
+            else:
+                self._loop.call_soon_threadsafe(self._schedule, write, args, kwargs)
+        except RuntimeError:
+            logger.debug("Skipping device activity write because its event loop is unavailable")
+
+    def _schedule(
+        self,
+        write: Callable[..., None],
+        args: tuple[object, ...],
+        kwargs: dict[str, object],
+    ) -> None:
+        self._write_task = self._loop.create_task(
+            self._persist(self._write_task, write, args, kwargs)
+        )
+
+    async def _persist(
+        self,
+        previous: asyncio.Task[None] | None,
+        write: Callable[..., None],
+        args: tuple[object, ...],
+        kwargs: dict[str, object],
+    ) -> None:
+        try:
+            if previous is not None:
+                await previous
+            await asyncio.to_thread(write, *args, **kwargs)
+        except Exception:
+            logger.debug("Could not persist device activity event", exc_info=True)
 
 
 def _handle_global_event(event: VoiceModeEvent) -> VoiceModeState | None:

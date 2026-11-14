@@ -188,7 +188,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
         self.client._record_activity("Speech generation", "failed")
 
-        self.assertIsNone(self.client._activity_write)
+        self.assertIsNone(self.client._activity)
 
     async def test_model_failure_ends_speaker_run_without_follow_up(self):
         await self.client._handle_session_start("model-failure", 0, None, None)
