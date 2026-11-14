@@ -48,8 +48,7 @@ let activeSpeech = null;
 const speechAudio = new Audio();
 speechAudio.preload = "auto";
 let speechGeneration = 0;
-const playbackUnlockAudio = new Audio();
-let playbackUnlockUrl = null;
+let speechUnlockUrl = null;
 const speakRepliesKey = "rag-agent-speak-replies-v1";
 let speakReplies = localStorage.getItem(speakRepliesKey) === "1";
 
@@ -90,23 +89,19 @@ function createSilentWavUrl() {
 
 function unlockSpeechPlayback() {
   const url = createSilentWavUrl();
-  playbackUnlockAudio.pause();
-  if (playbackUnlockUrl) URL.revokeObjectURL(playbackUnlockUrl);
-  playbackUnlockUrl = url;
-  playbackUnlockAudio.muted = true;
-  playbackUnlockAudio.src = url;
+  speechAudio.pause();
+  if (speechUnlockUrl) URL.revokeObjectURL(speechUnlockUrl);
+  speechUnlockUrl = url;
+  speechAudio.muted = true;
+  speechAudio.src = url;
   const cleanup = () => {
-    if (playbackUnlockUrl !== url) return;
-    playbackUnlockAudio.pause();
-    playbackUnlockAudio.removeAttribute("src");
-    playbackUnlockAudio.load();
-    playbackUnlockAudio.muted = false;
+    if (speechUnlockUrl !== url) return;
     URL.revokeObjectURL(url);
-    playbackUnlockUrl = null;
+    speechUnlockUrl = null;
   };
-  const playAttempt = playbackUnlockAudio.play();
+  speechAudio.addEventListener("ended", cleanup, { once: true });
+  const playAttempt = speechAudio.play();
   if (playAttempt) playAttempt.catch(cleanup);
-  window.setTimeout(cleanup, 120);
 }
 
 function reportSpeechPlayback(stage, detail = "") {
@@ -885,6 +880,7 @@ async function speakText(text) {
     reportSpeechPlayback("audio_ready", `bytes=${blob.size}`);
     const url = URL.createObjectURL(blob);
     activeSpeech.url = url;
+    speechAudio.muted = false;
     audio.src = url;
     // An older reply can finish after a newer one has started. Only let the
     // audio instance that actually ended clear the active playback state.
