@@ -65,6 +65,11 @@ class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4_000)
 
 
+class BrowserSpeechEvent(BaseModel):
+    stage: Literal["request", "response", "audio_ready", "playback_started", "playback_error", "playback_rejected"]
+    detail: str = Field(default="", max_length=240)
+
+
 class AgentToolCall(BaseModel):
     tool: str
     arguments: dict[str, Any]

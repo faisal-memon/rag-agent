@@ -21,6 +21,7 @@ from app.agent.api.schemas import (
     AgentRuntimeSettings,
     AgentQueryRequest,
     AgentQueryResponse,
+    BrowserSpeechEvent,
     PipelineStatusResponse,
     QueryRequest,
     ReindexResponse,
@@ -360,6 +361,13 @@ async def text_to_speech(payload: SpeakRequest) -> Response:
         logger.warning("Browser speech synthesis failed: %s", exc)
         raise HTTPException(status_code=502, detail="Speech synthesis is unavailable.") from exc
     return Response(content=audio, media_type="audio/flac", headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/tts/events", status_code=204)
+async def browser_speech_event(payload: BrowserSpeechEvent) -> Response:
+    """Record bounded client playback milestones for browser-speech diagnosis."""
+    logger.info("Browser speech playback: stage=%s detail=%s", payload.stage, payload.detail)
+    return Response(status_code=204)
 
 
 @router.post("/agent/query/stream")

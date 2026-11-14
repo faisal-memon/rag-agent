@@ -45,6 +45,10 @@ let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 let activeSpeech = null;
+const speechAudio = new Audio();
+speechAudio.preload = "auto";
+let speechGeneration = 0;
+let speechUnlockUrl = null;
 const speakRepliesKey = "rag-agent-speak-replies-v1";
 let speakReplies = localStorage.getItem(speakRepliesKey) === "1";
 
@@ -55,6 +59,58 @@ function redirectToLoginIfNeeded(response) {
 
   window.location.assign(response.redirected && response.url ? response.url : window.location.href);
   return true;
+}
+
+function createSilentWavUrl() {
+  const sampleRate = 8000;
+  const sampleCount = 800;
+  const dataBytes = sampleCount * 2;
+  const buffer = new ArrayBuffer(44 + dataBytes);
+  const view = new DataView(buffer);
+  const writeText = (offset, text) => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  };
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeText(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeText(36, "data");
+  view.setUint32(40, dataBytes, true);
+  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+}
+
+function unlockSpeechPlayback() {
+  const url = createSilentWavUrl();
+  speechAudio.pause();
+  if (speechUnlockUrl) URL.revokeObjectURL(speechUnlockUrl);
+  speechUnlockUrl = url;
+  speechAudio.muted = true;
+  speechAudio.src = url;
+  const cleanup = () => {
+    if (speechUnlockUrl !== url) return;
+    URL.revokeObjectURL(url);
+    speechUnlockUrl = null;
+  };
+  speechAudio.addEventListener("ended", cleanup, { once: true });
+  const playAttempt = speechAudio.play();
+  if (playAttempt) playAttempt.catch(cleanup);
+}
+
+function reportSpeechPlayback(stage, detail = "") {
+  fetch("/api/tts/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage, detail: String(detail).slice(0, 240) }),
+    keepalive: true,
+  }).catch(() => {});
 }
 let selectedImage = null;
 let imagePreparing = false;
@@ -774,8 +830,12 @@ function updateSpeakRepliesButton() {
   speakRepliesButton.classList.toggle("active", speakReplies);
 }
 
-function stopSpeech(expectedAudio = null) {
-  if (!activeSpeech || (expectedAudio && activeSpeech.audio !== expectedAudio)) return;
+function stopSpeech(expectedAudio = null, expectedGeneration = null) {
+  if (
+    !activeSpeech
+    || (expectedAudio && activeSpeech.audio !== expectedAudio)
+    || (expectedGeneration !== null && activeSpeech.generation !== expectedGeneration)
+  ) return;
   activeSpeech.audio.pause();
   activeSpeech.audio.currentTime = 0;
   if (activeSpeech.url) URL.revokeObjectURL(activeSpeech.url);
@@ -789,9 +849,11 @@ async function speakText(text) {
   stopSpeech();
   const content = text?.trim();
   if (!content) return;
+  reportSpeechPlayback("request", `characters=${content.length}`);
 
-  const audio = new Audio();
-  activeSpeech = { audio, button: speakRepliesButton, url: null };
+  const audio = speechAudio;
+  const generation = ++speechGeneration;
+  activeSpeech = { audio, button: speakRepliesButton, generation, url: null };
   if (speakRepliesButton) {
     speakRepliesButton.textContent = "■";
     speakRepliesButton.setAttribute("aria-label", "Stop speaking");
@@ -804,26 +866,40 @@ async function speakText(text) {
       body: JSON.stringify({ text: content }),
     });
     if (redirectToLoginIfNeeded(response)) {
-      stopSpeech(audio);
+      stopSpeech(audio, generation);
       return;
     }
+    reportSpeechPlayback("response", `status=${response.status}`);
     if (!response.ok) {
       let detail = "Speech synthesis failed.";
       try { detail = (await response.json()).detail || detail; } catch (_error) { /* use default */ }
       throw new Error(detail);
     }
     const blob = await response.blob();
-    if (!activeSpeech || activeSpeech.audio !== audio) return;
+    if (!activeSpeech || activeSpeech.audio !== audio || activeSpeech.generation !== generation) return;
+    reportSpeechPlayback("audio_ready", `bytes=${blob.size}`);
     const url = URL.createObjectURL(blob);
     activeSpeech.url = url;
+    speechAudio.muted = false;
     audio.src = url;
     // An older reply can finish after a newer one has started. Only let the
     // audio instance that actually ended clear the active playback state.
-    audio.addEventListener("ended", () => stopSpeech(audio), { once: true });
+    audio.addEventListener("ended", () => stopSpeech(audio, generation), { once: true });
+    audio.addEventListener("error", () => {
+      if (activeSpeech?.audio !== audio || activeSpeech.generation !== generation) return;
+      const mediaError = audio.error;
+      stopSpeech(audio, generation);
+      reportSpeechPlayback("playback_error", mediaError?.message || "media error");
+      status.textContent = mediaError?.message || "The browser could not play the speech audio.";
+      status.classList.add("error");
+    }, { once: true });
+    audio.load();
     await audio.play();
+    reportSpeechPlayback("playback_started");
   } catch (error) {
-    if (activeSpeech?.audio === audio) {
-      stopSpeech();
+    if (activeSpeech?.audio === audio && activeSpeech.generation === generation) {
+      stopSpeech(audio, generation);
+      reportSpeechPlayback("playback_rejected", error?.message || "playback rejected");
       status.textContent = error.message || "Speech synthesis failed.";
       status.classList.add("error");
     }
@@ -838,6 +914,7 @@ speakRepliesButton?.addEventListener("click", () => {
   }
   speakReplies = !speakReplies;
   localStorage.setItem(speakRepliesKey, speakReplies ? "1" : "0");
+  if (speakReplies) unlockSpeechPlayback();
   updateSpeakRepliesButton();
 });
 
