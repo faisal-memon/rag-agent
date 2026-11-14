@@ -10,6 +10,7 @@ from app.agent.agent import Agent
 from app.agent.api.routes import router
 from app.agent.config import get_api_settings
 from app.agent.esphome_voice import ESPHomeVoiceClient
+from app.agent.piper_service import PiperService
 from app.agent.version import APP_VERSION
 from app.agent.web.routes import STATIC_DIR
 
@@ -77,8 +78,12 @@ async def lifespan(app: FastAPI):
     if error := agent.startup():
         logging.getLogger("app.agent").warning("Could not load agent memory: %s", error)
 
+    # Piper configuration is shared by the browser and ESPHome speaker paths.
+    piper_service = PiperService(settings)
+    app.state.piper_service = piper_service
+
     # Setup ESP Home Client
-    esphome_voice_client = ESPHomeVoiceClient(settings, agent)
+    esphome_voice_client = ESPHomeVoiceClient(settings, agent, piper_service)
     app.state.esphome_voice_client = esphome_voice_client
     await esphome_voice_client.start()
 

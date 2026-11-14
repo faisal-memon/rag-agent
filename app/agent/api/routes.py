@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from app.agent import tools, voice_devices
 from app.agent.agent import Agent
 from app.agent.config import get_api_settings
-from app.agent.esphome_playback import PiperClient
+from app.agent.piper_service import PiperService
 from app.embed.config import get_embed_settings
 from app.agent.conversations import append_messages, delete_conversation, get_conversation, list_conversations, load_or_create
 from app.agent.api.schemas import (
@@ -50,6 +50,10 @@ def _agent_exception_message(exc: Exception) -> str:
 
 def _agent(request: Request) -> Agent:
     return request.app.state.agent
+
+
+def _piper_service(request: Request) -> PiperService:
+    return request.app.state.piper_service
 
 
 def _conversation_user(request: Request) -> str:
@@ -120,6 +124,9 @@ async def _reload_agent(request: Request) -> None:
     voice_client = getattr(request.app.state, "esphome_voice_client", None)
     if voice_client is not None:
         voice_client.update_settings(settings)
+    piper_service = getattr(request.app.state, "piper_service", None)
+    if piper_service is not None:
+        piper_service.update_settings(settings)
     previous_agent = getattr(request.app.state, "agent", None)
     request.app.state.agent = agent
     if previous_agent is not None:
@@ -249,14 +256,10 @@ def get_settings() -> AgentRuntimeSettings:
 
 
 @router.get("/api/piper/voices")
-async def piper_voices() -> dict[str, list[str]]:
+async def piper_voices(request: Request) -> dict[str, list[str]]:
     """List voices currently installed in the configured Piper service."""
-    settings = get_api_settings()
     try:
-        voices = await asyncio.wait_for(
-            PiperClient(settings.piper_host, settings.piper_port, settings.piper_voice).list_voices(),
-            timeout=5,
-        )
+        voices = await asyncio.wait_for(_piper_service(request).list_voices(), timeout=5)
     except (ConnectionError, OSError, RuntimeError, TimeoutError) as exc:
         logger.warning("Could not discover Piper voices: %s", exc)
         raise HTTPException(status_code=502, detail="Piper voice discovery is unavailable.") from exc
@@ -346,15 +349,10 @@ async def transcribe(request: Request, audio: UploadFile = File(...)) -> Transcr
 
 
 @router.post("/api/tts", response_class=Response)
-async def text_to_speech(payload: SpeakRequest) -> Response:
+async def text_to_speech(request: Request, payload: SpeakRequest) -> Response:
     """Synthesize one browser-requested reply with the configured Piper voice."""
-    settings = get_api_settings()
     try:
-        audio = await PiperClient(
-            settings.piper_host,
-            settings.piper_port,
-            settings.piper_voice,
-        ).synthesize_flac(payload.text)
+        audio = await _piper_service(request).synthesize_flac(payload.text)
     except (ConnectionError, OSError, RuntimeError, TimeoutError) as exc:
         logger.warning("Browser speech synthesis failed: %s", exc)
         raise HTTPException(status_code=502, detail="Speech synthesis is unavailable.") from exc

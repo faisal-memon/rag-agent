@@ -26,7 +26,8 @@ from aioesphomeapi import (
 from app.agent import voice_devices
 from app.agent.agent import Agent
 from app.agent.config import ApiSettings
-from app.agent.esphome_playback import OneShotAudioServer, PiperClient
+from app.agent.esphome_playback import OneShotAudioServer
+from app.agent.piper_service import PiperService
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 from app.agent.voice_activity import (
     VOICE_SAMPLE_RATE,
@@ -75,15 +76,16 @@ REPEAT_REQUEST = "Sorry, I didn't catch that. Could you please repeat it?"
 class ESPHomeVoiceClient:
     """Maintain a Native API connection and receive ReSpeaker voice audio."""
 
-    def __init__(self, settings: ApiSettings, agent: Agent | None = None) -> None:
+    def __init__(
+        self,
+        settings: ApiSettings,
+        agent: Agent | None = None,
+        piper_service: PiperService | None = None,
+    ) -> None:
         self._settings = settings
         self._agent = agent
         self._voice_mode = VoiceModeStateMachine()
-        self._piper = PiperClient(
-            settings.piper_host,
-            settings.piper_port,
-            settings.piper_voice,
-        )
+        self._piper_service = piper_service or PiperService(settings)
         self._media_server = (
             OneShotAudioServer(
                 settings.esphome_media_server_host,
@@ -410,7 +412,6 @@ class ESPHomeVoiceClient:
     def update_settings(self, settings: ApiSettings) -> None:
         """Apply settings updates to subsequent voice sessions."""
         self._settings = settings
-        self._piper = PiperClient(settings.piper_host, settings.piper_port, settings.piper_voice)
 
     def status(self) -> dict:
         """Return the currently configured speaker's live connection details."""
@@ -708,7 +709,7 @@ class ESPHomeVoiceClient:
         if self._media_server is None or self._media_player_key is None or self._client is None:
             return
         try:
-            flac_audio = await asyncio.wait_for(self._piper.synthesize_flac(message), timeout=15)
+            flac_audio = await asyncio.wait_for(self._piper_service.synthesize_flac(message), timeout=15)
             self._progress_audio_fetched = asyncio.Event()
             media_url = self._media_server.publish(flac_audio)
             self._client.send_voice_assistant_event(
@@ -759,7 +760,7 @@ class ESPHomeVoiceClient:
         try:
             stage_started = time.monotonic()
             self._record_activity("Speech generation", "started")
-            flac_audio = await self._piper.synthesize_flac(answer)
+            flac_audio = await self._piper_service.synthesize_flac(answer)
             logger.info(
                 "ReSpeaker synthesis complete (conversation=%s, seconds=%.2f, audio_bytes=%d)",
                 conversation_id,

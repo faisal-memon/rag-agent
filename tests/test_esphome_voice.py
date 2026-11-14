@@ -164,7 +164,9 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.client._media_server = MagicMock()
         self.client._media_player_key = 1
         self.client._client = MagicMock()
-        self.client._piper.synthesize_flac = AsyncMock(side_effect=ConnectionError("Piper disconnected"))
+        self.client._piper_service.synthesize_flac = AsyncMock(
+            side_effect=ConnectionError("Piper disconnected")
+        )
         self.client._follow_up_pending = True
 
         with self.assertLogs("app.agent.esphome_voice", level="ERROR"):
