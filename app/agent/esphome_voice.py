@@ -188,6 +188,7 @@ class ESPHomeVoiceClient:
             log.error("ESPHome device %s does not support Native API audio", info.name)
             return
 
+        # Find the device-assigned media-player entity identifier; this is not a secret key.
         entities, _ = await self._client.list_entities_services()
         media_player = next(
             (
