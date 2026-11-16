@@ -90,12 +90,17 @@ class SileroVoiceActivityDetector:
 
     def process(self, audio: bytes) -> list[CaptureEvent]:
         """Process available PCM and return Silero capture events."""
+        # Buffer incoming bytes until a complete Silero frame is available.
         self._buffer.extend(audio)
         events: list[CaptureEvent] = []
+
+        # Process every complete frame currently in the buffer.
         while len(self._buffer) >= FRAME_BYTES and self.state is not CaptureState.ENDED:
             frame = bytes(self._buffer[:FRAME_BYTES])
             del self._buffer[:FRAME_BYTES]
             now = self._clock()
+
+            # Decode the frame and collect audio-level diagnostics.
             samples = struct.unpack(f"<{FRAME_SAMPLES}h", frame)
             rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
             peak = max(abs(sample) for sample in samples)
@@ -107,15 +112,19 @@ class SileroVoiceActivityDetector:
             self._interval_rms_max = rms if self._interval_rms_max is None else max(self._interval_rms_max, rms)
             self._interval_peak_max = max(self._interval_peak_max, peak)
 
+            # Stop when the maximum capture duration is reached.
             if self._capture_limit_seconds > 0 and now - self._started_at >= self._capture_limit_seconds:
                 self.state = CaptureState.ENDED
                 events.append(CaptureEvent.MAX_DURATION_REACHED)
                 self._emit_frame(None, now, rms_dbfs)
                 break
 
+            # Ask Silero to classify this frame and update its stream state.
             tensor = torch.tensor(samples, dtype=torch.float32) / 32768.0
             result = self._iterator(tensor)
             speech = self._iterator.triggered
+
+            # Track simple diagnostics and the no-speech timeout.
             if speech:
                 self._interval_speech_frames += 1
                 self._silence_frames = 0
@@ -123,6 +132,7 @@ class SileroVoiceActivityDetector:
                 self._interval_non_speech_frames += 1
                 self._silence_frames += 1
 
+            # Convert Silero boundary results into capture events.
             if result and "start" in result:
                 self.state = CaptureState.SPEAKING
                 events.append(CaptureEvent.SPEECH_STARTED)
