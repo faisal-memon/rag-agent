@@ -61,10 +61,10 @@ class ApiSettings(ConfiguredSettings):
         default=20, ge=0, le=3600, alias="ESPHOME_VOICE_CAPTURE_LIMIT_SECONDS"
     )
     voice_follow_up_timeout_seconds: int = Field(
-        default=8, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
+        default=5, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
     )
     voice_follow_up_start_timeout_seconds: int = Field(
-        default=3, ge=0, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
+        default=5, ge=0, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
     )
     voice_vad_diagnostics_enabled: bool = Field(
         default=False, alias="ESPHOME_VAD_DIAGNOSTICS_ENABLED"

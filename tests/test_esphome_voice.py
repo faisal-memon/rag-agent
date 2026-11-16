@@ -81,7 +81,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         await self.client._handle_session_start("follow-up-timeout", 0, None, None)
 
         self.assertTrue(self.client._session_is_follow_up)
-        self.assertEqual(3, self.client._vad._no_speech_timeout_seconds)
+        self.assertEqual(5, self.client._vad._no_speech_timeout_seconds)
 
     async def test_follow_up_accepts_wake_word_callback_from_device(self):
         self.client._follow_up_pending = True
@@ -141,7 +141,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         finish_voice_run.assert_called_once_with()
         self.assertEqual(self.client._session_audio, bytearray())
 
-    async def test_unintelligible_follow_up_ends_quietly(self):
+    async def test_unintelligible_follow_up_rearms_quietly(self):
         self.client._follow_up_pending = True
         self.client._voice_state_machine.state = VoiceModeState.FOLLOWUP_LISTENING
         self.client._client = MagicMock()
@@ -158,7 +158,8 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
         self.client._agent.answer.assert_not_called()
         speak_reply.assert_not_awaited()
-        finish_voice_run.assert_called_once_with()
+        finish_voice_run.assert_not_called()
+        self.assertEqual(VoiceModeState.FOLLOWUP_LISTENING, self.client._voice_state_machine.state)
 
     async def test_non_conversational_transcript_skips_agent_and_ends_quietly(self):
         await self.client._handle_session_start("conversation-noise", 0, None, None)

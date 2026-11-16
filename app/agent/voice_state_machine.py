@@ -32,6 +32,7 @@ class VoiceModeEvent(Enum):
     WAKE_WORD_DETECTED = auto()
     CAPTURE_ENDED = auto()
     RESPONSE_READY = auto()
+    FOLLOWUP_REARM = auto()
     PLAYBACK_FINISHED_CONTINUE = auto()
     PLAYBACK_FINISHED_STOP = auto()
     FOLLOWUP_STARTED = auto()
@@ -58,6 +59,7 @@ _TRANSITIONS: dict[VoiceModeState, dict[VoiceModeEvent, VoiceModeState]] = {
     # A completed response moves into speaker playback.
     VoiceModeState.PROCESSING: {
         VoiceModeEvent.RESPONSE_READY: VoiceModeState.PLAYING,
+        VoiceModeEvent.FOLLOWUP_REARM: VoiceModeState.FOLLOWUP_LISTENING,
     },
     # Playback can continue directly into the short follow-up window.
     VoiceModeState.PLAYING: {
