@@ -86,7 +86,7 @@ class ESPHomeVoiceClient:
         # Shared services used throughout the speaker lifecycle.
         self._settings = settings
         self._agent = agent
-        self._voice_mode = VoiceModeStateMachine(
+        self._voice_state_machine = VoiceModeStateMachine(
             entry_handlers={
                 VoiceModeState.PROCESSING: self._enter_processing,
                 VoiceModeState.PLAYING: self._enter_playing,
@@ -254,7 +254,7 @@ class ESPHomeVoiceClient:
 
     def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
         """Apply one voice event and report whether the lifecycle accepted it."""
-        transition = self._voice_mode.dispatch(event)
+        transition = self._voice_state_machine.dispatch(event)
         if not transition.accepted:
             logger.warning("Ignoring ESPHome voice event %s while in %s", event.name, transition.previous.name)
         return transition.accepted
@@ -480,7 +480,7 @@ class ESPHomeVoiceClient:
         no_speech_timeout = self._vad_no_speech_timeout
         session_is_follow_up = self._session_is_follow_up
         vad_frames = list(self._vad_frames)
-        if self._voice_mode.state is not VoiceModeState.PROCESSING:
+        if self._voice_state_machine.state is not VoiceModeState.PROCESSING:
             self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED)
         self._reset_session()
         self._write_vad_diagnostics(conversation_id, vad_frames)
