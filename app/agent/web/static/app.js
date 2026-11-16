@@ -1,6 +1,7 @@
 const button = document.getElementById("ask");
 const agentButton = document.getElementById("agent");
 const recordButton = document.getElementById("record");
+const speakRepliesButton = document.getElementById("speak-replies");
 const debugButton = document.getElementById("debug");
 const pipelineButton = document.getElementById("pipeline");
 const question = document.getElementById("question");
@@ -44,6 +45,12 @@ let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 let activeSpeech = null;
+const speechAudio = new Audio();
+speechAudio.preload = "auto";
+let speechGeneration = 0;
+let speechUnlockUrl = null;
+const speakRepliesKey = "rag-agent-speak-replies-v1";
+let speakReplies = localStorage.getItem(speakRepliesKey) === "1";
 
 function redirectToLoginIfNeeded(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -52,6 +59,58 @@ function redirectToLoginIfNeeded(response) {
 
   window.location.assign(response.redirected && response.url ? response.url : window.location.href);
   return true;
+}
+
+function createSilentWavUrl() {
+  const sampleRate = 8000;
+  const sampleCount = 800;
+  const dataBytes = sampleCount * 2;
+  const buffer = new ArrayBuffer(44 + dataBytes);
+  const view = new DataView(buffer);
+  const writeText = (offset, text) => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  };
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeText(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeText(36, "data");
+  view.setUint32(40, dataBytes, true);
+  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+}
+
+function unlockSpeechPlayback() {
+  const url = createSilentWavUrl();
+  speechAudio.pause();
+  if (speechUnlockUrl) URL.revokeObjectURL(speechUnlockUrl);
+  speechUnlockUrl = url;
+  speechAudio.muted = true;
+  speechAudio.src = url;
+  const cleanup = () => {
+    if (speechUnlockUrl !== url) return;
+    URL.revokeObjectURL(url);
+    speechUnlockUrl = null;
+  };
+  speechAudio.addEventListener("ended", cleanup, { once: true });
+  const playAttempt = speechAudio.play();
+  if (playAttempt) playAttempt.catch(cleanup);
+}
+
+function reportSpeechPlayback(stage, detail = "") {
+  fetch("/api/tts/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage, detail: String(detail).slice(0, 240) }),
+    keepalive: true,
+  }).catch(() => {});
 }
 let selectedImage = null;
 let imagePreparing = false;
@@ -742,7 +801,6 @@ function renderAgentConversation() {
       <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
         <div class="chat-heading">
           <div class="chat-role">rag agent</div>
-          ${message.streaming || !message.content ? "" : '<button class="speak-response" type="button" aria-label="Speak response" title="Speak response">🔊</button>'}
         </div>
         ${agentProgressTimelineHtml(message.progress, message.streaming)}
         ${message.streaming ? "" : `<div class="chat-content">${renderChatMarkdown(message.content)}</div>`}
@@ -764,8 +822,20 @@ function renderAgentConversation() {
   }
 }
 
-function stopSpeech() {
-  if (!activeSpeech) return;
+function updateSpeakRepliesButton() {
+  if (!speakRepliesButton) return;
+  speakRepliesButton.setAttribute("aria-pressed", String(speakReplies));
+  speakRepliesButton.setAttribute("aria-label", `Speak replies is ${speakReplies ? "on" : "off"}`);
+  speakRepliesButton.title = `Speak replies: ${speakReplies ? "on" : "off"}`;
+  speakRepliesButton.classList.toggle("active", speakReplies);
+}
+
+function stopSpeech(expectedAudio = null, expectedGeneration = null) {
+  if (
+    !activeSpeech
+    || (expectedAudio && activeSpeech.audio !== expectedAudio)
+    || (expectedGeneration !== null && activeSpeech.generation !== expectedGeneration)
+  ) return;
   activeSpeech.audio.pause();
   activeSpeech.audio.currentTime = 0;
   if (activeSpeech.url) URL.revokeObjectURL(activeSpeech.url);
@@ -775,17 +845,20 @@ function stopSpeech() {
   activeSpeech = null;
 }
 
-async function speakResponse(button) {
+async function speakText(text) {
   stopSpeech();
-  const message = button.closest(".chat-message");
-  const content = message?.querySelector(".chat-content")?.textContent?.trim();
+  const content = text?.trim();
   if (!content) return;
+  reportSpeechPlayback("request", `characters=${content.length}`);
 
-  const audio = new Audio();
-  activeSpeech = { audio, button, url: null };
-  button.textContent = "■";
-  button.setAttribute("aria-label", "Stop speaking");
-  button.title = "Stop speaking";
+  const audio = speechAudio;
+  const generation = ++speechGeneration;
+  activeSpeech = { audio, button: speakRepliesButton, generation, url: null };
+  if (speakRepliesButton) {
+    speakRepliesButton.textContent = "■";
+    speakRepliesButton.setAttribute("aria-label", "Stop speaking");
+    speakRepliesButton.title = "Stop speaking";
+  }
   try {
     const response = await fetch("/api/tts", {
       method: "POST",
@@ -793,36 +866,59 @@ async function speakResponse(button) {
       body: JSON.stringify({ text: content }),
     });
     if (redirectToLoginIfNeeded(response)) {
-      stopSpeech();
+      stopSpeech(audio, generation);
       return;
     }
+    reportSpeechPlayback("response", `status=${response.status}`);
     if (!response.ok) {
       let detail = "Speech synthesis failed.";
       try { detail = (await response.json()).detail || detail; } catch (_error) { /* use default */ }
       throw new Error(detail);
     }
     const blob = await response.blob();
-    if (!activeSpeech || activeSpeech.audio !== audio) return;
+    if (!activeSpeech || activeSpeech.audio !== audio || activeSpeech.generation !== generation) return;
+    reportSpeechPlayback("audio_ready", `bytes=${blob.size}`);
     const url = URL.createObjectURL(blob);
     activeSpeech.url = url;
+    speechAudio.muted = false;
     audio.src = url;
-    audio.addEventListener("ended", stopSpeech, { once: true });
+    // An older reply can finish after a newer one has started. Only let the
+    // audio instance that actually ended clear the active playback state.
+    audio.addEventListener("ended", () => stopSpeech(audio, generation), { once: true });
+    audio.addEventListener("error", () => {
+      if (activeSpeech?.audio !== audio || activeSpeech.generation !== generation) return;
+      const mediaError = audio.error;
+      stopSpeech(audio, generation);
+      reportSpeechPlayback("playback_error", mediaError?.message || "media error");
+      status.textContent = mediaError?.message || "The browser could not play the speech audio.";
+      status.classList.add("error");
+    }, { once: true });
+    audio.load();
     await audio.play();
+    reportSpeechPlayback("playback_started");
   } catch (error) {
-    if (activeSpeech?.audio === audio) {
-      stopSpeech();
+    if (activeSpeech?.audio === audio && activeSpeech.generation === generation) {
+      stopSpeech(audio, generation);
+      reportSpeechPlayback("playback_rejected", error?.message || "playback rejected");
       status.textContent = error.message || "Speech synthesis failed.";
       status.classList.add("error");
     }
   }
 }
 
-agentChat?.addEventListener("click", (event) => {
-  const button = event.target.closest(".speak-response");
-  if (!button) return;
-  if (activeSpeech?.button === button) stopSpeech();
-  else speakResponse(button);
+speakRepliesButton?.addEventListener("click", () => {
+  if (activeSpeech?.button === speakRepliesButton) {
+    stopSpeech();
+    updateSpeakRepliesButton();
+    return;
+  }
+  speakReplies = !speakReplies;
+  localStorage.setItem(speakRepliesKey, speakReplies ? "1" : "0");
+  if (speakReplies) unlockSpeechPlayback();
+  updateSpeakRepliesButton();
 });
+
+updateSpeakRepliesButton();
 
 function hideAgentConversation() {
   agentChat.classList.remove("visible");
@@ -1001,6 +1097,7 @@ async function runAgent() {
           streaming: false,
         });
         status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
+        if (speakReplies && data.answer) speakText(data.answer);
       } else if (event.type === "error") {
         const errorMessage = event.message || "Agent request failed.";
         Object.assign(progressMessage, {

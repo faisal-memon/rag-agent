@@ -10,6 +10,7 @@ import re
 import time
 import wave
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -36,6 +37,7 @@ from app.agent.voice_state_machine import (
     VoiceProgressCoordinator,
     VoiceModeTransition,
 )
+from app.agent.silero_shadow import SileroShadowVAD
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +117,8 @@ class ESPHomeVoiceClient:
         # Voice activity detection state and optional frame diagnostics.
         self._vad: SileroVoiceActivityDetector | None = None
         self._vad_frames: list[VoiceActivityFrame] = []
+        self._silero_shadow = SileroShadowVAD(settings.voice_vad_silero_shadow_enabled)
+        self._silero_probability: float | None = None
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._last_vad_diagnostic_at = 0.0
@@ -305,6 +309,8 @@ class ESPHomeVoiceClient:
         self._session_id = conversation_id
         self._session_audio.clear()
         self._vad_frames = []
+        self._silero_shadow.reset()
+        self._silero_probability = None
         self._session_audio_truncated = False
 
         # Configure voice activity detection for this capture.
@@ -381,6 +387,7 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
+        self._silero_probability = self._silero_shadow.score(data)
 
         # Feed the chunk into voice activity detection.
         self._update_vad(data)
@@ -460,6 +467,22 @@ class ESPHomeVoiceClient:
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 return
+
+    def update_settings(self, settings: ApiSettings) -> None:
+        """Apply settings updates to subsequent voice sessions."""
+        self._settings = settings
+        self._piper_service.update_settings(settings)
+        self._silero_shadow = SileroShadowVAD(settings.voice_vad_silero_shadow_enabled)
+
+    def status(self) -> dict:
+        """Return the currently configured speaker's live connection details."""
+        return {
+            "device_id": self._device_id,
+            "display_name": self._device_name,
+            "host": self._settings.esphome_device_host,
+            "port": self._settings.esphome_device_port,
+            "connected": self._connected,
+        }
 
     async def _handle_session_stop(self, aborted: bool) -> None:
         """Run one processing task, ignoring duplicate stop callbacks."""
@@ -954,7 +977,7 @@ class ESPHomeVoiceClient:
 
     def _record_vad_frame(self, frame: VoiceActivityFrame) -> None:
         """Collect frame decisions when temporary VAD diagnostics are enabled."""
-        self._vad_frames.append(frame)
+        self._vad_frames.append(replace(frame, silero_probability=self._silero_probability))
 
     def _write_vad_diagnostics(
         self, conversation_id: str | None, frames: list[VoiceActivityFrame]
@@ -979,6 +1002,7 @@ class ESPHomeVoiceClient:
                         "audio_level_dbfs",
                         "state",
                         "silence_run",
+                        "silero_probability",
                     ),
                 )
                 writer.writeheader()
@@ -993,6 +1017,7 @@ class ESPHomeVoiceClient:
                             "audio_level_dbfs": frame.audio_level_dbfs,
                             "state": frame.state,
                             "silence_run": frame.silence_run,
+                            "silero_probability": frame.silero_probability,
                         }
                     )
             log.info(
