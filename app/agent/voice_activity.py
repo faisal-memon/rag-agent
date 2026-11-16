@@ -10,6 +10,8 @@ from enum import Enum, auto
 from functools import lru_cache
 from typing import Any, Callable
 
+import torch
+
 VOICE_SAMPLE_RATE = 16_000
 VOICE_SAMPLE_WIDTH = 2
 FRAME_SAMPLES = 512
@@ -131,8 +133,6 @@ class SileroVoiceActivityDetector:
                     self._speech_wait_started_at = now
                 self._emit_frame(None, now, rms_dbfs)
                 continue
-
-            import torch
 
             tensor = torch.tensor(samples, dtype=torch.float32) / 32768.0
             result = self._iterator(tensor)
