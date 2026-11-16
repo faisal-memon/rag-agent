@@ -10,6 +10,7 @@ from functools import lru_cache
 from typing import Any, Callable
 
 import torch
+import webrtcvad
 from silero_vad import VADIterator, load_silero_vad
 
 VOICE_SAMPLE_RATE = 16_000
