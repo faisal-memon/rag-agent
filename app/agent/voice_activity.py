@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import Any, Callable
 
 import torch
+from silero_vad import VADIterator, load_silero_vad
 
 VOICE_SAMPLE_RATE = 16_000
 VOICE_SAMPLE_WIDTH = 2
@@ -48,8 +49,6 @@ class VoiceActivityFrame:
 
 @lru_cache(maxsize=1)
 def _load_model() -> Any:
-    from silero_vad import load_silero_vad
-
     return load_silero_vad()
 
 
@@ -66,8 +65,6 @@ class SileroVoiceActivityDetector:
         on_frame: Callable[[VoiceActivityFrame], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        from silero_vad import VADIterator
-
         self._clock = clock
         self._on_frame = on_frame
         self._started_at = clock()
