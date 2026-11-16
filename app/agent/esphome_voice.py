@@ -209,7 +209,10 @@ class ESPHomeVoiceClient:
             handle_stop=self._handle_session_stop,
             handle_audio=self._handle_audio,
         )
+        # Clear a voice run that may have been interrupted before reconnecting.
         self._abort_interrupted_voice_run()
+
+        # Record the device identity and mark the Native API connection active.
         device_id = _stable_device_id(info.mac_address, self._settings.esphome_device_host)
         self._device_id = device_id
         self._device_name = info.name or self._device_name
