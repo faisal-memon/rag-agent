@@ -8,9 +8,14 @@ ENV PYTHONUNBUFFERED=1
 FROM base AS api
 
 ARG RAG_AGENT_VERSION=dev
+ARG TORCH_VERSION=2.15.0
 
 COPY requirements-api.txt .
-RUN pip install --no-cache-dir -r requirements-api.txt
+# Silero VAD runs on the CPU; install the CPU wheel before resolving the rest
+# of the requirements so pip does not pull CUDA, NVIDIA, or Triton runtimes.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==${TORCH_VERSION}" \
+    && python -c "import torch; assert torch.version.cuda is None; assert not torch.cuda.is_available()" \
+    && pip install --no-cache-dir -r requirements-api.txt
 COPY app/__init__.py ./app/__init__.py
 COPY app/agent ./app/agent
 COPY app/core ./app/core
