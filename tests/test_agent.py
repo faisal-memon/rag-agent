@@ -1052,7 +1052,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn('id="reset-system-prompt"', page)
         self.assertIn('aria-controls="voice-panel"', page)
         self.assertIn('name="voice_capture_limit_seconds"', page)
-        self.assertIn('name="voice_follow_up_start_timeout_seconds"', page)
+        self.assertIn('name="voice_follow_up_window_seconds"', page)
 
 
 if __name__ == "__main__":

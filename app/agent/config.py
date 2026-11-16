@@ -60,11 +60,8 @@ class ApiSettings(ConfiguredSettings):
     voice_capture_limit_seconds: int = Field(
         default=20, ge=0, le=3600, alias="ESPHOME_VOICE_CAPTURE_LIMIT_SECONDS"
     )
-    voice_follow_up_timeout_seconds: int = Field(
-        default=8, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
-    )
-    voice_follow_up_start_timeout_seconds: int = Field(
-        default=3, ge=0, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
+    voice_follow_up_window_seconds: int = Field(
+        default=5, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
     )
     voice_vad_diagnostics_enabled: bool = Field(
         default=False, alias="ESPHOME_VAD_DIAGNOSTICS_ENABLED"
@@ -124,6 +121,12 @@ def get_api_settings() -> ApiSettings:
                 "remote_mcp_auth_token_file",
             },
         )
+    # Migrate the pre-simplification setting name once it is encountered.
+    if (
+        "voice_follow_up_window_seconds" not in values
+        and "voice_follow_up_timeout_seconds" in values
+    ):
+        values["voice_follow_up_window_seconds"] = values.pop("voice_follow_up_timeout_seconds")
     # Piper voice selection is persisted with the agent settings. Keep the
     # deployment environment from silently choosing a different voice.
     values.setdefault("piper_voice", ApiSettings.DEFAULT_PIPER_VOICE)

@@ -65,7 +65,7 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(0, result.voice_start_grace_ms)
         self.assertEqual(600, result.voice_end_silence_ms)
         self.assertEqual("en_GB-alba-medium", result.piper_voice)
-        self.assertEqual(3, result.voice_follow_up_start_timeout_seconds)
+        self.assertEqual(5, result.voice_follow_up_window_seconds)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
         self.assertEqual("en_GB-alba-medium", saved_settings["api"]["piper_voice"])
