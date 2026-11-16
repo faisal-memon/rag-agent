@@ -256,11 +256,7 @@ class ESPHomeVoiceClient:
         """Apply one voice event and report whether the lifecycle accepted it."""
         transition = self._voice_mode.dispatch(event)
         if not transition.accepted:
-            logger.warning(
-                "Ignoring ESPHome voice event %s while in %s",
-                event.name,
-                transition.previous.name,
-            )
+            logger.warning("Ignoring ESPHome voice event %s while in %s", event.name, transition.previous.name)
         return transition.accepted
 
     def _enter_processing(self, _transition: VoiceModeTransition) -> None:
