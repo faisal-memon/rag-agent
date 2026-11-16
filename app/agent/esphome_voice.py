@@ -1017,7 +1017,7 @@ class ESPHomeVoiceClient:
                             "audio_level_dbfs": frame.audio_level_dbfs,
                             "state": frame.state,
                             "silence_run": frame.silence_run,
-                            "silero_probability": frame.silero_probability,
+                            "silero_probability": getattr(frame, "silero_probability", ""),
                         }
                     )
             log.info(
