@@ -10,7 +10,7 @@ ESPHOME_VAD_DIAGNOSTICS_DIR=/data/vad-diagnostics
 
 The API writes one `vad-*.csv` file per voice capture. Each row is one 32 ms
 frame. `silero_speech` is the binary Silero decision (`0` or `1`; startup
-grace frames are blank), `audio_level_dbfs` is the frame RMS level, `state` is
+`audio_level_dbfs` is the frame RMS level, `state` is
 the endpointing state after that frame, and `silence_run` is the current
 consecutive non-speech count. The files contain no audio and can be deleted
 after review.

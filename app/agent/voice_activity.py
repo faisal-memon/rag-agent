@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import struct
 import time
 from dataclasses import dataclass
@@ -22,7 +21,6 @@ NO_SPEECH_TIMEOUT_SECONDS = 15
 
 
 class CaptureState(Enum):
-    STARTUP_GRACE = auto()
     WAITING_FOR_SPEECH = auto()
     SPEAKING = auto()
     ENDED = auto()
@@ -58,7 +56,6 @@ class SileroVoiceActivityDetector:
     def __init__(
         self,
         *,
-        startup_grace_ms: int,
         end_silence_ms: int,
         capture_limit_seconds: int,
         no_speech_timeout_seconds: int = NO_SPEECH_TIMEOUT_SECONDS,
@@ -71,8 +68,6 @@ class SileroVoiceActivityDetector:
         self._speech_wait_started_at = self._started_at
         self._capture_limit_seconds = capture_limit_seconds
         self._no_speech_timeout_seconds = no_speech_timeout_seconds
-        self._startup_grace_frames = math.ceil(startup_grace_ms / FRAME_MILLISECONDS)
-        self._grace_frames_seen = 0
         self._silence_frames = 0
         self._buffer = bytearray()
         self._frame_index = 0
@@ -91,11 +86,7 @@ class SileroVoiceActivityDetector:
             min_silence_duration_ms=end_silence_ms,
             speech_pad_ms=30,
         )
-        self.state = (
-            CaptureState.STARTUP_GRACE
-            if self._startup_grace_frames
-            else CaptureState.WAITING_FOR_SPEECH
-        )
+        self.state = CaptureState.WAITING_FOR_SPEECH
 
     def process(self, audio: bytes) -> list[CaptureEvent]:
         """Process available PCM and return Silero capture events."""
@@ -121,15 +112,6 @@ class SileroVoiceActivityDetector:
                 events.append(CaptureEvent.MAX_DURATION_REACHED)
                 self._emit_frame(None, now, rms_dbfs)
                 break
-
-            if self.state is CaptureState.STARTUP_GRACE:
-                self._grace_frames_seen += 1
-                self._interval_grace_frames += 1
-                if self._grace_frames_seen >= self._startup_grace_frames:
-                    self.state = CaptureState.WAITING_FOR_SPEECH
-                    self._speech_wait_started_at = now
-                self._emit_frame(None, now, rms_dbfs)
-                continue
 
             tensor = torch.tensor(samples, dtype=torch.float32) / 32768.0
             result = self._iterator(tensor)

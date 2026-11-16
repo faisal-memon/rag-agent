@@ -301,10 +301,6 @@ class ESPHomeVoiceClient:
         # Determine whether this is a normal capture or a follow-up.
         self._session_is_follow_up = self._follow_up_pending and not wake_word_phrase
         self._follow_up_pending = False
-        startup_grace_ms = (
-            0 if self._session_is_follow_up else self._settings.voice_start_grace_ms
-        )
-
         # Allocate and clear the per-session capture data.
         self._session_id = conversation_id
         self._session_audio.clear()
@@ -313,7 +309,6 @@ class ESPHomeVoiceClient:
 
         # Configure voice activity detection for this capture.
         self._vad = SileroVoiceActivityDetector(
-            startup_grace_ms=startup_grace_ms,
             end_silence_ms=self._settings.voice_end_silence_ms,
             window_frames=self._settings.voice_vad_window_frames,
             window_speech_frames=self._settings.voice_vad_window_speech_frames,
