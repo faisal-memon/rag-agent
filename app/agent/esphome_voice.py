@@ -131,17 +131,6 @@ class ESPHomeVoiceClient:
         self._activity: VoiceActivityCoordinator | None = None
         self._progress_audio_fetched: asyncio.Event | None = None
 
-    def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
-        """Apply one voice event and report whether the lifecycle accepted it."""
-        transition = self._voice_mode.dispatch(event)
-        if not transition.accepted:
-            logger.warning(
-                "Ignoring ESPHome voice event %s while in %s",
-                event.name,
-                transition.previous.name,
-            )
-        return transition.accepted
-
     async def start(self) -> None:
         """Start reconnecting to the configured device; leave it disabled by default."""
         self._loop = asyncio.get_running_loop()
@@ -184,6 +173,31 @@ class ESPHomeVoiceClient:
             await self._client.disconnect()
         if self._media_server is not None:
             await self._media_server.stop()
+
+    def update_settings(self, settings: ApiSettings) -> None:
+        """Apply settings updates to subsequent voice sessions."""
+        self._settings = settings
+
+    def status(self) -> dict:
+        """Return the currently configured speaker's live connection details."""
+        return {
+            "device_id": self._device_id,
+            "display_name": self._device_name,
+            "host": self._settings.esphome_device_host,
+            "port": self._settings.esphome_device_port,
+            "connected": self._connected,
+        }
+
+    def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
+        """Apply one voice event and report whether the lifecycle accepted it."""
+        transition = self._voice_mode.dispatch(event)
+        if not transition.accepted:
+            logger.warning(
+                "Ignoring ESPHome voice event %s while in %s",
+                event.name,
+                transition.previous.name,
+            )
+        return transition.accepted
 
     async def _on_connect(self) -> None:
         assert self._client is not None
@@ -419,20 +433,6 @@ class ESPHomeVoiceClient:
                 )
                 asyncio.create_task(self._handle_session_stop(False))
                 return
-
-    def update_settings(self, settings: ApiSettings) -> None:
-        """Apply settings updates to subsequent voice sessions."""
-        self._settings = settings
-
-    def status(self) -> dict:
-        """Return the currently configured speaker's live connection details."""
-        return {
-            "device_id": self._device_id,
-            "display_name": self._device_name,
-            "host": self._settings.esphome_device_host,
-            "port": self._settings.esphome_device_port,
-            "connected": self._connected,
-        }
 
     async def _handle_session_stop(self, aborted: bool) -> None:
         speaker_created_at = datetime.now(timezone.utc)
