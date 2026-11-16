@@ -22,11 +22,11 @@ from app.agent.config import ApiSettings
 from app.agent.esphome_playback import OneShotAudioServer
 from app.agent.piper_service import PiperService
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
-from app.agent.voice_activity import (
+from app.agent.silero_voice_activity import (
     VOICE_SAMPLE_RATE,
     CaptureEvent,
+    SileroVoiceActivityDetector,
     VoiceActivityFrame,
-    VoiceActivityDetector,
 )
 from app.agent.voice_state_machine import (
     VoiceActivityCoordinator,
@@ -113,7 +113,7 @@ class ESPHomeVoiceClient:
         self._session_audio_truncated = False
 
         # Voice activity detection state and optional frame diagnostics.
-        self._vad: VoiceActivityDetector | None = None
+        self._vad: SileroVoiceActivityDetector | None = None
         self._vad_frames: list[VoiceActivityFrame] = []
         self._vad_ended = False
         self._vad_no_speech_timeout = False
@@ -312,7 +312,7 @@ class ESPHomeVoiceClient:
         self._session_audio_truncated = False
 
         # Configure voice activity detection for this capture.
-        self._vad = VoiceActivityDetector(
+        self._vad = SileroVoiceActivityDetector(
             startup_grace_ms=startup_grace_ms,
             end_silence_ms=self._settings.voice_end_silence_ms,
             window_frames=self._settings.voice_vad_window_frames,
