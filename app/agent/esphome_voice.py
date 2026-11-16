@@ -303,7 +303,10 @@ class ESPHomeVoiceClient:
         wake_word_phrase: str | None,
     ) -> int:
         # Determine whether this is a normal capture or a follow-up.
-        self._session_is_follow_up = self._follow_up_pending and not wake_word_phrase
+        self._session_is_follow_up = (
+            self._voice_state_machine.state is VoiceModeState.FOLLOWUP_LISTENING
+            or (self._follow_up_pending and not wake_word_phrase)
+        )
         self._follow_up_pending = False
         # Allocate and clear the per-session capture data.
         self._session_id = conversation_id
@@ -335,7 +338,7 @@ class ESPHomeVoiceClient:
         # Notify the state machine that capture has begun.
         session_event = (
             VoiceModeEvent.FOLLOWUP_STARTED
-            if self._session_is_follow_up
+            if self._session_is_follow_up and not wake_word_phrase
             else VoiceModeEvent.WAKE_WORD_DETECTED
         )
         if not self._dispatch_voice_event(session_event):

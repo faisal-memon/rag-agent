@@ -83,6 +83,15 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.assertTrue(self.client._session_is_follow_up)
         self.assertEqual(3, self.client._vad._no_speech_timeout_seconds)
 
+    async def test_follow_up_accepts_wake_word_callback_from_device(self):
+        self.client._follow_up_pending = True
+        self.client._voice_state_machine.state = VoiceModeState.FOLLOWUP_LISTENING
+
+        await self.client._handle_session_start("follow-up-wake-word", 0, None, "Okay Nabu")
+
+        self.assertTrue(self.client._session_is_follow_up)
+        self.assertEqual(VoiceModeState.CAPTURING, self.client._voice_state_machine.state)
+
     def test_spoken_tool_status_uses_generic_fallback_when_missing_or_oversized(self):
         self.assertEqual("I'm checking that now.", _spoken_tool_status(None))
         self.assertEqual("I'm checking that now.", _spoken_tool_status("x" * 121))
