@@ -217,6 +217,8 @@ class ESPHomeVoiceClient:
         self._device_id = device_id
         self._device_name = info.name or self._device_name
         self._connected = True
+
+        # Register the device in Postgres.
         try:
             await asyncio.to_thread(
                 voice_devices.register_device,
