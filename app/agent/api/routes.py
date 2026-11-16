@@ -101,7 +101,6 @@ def _runtime_settings() -> AgentRuntimeSettings:
         home_longitude=settings.home_longitude,
         memory_enabled=settings.memory_enabled,
         memory_require_approval=settings.memory_require_approval,
-        voice_start_grace_ms=settings.voice_start_grace_ms,
         voice_end_silence_ms=settings.voice_end_silence_ms,
         voice_vad_silero_shadow_enabled=settings.voice_vad_silero_shadow_enabled,
         voice_capture_limit_seconds=settings.voice_capture_limit_seconds,
