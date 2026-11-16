@@ -203,6 +203,7 @@ class ESPHomeVoiceClient:
         if self._media_server is not None and self._media_player_key is None:
             log.error("ESPHome device %s has no Media Player entity", info.name)
 
+        # Register voice-session callbacks; keep the returned function to remove them later.
         self._unsubscribe_voice = self._client.subscribe_voice_assistant(
             handle_start=self._handle_session_start,
             handle_stop=self._handle_session_stop,
