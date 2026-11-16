@@ -41,6 +41,7 @@ from app.agent.voice_state_machine import (
     VoiceModeState,
     VoiceModeStateMachine,
     VoiceProgressCoordinator,
+    VoiceModeTransition,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,12 @@ class ESPHomeVoiceClient:
         # Shared services used throughout the speaker lifecycle.
         self._settings = settings
         self._agent = agent
-        self._voice_mode = VoiceModeStateMachine()
+        self._voice_mode = VoiceModeStateMachine(
+            entry_handlers={
+                VoiceModeState.PROCESSING: self._enter_processing,
+                VoiceModeState.PLAYING: self._enter_playing,
+            }
+        )
         self._piper_service = piper_service or PiperService(settings)
         self._media_server = (
             OneShotAudioServer(
@@ -130,6 +136,9 @@ class ESPHomeVoiceClient:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._activity: VoiceActivityCoordinator | None = None
         self._progress_audio_fetched: asyncio.Event | None = None
+        self._processing_task: asyncio.Task[None] | None = None
+        self._pending_reply: tuple[str, str, bool] | None = None
+        self._playback_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start reconnecting to the configured device; leave it disabled by default."""
@@ -253,6 +262,25 @@ class ESPHomeVoiceClient:
                 transition.previous.name,
             )
         return transition.accepted
+
+    def _enter_processing(self, _transition: VoiceModeTransition) -> None:
+        """Start transcription and agent processing after capture ends."""
+        asyncio.create_task(self._handle_session_stop(False))
+
+    def _enter_playing(self, _transition: VoiceModeTransition) -> None:
+        """Start playback for the response prepared by the processing handler."""
+        if self._pending_reply is None:
+            logger.warning("Voice state entered PLAYING without a pending reply")
+            return
+        answer, conversation_id, continue_conversation = self._pending_reply
+        self._pending_reply = None
+        self._playback_task = asyncio.create_task(
+            self._speak_reply(
+                answer,
+                conversation_id,
+                continue_conversation=continue_conversation,
+            )
+        )
 
     async def _on_disconnect(self, expected: bool) -> None:
         self._connected = False
@@ -404,7 +432,6 @@ class ESPHomeVoiceClient:
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
-                asyncio.create_task(self._handle_session_stop(False))
                 return
             elif event is CaptureEvent.MAX_DURATION_REACHED:
                 self._vad_ended = True
@@ -417,7 +444,6 @@ class ESPHomeVoiceClient:
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
-                asyncio.create_task(self._handle_session_stop(False))
                 return
             elif event is CaptureEvent.NO_SPEECH_TIMEOUT:
                 self._vad_ended = True
@@ -431,10 +457,20 @@ class ESPHomeVoiceClient:
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
-                asyncio.create_task(self._handle_session_stop(False))
                 return
 
     async def _handle_session_stop(self, aborted: bool) -> None:
+        """Run one processing task, ignoring duplicate stop callbacks."""
+        if self._processing_task is not None and not self._processing_task.done():
+            logger.debug("Ignoring duplicate ESPHome session-stop callback")
+            return
+        self._processing_task = asyncio.create_task(self._process_session_stop(aborted))
+        try:
+            await self._processing_task
+        finally:
+            self._processing_task = None
+
+    async def _process_session_stop(self, aborted: bool) -> None:
         speaker_created_at = datetime.now(timezone.utc)
         capture_seconds = (
             time.monotonic() - self._session_started_at
@@ -706,14 +742,15 @@ class ESPHomeVoiceClient:
             continue_listening,
             self._settings.voice_follow_up_timeout_seconds,
         )
+        self._pending_reply = (answer, conversation_id, continue_listening)
         if not self._dispatch_voice_event(VoiceModeEvent.RESPONSE_READY):
+            self._pending_reply = None
             self._finish_voice_run(error="invalid-voice-state")
             return
-        await self._speak_reply(
-            answer,
-            conversation_id,
-            continue_conversation=continue_listening,
-        )
+        playback_task = self._playback_task
+        if playback_task is not None:
+            await playback_task
+            self._playback_task = None
 
     async def _speak_progress(self, message: str, conversation_id: str) -> None:
         """Speak a tool-call update without ending the active voice turn."""
