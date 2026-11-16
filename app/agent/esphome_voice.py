@@ -368,11 +368,16 @@ class ESPHomeVoiceClient:
         return 0
 
     async def _handle_audio(self, data: bytes, data2: bytes | None = None) -> None:
+        # Ignore audio that arrives outside an active session.
         if self._session_id is None:
             log.debug("Ignoring ESPHome audio frame outside a voice session")
             return
+
+        # Stop accepting audio after the session buffer reaches its limit.
         if self._session_audio_truncated:
             return
+
+        # Append this transport chunk to the current session recording.
         # ESPHome may split PCM samples across Native API messages, and its
         # optional second channel need not have the same chunk boundaries.
         # Use channel 1 (the default voice channel) and join bytes before WAV
@@ -385,6 +390,8 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
+
+        # Feed the chunk into voice activity detection.
         self._update_vad(data)
 
     def _update_vad(self, data: bytes) -> None:
