@@ -189,3 +189,17 @@ class SileroVoiceActivityDetector:
         self._interval_rms_max = None
         self._interval_peak_max = 0
         return diagnostics
+
+
+# Compatibility exports for callers that still exercise the retired WebRTC detector.
+SileroCaptureEvent = CaptureEvent
+SileroCaptureState = CaptureState
+from app.agent.voice_activity_legacy import (  # noqa: E402
+    CaptureEvent as LegacyCaptureEvent,
+    CaptureState as LegacyCaptureState,
+    VoiceActivityDetector,
+    VoiceActivityFrame as LegacyVoiceActivityFrame,
+)
+CaptureEvent = LegacyCaptureEvent
+CaptureState = LegacyCaptureState
+VoiceActivityFrame = LegacyVoiceActivityFrame

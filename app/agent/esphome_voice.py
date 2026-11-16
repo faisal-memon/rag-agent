@@ -24,7 +24,7 @@ from app.agent.piper_service import PiperService
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
 from app.agent.voice_activity import (
     VOICE_SAMPLE_RATE,
-    CaptureEvent,
+    CaptureEvent as SileroCaptureEvent,
     SileroVoiceActivityDetector,
     VoiceActivityFrame,
 )
@@ -310,10 +310,6 @@ class ESPHomeVoiceClient:
         # Configure voice activity detection for this capture.
         self._vad = SileroVoiceActivityDetector(
             end_silence_ms=self._settings.voice_end_silence_ms,
-            window_frames=self._settings.voice_vad_window_frames,
-            window_speech_frames=self._settings.voice_vad_window_speech_frames,
-            activity_history=self._settings.voice_vad_activity_history,
-            active_windows_required=self._settings.voice_vad_active_windows_required,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
                 self._settings.voice_follow_up_start_timeout_seconds
@@ -419,7 +415,7 @@ class ESPHomeVoiceClient:
                 )
             self._last_vad_diagnostic_at = now
         for event in events:
-            if event is CaptureEvent.SPEECH_STARTED:
+            if event is SileroCaptureEvent.SPEECH_STARTED:
                 self._client.send_voice_assistant_event(
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None
                 )
@@ -427,7 +423,7 @@ class ESPHomeVoiceClient:
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_START, None
                 )
                 log.info("ReSpeaker VAD state: waiting_for_speech -> speaking")
-            elif event is CaptureEvent.SPEECH_ENDED:
+            elif event is SileroCaptureEvent.SPEECH_ENDED:
                 self._vad_ended = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
@@ -439,7 +435,7 @@ class ESPHomeVoiceClient:
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 return
-            elif event is CaptureEvent.MAX_DURATION_REACHED:
+            elif event is SileroCaptureEvent.MAX_DURATION_REACHED:
                 self._vad_ended = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
@@ -451,7 +447,7 @@ class ESPHomeVoiceClient:
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 return
-            elif event is CaptureEvent.NO_SPEECH_TIMEOUT:
+            elif event is SileroCaptureEvent.NO_SPEECH_TIMEOUT:
                 self._vad_ended = True
                 self._vad_no_speech_timeout = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
@@ -979,6 +975,7 @@ class ESPHomeVoiceClient:
                         "frame",
                         "elapsed_ms",
                         "silero_speech",
+                        "webrtc_speech",
                         "audio_level_dbfs",
                         "state",
                         "silence_run",
@@ -992,6 +989,7 @@ class ESPHomeVoiceClient:
                             "frame": frame.frame_index,
                             "elapsed_ms": frame.elapsed_ms,
                             "silero_speech": "" if speech is None else int(speech),
+                            "webrtc_speech": "" if speech is None else int(speech),
                             "audio_level_dbfs": frame.audio_level_dbfs,
                             "state": frame.state,
                             "silence_run": frame.silence_run,
