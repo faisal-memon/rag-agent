@@ -235,6 +235,7 @@ class ESPHomeVoiceClient:
             info.name,
             info.mac_address,
         )
+
         self._dispatch_voice_event(VoiceModeEvent.CONNECTION_READY)
 
     async def stop(self) -> None:
