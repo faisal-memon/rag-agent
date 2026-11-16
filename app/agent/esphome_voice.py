@@ -983,7 +983,7 @@ class ESPHomeVoiceClient:
                     fieldnames=(
                         "frame",
                         "elapsed_ms",
-                        "webrtc_speech",
+                        "silero_speech",
                         "audio_level_dbfs",
                         "state",
                         "silence_run",
@@ -995,9 +995,9 @@ class ESPHomeVoiceClient:
                         {
                             "frame": frame.frame_index,
                             "elapsed_ms": frame.elapsed_ms,
-                            "webrtc_speech": (
-                                "" if frame.webrtc_speech is None else int(frame.webrtc_speech)
-                            ),
+                            "silero_speech": int(
+                                getattr(frame, "silero_speech", frame.webrtc_speech)
+                            ) if getattr(frame, "silero_speech", frame.webrtc_speech) is not None else "",
                             "audio_level_dbfs": frame.audio_level_dbfs,
                             "state": frame.state,
                             "silence_run": frame.silence_run,

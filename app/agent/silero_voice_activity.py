@@ -38,7 +38,7 @@ class VoiceActivityFrame:
 
     frame_index: int
     elapsed_ms: int
-    webrtc_speech: bool | None
+    silero_speech: bool | None
     audio_level_dbfs: float
     state: str
     silence_run: int
@@ -164,7 +164,7 @@ class SileroVoiceActivityDetector:
                 VoiceActivityFrame(
                     frame_index=self._frame_index,
                     elapsed_ms=max(0, round((now - self._started_at) * 1000)),
-                    webrtc_speech=speech,
+                    silero_speech=speech,
                     audio_level_dbfs=round(rms_dbfs, 2),
                     state=self.state.name.lower(),
                     silence_run=self._silence_frames,
