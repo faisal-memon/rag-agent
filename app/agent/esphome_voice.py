@@ -44,7 +44,7 @@ from app.agent.voice_state_machine import (
     VoiceModeTransition,
 )
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 MAX_SESSION_AUDIO_BYTES = 3_000_000
 VOICE_SAMPLE_WIDTH = 2
@@ -145,7 +145,7 @@ class ESPHomeVoiceClient:
         self._loop = asyncio.get_running_loop()
         self._activity = VoiceActivityCoordinator(self._loop)
         if not self._settings.esphome_device_host:
-            logger.info("ESPHome voice client disabled; ESPHOME_DEVICE_HOST is unset")
+            log.info("ESPHome voice client disabled; ESPHOME_DEVICE_HOST is unset")
             return
 
         if self._media_server is not None:
@@ -167,7 +167,7 @@ class ESPHomeVoiceClient:
             zeroconf_wake=False,
         )
         await self._reconnect.start()
-        logger.info(
+        log.info(
             "ESPHome voice client started for %s:%s",
             self._settings.esphome_device_host,
             self._settings.esphome_device_port,
@@ -180,10 +180,10 @@ class ESPHomeVoiceClient:
             self._client.api_version
         )
         if not feature_flags & VoiceAssistantFeature.VOICE_ASSISTANT:
-            logger.error("ESPHome device %s has no Voice Assistant capability", info.name)
+            log.error("ESPHome device %s has no Voice Assistant capability", info.name)
             return
         if not feature_flags & VoiceAssistantFeature.API_AUDIO:
-            logger.error("ESPHome device %s does not support Native API audio", info.name)
+            log.error("ESPHome device %s does not support Native API audio", info.name)
             return
 
         entities, _ = await self._client.list_entities_services()
@@ -198,7 +198,7 @@ class ESPHomeVoiceClient:
         )
         self._media_player_key = media_player.key if media_player is not None else None
         if self._media_server is not None and self._media_player_key is None:
-            logger.error("ESPHome device %s has no Media Player entity", info.name)
+            log.error("ESPHome device %s has no Media Player entity", info.name)
 
         self._unsubscribe_voice = self._client.subscribe_voice_assistant(
             handle_start=self._handle_session_start,
@@ -220,9 +220,9 @@ class ESPHomeVoiceClient:
                 self._settings.esphome_device_port,
             )
         except Exception:
-            logger.exception("Could not persist ESPHome device registration")
+            log.exception("Could not persist ESPHome device registration")
             self._device_id = None
-        logger.info(
+        log.info(
             "Connected to ESPHome device %s (%s); Native API audio subscribed",
             info.name,
             info.mac_address,
@@ -256,7 +256,7 @@ class ESPHomeVoiceClient:
         """Apply one voice event and report whether the lifecycle accepted it."""
         transition = self._voice_state_machine.dispatch(event)
         if not transition.accepted:
-            logger.warning("Ignoring ESPHome voice event %s while in %s", event.name, transition.previous.name)
+            log.warning("Ignoring ESPHome voice event %s while in %s", event.name, transition.previous.name)
         return transition.accepted
 
     def _enter_processing(self, _transition: VoiceModeTransition) -> None:
@@ -266,7 +266,7 @@ class ESPHomeVoiceClient:
     def _enter_playing(self, _transition: VoiceModeTransition) -> None:
         """Start playback for the response prepared by the processing handler."""
         if self._pending_reply is None:
-            logger.warning("Voice state entered PLAYING without a pending reply")
+            log.warning("Voice state entered PLAYING without a pending reply")
             return
         answer, conversation_id, continue_conversation = self._pending_reply
         self._pending_reply = None
@@ -282,10 +282,10 @@ class ESPHomeVoiceClient:
         self._connected = False
         self._unsubscribe()
         self._dispatch_voice_event(VoiceModeEvent.CONNECTION_LOST)
-        logger.info("ESPHome Native API disconnected (expected=%s)", expected)
+        log.info("ESPHome Native API disconnected (expected=%s)", expected)
 
     async def _on_connect_error(self, error: Exception) -> None:
-        logger.warning("Could not connect to ESPHome device: %s", error)
+        log.warning("Could not connect to ESPHome device: %s", error)
 
     async def _handle_session_start(
         self,
@@ -337,7 +337,7 @@ class ESPHomeVoiceClient:
                     VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
                 )
             return 0
-        logger.info(
+        log.info(
             "ESPHome voice session started (conversation=%s, flags=%s, "
             "wake_word=%s, follow_up=%s, audio_settings=%s)",
             conversation_id,
@@ -361,7 +361,7 @@ class ESPHomeVoiceClient:
 
     async def _handle_audio(self, data: bytes, data2: bytes | None = None) -> None:
         if self._session_id is None:
-            logger.debug("Ignoring ESPHome audio frame outside a voice session")
+            log.debug("Ignoring ESPHome audio frame outside a voice session")
             return
         if self._session_audio_truncated:
             return
@@ -371,7 +371,7 @@ class ESPHomeVoiceClient:
         # framing rather than validating each transport frame independently.
         if len(self._session_audio) + len(data) > MAX_SESSION_AUDIO_BYTES:
             self._session_audio_truncated = True
-            logger.warning(
+            log.warning(
                 "ESPHome audio session exceeded the %d-byte in-memory limit",
                 MAX_SESSION_AUDIO_BYTES,
             )
@@ -388,7 +388,7 @@ class ESPHomeVoiceClient:
         if events or now - self._last_vad_diagnostic_at >= 1.0:
             diagnostic = self._vad.take_diagnostics()
             if diagnostic["frames"]:
-                logger.info(
+                log.info(
                     "ReSpeaker VAD diagnostics (state=%s, frames=%d, speech=%d, "
                     "non_speech=%d, grace=%d, silence_ms=%d, silence_resets=%d, "
                     "longest_non_speech_ms=%d, endpoint_quiet_ms=%d, "
@@ -416,12 +416,12 @@ class ESPHomeVoiceClient:
                 self._client.send_voice_assistant_event(
                     VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_START, None
                 )
-                logger.info("ReSpeaker VAD state: waiting_for_speech -> speaking")
+                log.info("ReSpeaker VAD state: waiting_for_speech -> speaking")
             elif event is CaptureEvent.SPEECH_ENDED:
                 self._vad_ended = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
-                logger.info("ReSpeaker VAD state: waiting_for_silence -> ended")
+                log.info("ReSpeaker VAD state: waiting_for_silence -> ended")
                 self._record_activity(
                     "Capture", "completed", duration_ms=self._elapsed_ms(), detail="Ended after silence"
                 )
@@ -433,7 +433,7 @@ class ESPHomeVoiceClient:
                 self._vad_ended = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
-                logger.warning("ReSpeaker capture reached its configured time limit")
+                log.warning("ReSpeaker capture reached its configured time limit")
                 self._record_activity(
                     "Capture", "completed", duration_ms=self._elapsed_ms(), detail="Capture limit reached"
                 )
@@ -446,7 +446,7 @@ class ESPHomeVoiceClient:
                 self._vad_no_speech_timeout = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
-                logger.info("ReSpeaker capture ended: no speech detected")
+                log.info("ReSpeaker capture ended: no speech detected")
                 self._record_activity(
                     "Capture", "info", duration_ms=self._elapsed_ms(), detail="No speech detected"
                 )
@@ -458,7 +458,7 @@ class ESPHomeVoiceClient:
     async def _handle_session_stop(self, aborted: bool) -> None:
         """Run one processing task, ignoring duplicate stop callbacks."""
         if self._processing_task is not None and not self._processing_task.done():
-            logger.debug("Ignoring duplicate ESPHome session-stop callback")
+            log.debug("Ignoring duplicate ESPHome session-stop callback")
             return
         self._processing_task = asyncio.create_task(self._process_session_stop(aborted))
         try:
@@ -484,7 +484,7 @@ class ESPHomeVoiceClient:
             self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED)
         self._reset_session()
         self._write_vad_diagnostics(conversation_id, vad_frames)
-        logger.info(
+        log.info(
             "ESPHome voice session ended (conversation=%s, aborted=%s, "
             "audio_bytes=%d, truncated=%s, capture_seconds=%.2f)",
             conversation_id,
@@ -537,7 +537,7 @@ class ESPHomeVoiceClient:
             return
 
         if len(audio) % VOICE_SAMPLE_WIDTH:
-            logger.warning(
+            log.warning(
                 "ESPHome voice session ended with an incomplete PCM sample; "
                 "discarding its final byte (conversation=%s)",
                 conversation_id,
@@ -559,7 +559,7 @@ class ESPHomeVoiceClient:
             )
         except TranscriptionUnavailableError as exc:
             self._record_activity("Transcription", "failed", duration_ms=self._stage_ms(stage_started))
-            logger.warning(
+            log.warning(
                 "ReSpeaker transcription failed (conversation=%s): %s",
                 conversation_id,
                 exc,
@@ -567,12 +567,12 @@ class ESPHomeVoiceClient:
             return
         except Exception:
             self._record_activity("Transcription", "failed", duration_ms=self._stage_ms(stage_started))
-            logger.exception(
+            log.exception(
                 "Unexpected ReSpeaker transcription error (conversation=%s)",
                 conversation_id,
             )
             return
-        logger.info(
+        log.info(
             "ReSpeaker transcription complete (conversation=%s, seconds=%.2f, characters=%d)",
             conversation_id,
             time.monotonic() - stage_started,
@@ -585,7 +585,7 @@ class ESPHomeVoiceClient:
                 duration_ms=self._stage_ms(stage_started),
                 detail="Non-conversational audio caption ignored",
             )
-            logger.info(
+            log.info(
                 "ReSpeaker transcript was a non-conversational audio caption; ending voice run "
                 "without an agent request (conversation=%s)",
                 conversation_id,
@@ -604,7 +604,7 @@ class ESPHomeVoiceClient:
                 duration_ms=self._stage_ms(stage_started),
                 detail="No intelligible speech detected",
             )
-            logger.info(
+            log.info(
                 "ReSpeaker transcript was an unintelligible placeholder; skipping agent request "
                 "(conversation=%s)",
                 conversation_id,
@@ -645,13 +645,13 @@ class ESPHomeVoiceClient:
             )
 
         if self._agent is None:
-            logger.debug("ReSpeaker agent is not configured; skipping model request")
+            log.debug("ReSpeaker agent is not configured; skipping model request")
             self._finish_voice_run()
             return
 
         device_id = self._device_id
         if not device_id:
-            logger.warning("ReSpeaker session has no registered device identity; skipping agent request")
+            log.warning("ReSpeaker session has no registered device identity; skipping agent request")
             self._finish_voice_run()
             return
         try:
@@ -661,7 +661,7 @@ class ESPHomeVoiceClient:
                 VOICE_HISTORY_MAX_MESSAGES,
             )
         except Exception:
-            logger.exception("Could not load ReSpeaker conversation history")
+            log.exception("Could not load ReSpeaker conversation history")
             history = []
         history.append({"role": "user", "content": transcript})
         stage_started = time.monotonic()
@@ -683,7 +683,7 @@ class ESPHomeVoiceClient:
             )
         except Exception:
             self._record_activity("Assistant", "failed", duration_ms=self._stage_ms(stage_started))
-            logger.exception(
+            log.exception(
                 "ReSpeaker agent request failed (conversation=%s)",
                 conversation_id,
             )
@@ -705,7 +705,7 @@ class ESPHomeVoiceClient:
         answer = str(result.get("answer") or "").strip()
         if not answer:
             self._record_activity("Assistant", "failed", detail="Empty response")
-            logger.warning("ReSpeaker agent returned an empty answer (conversation=%s)", conversation_id)
+            log.warning("ReSpeaker agent returned an empty answer (conversation=%s)", conversation_id)
             self._finish_voice_run(error="empty-answer")
             return
         assistant_created_at = datetime.now(timezone.utc)
@@ -720,8 +720,8 @@ class ESPHomeVoiceClient:
                 assistant_created_at=assistant_created_at,
             )
         except Exception:
-            logger.exception("Could not save ReSpeaker conversation turn")
-        logger.info(
+            log.exception("Could not save ReSpeaker conversation turn")
+        log.info(
             "ReSpeaker agent response complete (conversation=%s, seconds=%.2f, characters=%d)",
             conversation_id,
             time.monotonic() - stage_started,
@@ -733,7 +733,7 @@ class ESPHomeVoiceClient:
             self._settings.voice_follow_up_timeout_seconds > 0
             and result.get("continue_listening") is True
         )
-        logger.info(
+        log.info(
             "ReSpeaker follow-up decision (continue_listening=%s, timeout_seconds=%d)",
             continue_listening,
             self._settings.voice_follow_up_timeout_seconds,
@@ -764,7 +764,7 @@ class ESPHomeVoiceClient:
                 VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END,
                 {"url": media_url},
             )
-            logger.info(
+            log.info(
                 "ReSpeaker progress update queued (conversation=%s, message=%r)",
                 conversation_id,
                 message,
@@ -772,10 +772,10 @@ class ESPHomeVoiceClient:
             try:
                 await asyncio.wait_for(self._progress_audio_fetched.wait(), timeout=5)
             except asyncio.TimeoutError:
-                logger.debug("Speaker did not fetch the progress update before timeout")
+                log.debug("Speaker did not fetch the progress update before timeout")
             await asyncio.sleep(min(4.0, max(1.0, len(message.split()) * 0.42)))
         except Exception:
-            logger.exception("Could not speak ReSpeaker progress update (conversation=%s)", conversation_id)
+            log.exception("Could not speak ReSpeaker progress update (conversation=%s)", conversation_id)
         finally:
             self._progress_audio_fetched = None
 
@@ -790,14 +790,14 @@ class ESPHomeVoiceClient:
             self._record_activity(
                 "Speaker audio", "failed", detail="Audio listener is not configured"
             )
-            logger.debug("ReSpeaker playback is disabled; ESPHOME_MEDIA_URL_BASE is unset")
+            log.debug("ReSpeaker playback is disabled; ESPHOME_MEDIA_URL_BASE is unset")
             self._finish_voice_run()
             return
         if self._media_player_key is None or self._client is None:
             self._record_activity(
                 "Speaker audio", "failed", detail="Speaker media player is unavailable"
             )
-            logger.warning("ReSpeaker reply could not be played; Media Player is unavailable")
+            log.warning("ReSpeaker reply could not be played; Media Player is unavailable")
             self._finish_voice_run()
             return
 
@@ -805,7 +805,7 @@ class ESPHomeVoiceClient:
             stage_started = time.monotonic()
             self._record_activity("Speech generation", "started")
             flac_audio = await self._piper_service.synthesize_flac(answer)
-            logger.info(
+            log.info(
                 "ReSpeaker synthesis complete (conversation=%s, seconds=%.2f, audio_bytes=%d)",
                 conversation_id,
                 time.monotonic() - stage_started,
@@ -847,9 +847,9 @@ class ESPHomeVoiceClient:
             )
             if not should_continue:
                 self._dispatch_voice_event(VoiceModeEvent.COOLDOWN_EXPIRED)
-            logger.info("ReSpeaker agent reply queued for speaker playback (conversation=%s)", conversation_id)
+            log.info("ReSpeaker agent reply queued for speaker playback (conversation=%s)", conversation_id)
         except Exception:
-            logger.exception("ReSpeaker reply synthesis or playback request failed")
+            log.exception("ReSpeaker reply synthesis or playback request failed")
             self._record_activity("Speech generation", "failed", duration_ms=self._stage_ms(stage_started))
             self._dispatch_voice_event(VoiceModeEvent.FAILURE)
             self._finish_voice_run()
@@ -875,7 +875,7 @@ class ESPHomeVoiceClient:
                 None,
             )
         except Exception:
-            logger.exception("Could not send the ReSpeaker voice-session end event")
+            log.exception("Could not send the ReSpeaker voice-session end event")
 
     def _elapsed_ms(self) -> int:
         started_at = self._session_started_at or self._turn_started_at
@@ -894,7 +894,7 @@ class ESPHomeVoiceClient:
         if not device_id:
             return
         if self._activity is None:
-            logger.debug("Skipping device activity write because its event loop is unavailable")
+            log.debug("Skipping device activity write because its event loop is unavailable")
             return
         self._activity.record(
             voice_devices.record_activity,
@@ -968,14 +968,14 @@ class ESPHomeVoiceClient:
                             "silence_run": frame.silence_run,
                         }
                     )
-            logger.info(
+            log.info(
                 "Wrote VAD diagnostics CSV (conversation=%s, frames=%d, path=%s)",
                 conversation_id,
                 len(frames),
                 output_path,
             )
         except Exception:
-            logger.warning("Could not write VAD diagnostics CSV", exc_info=True)
+            log.warning("Could not write VAD diagnostics CSV", exc_info=True)
 
     def _unsubscribe(self) -> None:
         unsubscribe = self._unsubscribe_voice
