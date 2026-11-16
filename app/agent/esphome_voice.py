@@ -14,14 +14,7 @@ from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 
-from aioesphomeapi import (
-    APIClient,
-    MediaPlayerInfo,
-    ReconnectLogic,
-    VoiceAssistantEventType,
-    VoiceAssistantAudioSettings,
-    VoiceAssistantFeature,
-)
+import aioesphomeapi
 
 from app.agent import voice_devices
 from app.agent.agent import Agent
@@ -106,9 +99,9 @@ class ESPHomeVoiceClient:
             self._media_server.set_fetch_callback(self._on_audio_fetched)
 
         # ESPHome connection and device state, filled in after a successful connection.
-        self._client: APIClient | None = None
+        self._client: aioesphomeapi.APIClient | None = None
         self._media_player_key: int | None = None
-        self._reconnect: ReconnectLogic | None = None
+        self._reconnect: aioesphomeapi.ReconnectLogic | None = None
         self._unsubscribe_voice: Callable[[], None] | None = None
         self._device_id: str | None = None
         self._device_name = settings.esphome_device_name or "ESPHome speaker"
@@ -151,14 +144,14 @@ class ESPHomeVoiceClient:
         if self._media_server is not None:
             await self._media_server.start()
 
-        self._client = APIClient(
+        self._client = aioesphomeapi.APIClient(
             self._settings.esphome_device_host,
             self._settings.esphome_device_port,
             client_info="RAG Agent",
             noise_psk=self._settings.esphome_api_key or None,
             expected_name=self._settings.esphome_device_name or None,
         )
-        self._reconnect = ReconnectLogic(
+        self._reconnect = aioesphomeapi.ReconnectLogic(
             client=self._client,
             name=self._settings.esphome_device_host,
             on_connect=self._on_connect,
@@ -181,10 +174,10 @@ class ESPHomeVoiceClient:
         feature_flags = info.voice_assistant_feature_flags_compat(
             self._client.api_version
         )
-        if not feature_flags & VoiceAssistantFeature.VOICE_ASSISTANT:
+        if not feature_flags & aioesphomeapi.VoiceAssistantFeature.VOICE_ASSISTANT:
             log.error("ESPHome device %s has no Voice Assistant capability", info.name)
             return
-        if not feature_flags & VoiceAssistantFeature.API_AUDIO:
+        if not feature_flags & aioesphomeapi.VoiceAssistantFeature.API_AUDIO:
             log.error("ESPHome device %s does not support Native API audio", info.name)
             return
 
@@ -194,7 +187,7 @@ class ESPHomeVoiceClient:
             (
                 entity
                 for entity in entities
-                if isinstance(entity, MediaPlayerInfo)
+                if isinstance(entity, aioesphomeapi.MediaPlayerInfo)
                 and entity.object_id == "media_player"
             ),
             None,
@@ -302,7 +295,7 @@ class ESPHomeVoiceClient:
         self,
         conversation_id: str,
         flags: int,
-        audio_settings: VoiceAssistantAudioSettings,
+        audio_settings: aioesphomeapi.VoiceAssistantAudioSettings,
         wake_word_phrase: str | None,
     ) -> int:
         # Determine whether this is a normal capture or a follow-up.
@@ -352,7 +345,7 @@ class ESPHomeVoiceClient:
             self._reset_session()
             if self._client is not None:
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
                 )
             return 0
         log.info(
@@ -364,11 +357,11 @@ class ESPHomeVoiceClient:
         # Tell ESPHome that the voice run is active.
         if self._client is not None:
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START, None
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START, None
             )
             if wake_word_phrase:
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_WAKE_WORD_END,
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_WAKE_WORD_END,
                     {"wake_word": wake_word_phrase},
                 )
         # API_AUDIO sends audio frames on this already-open Native API connection.
@@ -426,10 +419,10 @@ class ESPHomeVoiceClient:
         for event in events:
             if event is CaptureEvent.SPEECH_STARTED:
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_START, None
                 )
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_START, None
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_START, None
                 )
                 log.info("ReSpeaker VAD state: waiting_for_speech -> speaking")
             elif event is CaptureEvent.SPEECH_ENDED:
@@ -441,7 +434,7 @@ class ESPHomeVoiceClient:
                     "Capture", "completed", duration_ms=self._elapsed_ms(), detail="Ended after silence"
                 )
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 return
             elif event is CaptureEvent.MAX_DURATION_REACHED:
@@ -453,7 +446,7 @@ class ESPHomeVoiceClient:
                     "Capture", "completed", duration_ms=self._elapsed_ms(), detail="Capture limit reached"
                 )
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 return
             elif event is CaptureEvent.NO_SPEECH_TIMEOUT:
@@ -466,7 +459,7 @@ class ESPHomeVoiceClient:
                     "Capture", "info", duration_ms=self._elapsed_ms(), detail="No speech detected"
                 )
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END, None
                 )
                 return
 
@@ -522,15 +515,15 @@ class ESPHomeVoiceClient:
         if no_speech_timeout:
             if self._client is not None:
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
                 )
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
                     {"conversation_id": "", "continue_conversation": "0"},
                 )
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
                 )
             if session_is_follow_up:
                 self._record_activity(
@@ -607,7 +600,7 @@ class ESPHomeVoiceClient:
             )
             if vad_ended and self._client is not None:
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
                 )
             self._finish_voice_run()
@@ -626,7 +619,7 @@ class ESPHomeVoiceClient:
             )
             if vad_ended and self._client is not None:
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
                 )
             # A follow-up capture can be triggered by room noise or the
@@ -655,7 +648,7 @@ class ESPHomeVoiceClient:
 
         if vad_ended and self._client is not None:
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                 {"text": transcript},
             )
 
@@ -772,11 +765,11 @@ class ESPHomeVoiceClient:
             self._progress_audio_fetched = asyncio.Event()
             media_url = self._media_server.publish(flac_audio)
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START,
                 {"text": message},
             )
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END,
                 {"url": media_url},
             )
             log.info(
@@ -835,25 +828,25 @@ class ESPHomeVoiceClient:
             )
             self._follow_up_pending = should_continue
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START, None
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START, None
             )
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
                 {
                     "conversation_id": "",
                     "continue_conversation": "1" if should_continue else "0",
                 },
             )
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START,
                 {"text": answer},
             )
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END,
                 {"url": media_url},
             )
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
             )
             self._dispatch_voice_event(
                 VoiceModeEvent.PLAYBACK_FINISHED_CONTINUE
@@ -898,15 +891,15 @@ class ESPHomeVoiceClient:
         try:
             if error:
                 self._client.send_voice_assistant_event(
-                    VoiceAssistantEventType.VOICE_ASSISTANT_ERROR,
+                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_ERROR,
                     {"code": error, "message": "Voice request ended. Please try again."},
                 )
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
                 {"conversation_id": "", "continue_conversation": "0"},
             )
             self._client.send_voice_assistant_event(
-                VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END,
+                aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END,
                 None,
             )
         except Exception:
