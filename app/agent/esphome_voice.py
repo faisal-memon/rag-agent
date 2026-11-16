@@ -385,9 +385,9 @@ class ESPHomeVoiceClient:
             )
             return
         self._session_audio.extend(data)
-        await self._update_vad(data)
+        self._update_vad(data)
 
-    async def _update_vad(self, data: bytes) -> None:
+    def _update_vad(self, data: bytes) -> None:
         """Signal ESPHome when speech begins and ends so its mic stream closes."""
         if self._client is None or self._vad_ended or self._vad is None:
             return
