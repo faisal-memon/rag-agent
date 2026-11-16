@@ -43,15 +43,6 @@ class VoiceModeStateMachineTest(unittest.TestCase):
         )
         self.assertIs(self.machine.state, VoiceModeState.IDLE)
 
-    def test_follow_up_rearms_after_ambient_audio(self) -> None:
-        self.dispatch(
-            VoiceModeEvent.CONNECTION_READY,
-            VoiceModeEvent.WAKE_WORD_DETECTED,
-            VoiceModeEvent.CAPTURE_ENDED,
-            VoiceModeEvent.FOLLOWUP_REARM,
-        )
-        self.assertIs(self.machine.state, VoiceModeState.FOLLOWUP_LISTENING)
-
     def test_disconnect_from_any_state_clears_to_unavailable(self) -> None:
         self.dispatch(
             VoiceModeEvent.CONNECTION_READY,

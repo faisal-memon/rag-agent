@@ -630,10 +630,7 @@ class ESPHomeVoiceClient:
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
                 )
-            if session_is_follow_up:
-                self._rearm_follow_up()
-            else:
-                self._finish_voice_run()
+            self._finish_voice_run()
             return
         if _is_unintelligible_transcript(transcript):
             self._record_activity(
@@ -652,17 +649,14 @@ class ESPHomeVoiceClient:
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
                 )
-            # A follow-up capture can be triggered by room noise or the
-            # speaker's own playback.  Do not turn unusable audio into another
-            # spoken retry; keep the follow-up window available for the user.
             if session_is_follow_up:
                 self._record_activity(
                     "Follow-up listening",
                     "completed",
                     duration_ms=round(capture_seconds * 1000),
-                    detail="Unintelligible audio; follow-up window rearmed",
+                    detail="Unintelligible audio; ended follow-up window",
                 )
-                self._rearm_follow_up()
+                self._finish_voice_run()
                 return
             # An initial wake-word request may still receive one helpful retry,
             # but it must not create a follow-up session of its own.
@@ -890,14 +884,6 @@ class ESPHomeVoiceClient:
             self._dispatch_voice_event(VoiceModeEvent.FAILURE)
             self._finish_voice_run()
 
-    def _rearm_follow_up(self) -> None:
-        """Keep the follow-up window open after unusable ambient audio."""
-        self._follow_up_pending = True
-        if not self._dispatch_voice_event(VoiceModeEvent.FOLLOWUP_REARM):
-            self._finish_voice_run()
-            return
-        self._send_voice_run_end(continue_conversation=True)
-
     def _finish_voice_run(
         self,
         *,
@@ -923,8 +909,6 @@ class ESPHomeVoiceClient:
     def _send_voice_run_end(
         self,
         error: str | None = None,
-        *,
-        continue_conversation: bool = False,
     ) -> None:
         """Tell ESPHome that a protocol voice run has ended, when connected."""
         if self._client is None:
