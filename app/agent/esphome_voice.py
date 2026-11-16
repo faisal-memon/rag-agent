@@ -164,41 +164,6 @@ class ESPHomeVoiceClient:
             self._settings.esphome_device_port,
         )
 
-    async def stop(self) -> None:
-        """Unsubscribe and close the Native API connection on application shutdown."""
-        if self._reconnect is not None:
-            await self._reconnect.stop()
-        self._unsubscribe()
-        if self._client is not None:
-            await self._client.disconnect()
-        if self._media_server is not None:
-            await self._media_server.stop()
-
-    def update_settings(self, settings: ApiSettings) -> None:
-        """Apply settings updates to subsequent voice sessions."""
-        self._settings = settings
-
-    def status(self) -> dict:
-        """Return the currently configured speaker's live connection details."""
-        return {
-            "device_id": self._device_id,
-            "display_name": self._device_name,
-            "host": self._settings.esphome_device_host,
-            "port": self._settings.esphome_device_port,
-            "connected": self._connected,
-        }
-
-    def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
-        """Apply one voice event and report whether the lifecycle accepted it."""
-        transition = self._voice_mode.dispatch(event)
-        if not transition.accepted:
-            logger.warning(
-                "Ignoring ESPHome voice event %s while in %s",
-                event.name,
-                transition.previous.name,
-            )
-        return transition.accepted
-
     async def _on_connect(self) -> None:
         assert self._client is not None
         info = await self._client.device_info()
@@ -253,6 +218,41 @@ class ESPHomeVoiceClient:
             info.name,
             info.mac_address,
         )
+
+    async def stop(self) -> None:
+        """Unsubscribe and close the Native API connection on application shutdown."""
+        if self._reconnect is not None:
+            await self._reconnect.stop()
+        self._unsubscribe()
+        if self._client is not None:
+            await self._client.disconnect()
+        if self._media_server is not None:
+            await self._media_server.stop()
+
+    def update_settings(self, settings: ApiSettings) -> None:
+        """Apply settings updates to subsequent voice sessions."""
+        self._settings = settings
+
+    def status(self) -> dict:
+        """Return the currently configured speaker's live connection details."""
+        return {
+            "device_id": self._device_id,
+            "display_name": self._device_name,
+            "host": self._settings.esphome_device_host,
+            "port": self._settings.esphome_device_port,
+            "connected": self._connected,
+        }
+
+    def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
+        """Apply one voice event and report whether the lifecycle accepted it."""
+        transition = self._voice_mode.dispatch(event)
+        if not transition.accepted:
+            logger.warning(
+                "Ignoring ESPHome voice event %s while in %s",
+                event.name,
+                transition.previous.name,
+            )
+        return transition.accepted
 
     async def _on_disconnect(self, expected: bool) -> None:
         self._connected = False
