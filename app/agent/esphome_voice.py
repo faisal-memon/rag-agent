@@ -175,6 +175,7 @@ class ESPHomeVoiceClient:
 
     async def _on_connect(self) -> None:
         assert self._client is not None
+
         info = await self._client.device_info()
         feature_flags = info.voice_assistant_feature_flags_compat(
             self._client.api_version
