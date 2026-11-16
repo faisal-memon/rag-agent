@@ -267,6 +267,7 @@ class ESPHomeVoiceClient:
         """Apply one voice event and report whether the lifecycle accepted it."""
         if not (transition := self._voice_state_machine.dispatch(event)).accepted:
             log.warning("Ignoring ESPHome voice event %s while in %s", event.name, transition.previous.name)
+
         return transition.accepted
 
     def _enter_processing(self, _transition: VoiceModeTransition) -> None:
@@ -304,6 +305,7 @@ class ESPHomeVoiceClient:
         audio_settings: VoiceAssistantAudioSettings,
         wake_word_phrase: str | None,
     ) -> int:
+        # Determine whether this is a normal capture or a follow-up.
         self._session_is_follow_up = (
             self._follow_up_pending and not wake_word_phrase
         )
@@ -311,10 +313,14 @@ class ESPHomeVoiceClient:
         startup_grace_ms = (
             0 if self._session_is_follow_up else self._settings.voice_start_grace_ms
         )
+
+        # Allocate and clear the per-session capture data.
         self._session_id = conversation_id
         self._session_audio.clear()
         self._vad_frames = []
         self._session_audio_truncated = False
+
+        # Configure voice activity detection for this capture.
         self._vad = VoiceActivityDetector(
             startup_grace_ms=startup_grace_ms,
             end_silence_ms=self._settings.voice_end_silence_ms,
@@ -330,11 +336,15 @@ class ESPHomeVoiceClient:
             ),
             on_frame=self._record_vad_frame if self._settings.voice_vad_diagnostics_enabled else None,
         )
+
+        # Reset capture flags and record the session start time.
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._session_started_at = time.monotonic()
         self._last_vad_diagnostic_at = self._session_started_at
         self._turn_started_at = self._session_started_at
+
+        # Notify the state machine that capture has begun.
         session_event = (
             VoiceModeEvent.FOLLOWUP_STARTED
             if self._session_is_follow_up
@@ -348,15 +358,12 @@ class ESPHomeVoiceClient:
                 )
             return 0
         log.info(
-            "ESPHome voice session started (conversation=%s, flags=%s, "
-            "wake_word=%s, follow_up=%s, audio_settings=%s)",
-            conversation_id,
-            flags,
-            wake_word_phrase,
-            self._session_is_follow_up,
-            audio_settings,
+            "ESPHome voice session started (conversation=%s, flags=%s, wake_word=%s, follow_up=%s, audio_settings=%s)",
+            conversation_id, flags, wake_word_phrase, self._session_is_follow_up, audio_settings,
         )
         self._record_activity("Voice session", "started")
+
+        # Tell ESPHome that the voice run is active.
         if self._client is not None:
             self._client.send_voice_assistant_event(
                 VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START, None
