@@ -82,6 +82,7 @@ class ESPHomeVoiceClient:
         agent: Agent | None = None,
         piper_service: PiperService | None = None,
     ) -> None:
+        # Shared services used throughout the speaker lifecycle.
         self._settings = settings
         self._agent = agent
         self._voice_mode = VoiceModeStateMachine()
@@ -97,28 +98,38 @@ class ESPHomeVoiceClient:
         )
         if self._media_server is not None:
             self._media_server.set_fetch_callback(self._on_audio_fetched)
+
+        # ESPHome connection and device state, filled in after a successful connection.
         self._client: APIClient | None = None
         self._media_player_key: int | None = None
         self._reconnect: ReconnectLogic | None = None
         self._unsubscribe_voice: Callable[[], None] | None = None
+        self._device_id: str | None = None
+        self._device_name = settings.esphome_device_name or "ESPHome speaker"
+        self._connected = False
+
+        # Audio and metadata for the current voice-assistant capture.
         self._session_audio = bytearray()
         self._session_id: str | None = None
         self._session_audio_truncated = False
+
+        # Voice activity detection state and optional frame diagnostics.
         self._vad: VoiceActivityDetector | None = None
         self._vad_frames: list[VoiceActivityFrame] = []
         self._vad_ended = False
         self._vad_no_speech_timeout = False
         self._last_vad_diagnostic_at = 0.0
+
+        # Conversation timing and the follow-up request window.
         self._follow_up_pending = False
         self._session_is_follow_up = False
         self._session_started_at = 0.0
         self._turn_started_at = 0.0
+
+        # Async helpers initialized when the client starts.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._activity: VoiceActivityCoordinator | None = None
-        self._device_id: str | None = None
         self._progress_audio_fetched: asyncio.Event | None = None
-        self._device_name = settings.esphome_device_name or "ESPHome speaker"
-        self._connected = False
 
     def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
         """Apply one voice event and report whether the lifecycle accepted it."""
