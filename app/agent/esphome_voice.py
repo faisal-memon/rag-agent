@@ -991,13 +991,12 @@ class ESPHomeVoiceClient:
                 )
                 writer.writeheader()
                 for frame in frames:
+                    speech = getattr(frame, "silero_speech", getattr(frame, "webrtc_speech", None))
                     writer.writerow(
                         {
                             "frame": frame.frame_index,
                             "elapsed_ms": frame.elapsed_ms,
-                            "silero_speech": int(
-                                getattr(frame, "silero_speech", frame.webrtc_speech)
-                            ) if getattr(frame, "silero_speech", frame.webrtc_speech) is not None else "",
+                            "silero_speech": "" if speech is None else int(speech),
                             "audio_level_dbfs": frame.audio_level_dbfs,
                             "state": frame.state,
                             "silence_run": frame.silence_run,
