@@ -205,7 +205,7 @@ class ESPHomeVoiceClient:
             handle_stop=self._handle_session_stop,
             handle_audio=self._handle_audio,
         )
-        self._finish_voice_run(error="api-reconnected", reset_state=False)
+        self._abort_interrupted_voice_run()
         device_id = _stable_device_id(info.mac_address, self._settings.esphome_device_host)
         self._device_id = device_id
         self._device_name = info.name or self._device_name
@@ -858,12 +858,26 @@ class ESPHomeVoiceClient:
         self,
         *,
         error: str | None = None,
-        reset_state: bool = True,
     ) -> None:
         """End the speaker's active turn after playback cannot be completed."""
         self._follow_up_pending = False
-        if reset_state:
-            self._dispatch_voice_event(VoiceModeEvent.RESET)
+        self._dispatch_voice_event(VoiceModeEvent.RESET)
+        self._send_voice_run_end(error)
+
+    def _abort_interrupted_voice_run(self) -> None:
+        """Clear protocol state only when reconnect found an interrupted turn."""
+        has_active_state = self._voice_state_machine.state not in {
+            VoiceModeState.UNAVAILABLE,
+            VoiceModeState.IDLE,
+        }
+        if self._session_id is None and not has_active_state:
+            return
+        self._follow_up_pending = False
+        self._reset_session()
+        self._send_voice_run_end("api-reconnected")
+
+    def _send_voice_run_end(self, error: str | None = None) -> None:
+        """Tell ESPHome that a protocol voice run has ended, when connected."""
         if self._client is None:
             return
         try:
