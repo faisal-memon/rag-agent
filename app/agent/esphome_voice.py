@@ -22,7 +22,7 @@ from app.agent.config import ApiSettings
 from app.agent.esphome_playback import OneShotAudioServer
 from app.agent.piper_service import PiperService
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
-from app.agent.silero_voice_activity import (
+from app.agent.voice_activity import (
     VOICE_SAMPLE_RATE,
     CaptureEvent,
     SileroVoiceActivityDetector,
