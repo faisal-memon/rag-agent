@@ -205,8 +205,7 @@ class ESPHomeVoiceClient:
             handle_stop=self._handle_session_stop,
             handle_audio=self._handle_audio,
         )
-        self._dispatch_voice_event(VoiceModeEvent.CONNECTION_READY)
-        self._finish_voice_run(error="api-reconnected")
+        self._finish_voice_run(error="api-reconnected", reset_state=False)
         device_id = _stable_device_id(info.mac_address, self._settings.esphome_device_host)
         self._device_id = device_id
         self._device_name = info.name or self._device_name
@@ -227,6 +226,7 @@ class ESPHomeVoiceClient:
             info.name,
             info.mac_address,
         )
+        self._dispatch_voice_event(VoiceModeEvent.CONNECTION_READY)
 
     async def stop(self) -> None:
         """Unsubscribe and close the Native API connection on application shutdown."""
@@ -854,10 +854,16 @@ class ESPHomeVoiceClient:
             self._dispatch_voice_event(VoiceModeEvent.FAILURE)
             self._finish_voice_run()
 
-    def _finish_voice_run(self, *, error: str | None = None) -> None:
+    def _finish_voice_run(
+        self,
+        *,
+        error: str | None = None,
+        reset_state: bool = True,
+    ) -> None:
         """End the speaker's active turn after playback cannot be completed."""
         self._follow_up_pending = False
-        self._dispatch_voice_event(VoiceModeEvent.RESET)
+        if reset_state:
+            self._dispatch_voice_event(VoiceModeEvent.RESET)
         if self._client is None:
             return
         try:
