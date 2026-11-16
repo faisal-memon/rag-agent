@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.agent.config import ApiSettings
-from app.agent.esphome_playback import PiperClient
+from app.agent.piper import PiperClient
 
 
 class PiperService:
