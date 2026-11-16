@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import struct
 import time
+import math
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import lru_cache
