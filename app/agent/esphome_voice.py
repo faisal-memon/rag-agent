@@ -265,8 +265,7 @@ class ESPHomeVoiceClient:
 
     def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
         """Apply one voice event and report whether the lifecycle accepted it."""
-        transition = self._voice_state_machine.dispatch(event)
-        if not transition.accepted:
+        if not (transition := self._voice_state_machine.dispatch(event)).accepted:
             log.warning("Ignoring ESPHome voice event %s while in %s", event.name, transition.previous.name)
         return transition.accepted
 
