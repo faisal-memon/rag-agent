@@ -123,12 +123,17 @@ class VoiceActivityDetector:
 
     def process(self, audio: bytes) -> list[CaptureEvent]:
         """Process available PCM and return any state-transition events."""
+        # Buffer incoming bytes until a complete VAD frame is available.
         self._buffer.extend(audio)
         events: list[CaptureEvent] = []
+
+        # Process every complete frame currently in the buffer.
         while len(self._buffer) >= FRAME_BYTES and self.state is not CaptureState.ENDED:
             frame = bytes(self._buffer[:FRAME_BYTES])
             del self._buffer[:FRAME_BYTES]
             now = self._clock()
+
+            # Decode the frame and update audio-level diagnostics.
             samples = struct.unpack(f"<{FRAME_BYTES // VOICE_SAMPLE_WIDTH}h", frame)
             rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
             peak = max(abs(sample) for sample in samples)
@@ -142,6 +147,7 @@ class VoiceActivityDetector:
             self._interval_rms_max = rms if self._interval_rms_max is None else max(self._interval_rms_max, rms)
             self._interval_peak_max = max(self._interval_peak_max, peak)
 
+            # Stop when the maximum capture duration is reached.
             if (
                 self._capture_limit_seconds > 0
                 and now - self._started_at >= self._capture_limit_seconds
@@ -151,6 +157,7 @@ class VoiceActivityDetector:
                 self._emit_frame(None, now, rms_dbfs)
                 break
 
+            # Ignore speech decisions during the startup grace period.
             if self.state is CaptureState.STARTUP_GRACE:
                 self._grace_frames_seen += 1
                 self._interval_grace_frames += 1
@@ -160,6 +167,7 @@ class VoiceActivityDetector:
                 self._emit_frame(None, now, rms_dbfs)
                 continue
 
+            # Classify the frame and update speech/noise counters.
             speech = self._vad.is_speech(frame, VOICE_SAMPLE_RATE)
             if speech:
                 self._interval_speech_frames += 1
@@ -171,6 +179,8 @@ class VoiceActivityDetector:
                     self._interval_longest_non_speech_run_frames,
                     self._non_speech_run_frames,
                 )
+
+            # Advance the speech and silence state machine.
             if self.state is CaptureState.WAITING_FOR_SPEECH:
                 self._start_candidate_frames = (
                     self._start_candidate_frames + 1 if speech else 0
@@ -192,6 +202,8 @@ class VoiceActivityDetector:
                     self._silence_frames = 0
                 else:
                     self._silence_frames += 1
+
+            # Apply endpoint smoothing and emit diagnostics for this frame.
             if self._endpoint_tracking or CaptureEvent.SPEECH_STARTED in events:
                 fuzzy_end = self._update_endpoint(speech)
                 brief_speech_end = (
