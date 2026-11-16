@@ -123,10 +123,6 @@ class AgentRuntimeSettings(BaseModel):
     memory_require_approval: bool = True
     voice_start_grace_ms: int = Field(default=960, ge=0, le=10_000, multiple_of=20)
     voice_end_silence_ms: int = Field(default=800, ge=20, le=10_000, multiple_of=20)
-    voice_vad_window_frames: int = Field(default=5, ge=1, le=20)
-    voice_vad_window_speech_frames: int = Field(default=2, ge=1, le=20)
-    voice_vad_activity_history: int = Field(default=3, ge=1, le=10)
-    voice_vad_active_windows_required: int = Field(default=2, ge=1, le=10)
     voice_vad_silero_shadow_enabled: bool = False
     voice_capture_limit_seconds: int = Field(default=20, ge=0, le=3600)
     remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list, max_length=20)
@@ -146,10 +142,6 @@ class AgentRuntimeSettings(BaseModel):
     def validate_vad_windows(self) -> "AgentRuntimeSettings":
         if not self.system_prompt_is_default and not self.system_prompt.strip():
             raise ValueError("System prompt cannot be empty unless it is reset to the default.")
-        if self.voice_vad_window_speech_frames > self.voice_vad_window_frames:
-            raise ValueError("Speech frames cannot exceed frames per window")
-        if self.voice_vad_active_windows_required > self.voice_vad_activity_history:
-            raise ValueError("Active windows cannot exceed recent windows")
         return self
 
 
