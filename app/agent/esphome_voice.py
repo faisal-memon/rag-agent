@@ -321,7 +321,7 @@ class ESPHomeVoiceClient:
             end_silence_ms=self._settings.voice_end_silence_ms,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
-                self._settings.voice_follow_up_start_timeout_seconds
+                self._settings.voice_follow_up_window_seconds
                 if self._session_is_follow_up
                 else 15
             ),
@@ -760,13 +760,13 @@ class ESPHomeVoiceClient:
         self._record_activity("Assistant", "completed", duration_ms=self._stage_ms(stage_started))
 
         continue_listening = (
-            self._settings.voice_follow_up_timeout_seconds > 0
+            self._settings.voice_follow_up_window_seconds > 0
             and result.get("continue_listening") is True
         )
         log.info(
             "ReSpeaker follow-up decision (continue_listening=%s, timeout_seconds=%d)",
             continue_listening,
-            self._settings.voice_follow_up_timeout_seconds,
+            self._settings.voice_follow_up_window_seconds,
         )
         self._pending_reply = (answer, conversation_id, continue_listening)
         if not self._dispatch_voice_event(VoiceModeEvent.RESPONSE_READY):
@@ -844,7 +844,7 @@ class ESPHomeVoiceClient:
             self._record_activity("Speech generation", "completed", duration_ms=self._stage_ms(stage_started))
             media_url = self._media_server.publish(flac_audio)
             should_continue = (
-                self._settings.voice_follow_up_timeout_seconds > 0
+                self._settings.voice_follow_up_window_seconds > 0
                 if continue_conversation is None
                 else continue_conversation
             )

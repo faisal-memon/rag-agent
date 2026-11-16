@@ -110,8 +110,7 @@ def _runtime_settings() -> AgentRuntimeSettings:
         voice_vad_silero_shadow_enabled=settings.voice_vad_silero_shadow_enabled,
         voice_capture_limit_seconds=settings.voice_capture_limit_seconds,
         remote_mcp_servers=settings.remote_mcp_servers,
-        voice_follow_up_timeout_seconds=settings.voice_follow_up_timeout_seconds,
-        voice_follow_up_start_timeout_seconds=settings.voice_follow_up_start_timeout_seconds,
+        voice_follow_up_window_seconds=settings.voice_follow_up_window_seconds,
     )
 
 
