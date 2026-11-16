@@ -1,35 +1,29 @@
-"""Frame-based voice activity and capture endpointing state machine."""
+"""Silero-backed streaming voice activity detection."""
 
 from __future__ import annotations
 
-import math
 import struct
 import time
-from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Callable
+from functools import lru_cache
+from typing import Any, Callable
 
+import torch
 import webrtcvad
+from silero_vad import VADIterator, load_silero_vad
 
 VOICE_SAMPLE_RATE = 16_000
 VOICE_SAMPLE_WIDTH = 2
-FRAME_MILLISECONDS = 20
-FRAME_BYTES = VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH * FRAME_MILLISECONDS // 1000
-START_CONFIRMATION_FRAMES = 3
+FRAME_SAMPLES = 512
+FRAME_MILLISECONDS = 32
+FRAME_BYTES = FRAME_SAMPLES * VOICE_SAMPLE_WIDTH
 NO_SPEECH_TIMEOUT_SECONDS = 15
-VAD_AGGRESSIVENESS = 2
-DEFAULT_WINDOW_FRAMES = 5  # 100 ms at 20 ms per frame
-DEFAULT_WINDOW_SPEECH_FRAMES = 2
-DEFAULT_ACTIVITY_HISTORY = 3
-DEFAULT_ACTIVE_WINDOWS_REQUIRED = 2
 
 
 class CaptureState(Enum):
-    STARTUP_GRACE = auto()
     WAITING_FOR_SPEECH = auto()
     SPEAKING = auto()
-    WAITING_FOR_SILENCE = auto()
     ENDED = auto()
 
 
@@ -42,57 +36,43 @@ class CaptureEvent(Enum):
 
 @dataclass(frozen=True)
 class VoiceActivityFrame:
-    """One detector decision, suitable for temporary diagnostics."""
+    """One Silero decision, suitable for temporary diagnostics."""
 
     frame_index: int
     elapsed_ms: int
-    webrtc_speech: bool | None
+    silero_speech: bool | None
     audio_level_dbfs: float
     state: str
     silence_run: int
     silero_probability: float | None = None
 
 
-class VoiceActivityDetector:
-    """Turn PCM frames into simple speech-start and capture-end events."""
+@lru_cache(maxsize=1)
+def _load_model() -> Any:
+    return load_silero_vad()
+
+
+class SileroVoiceActivityDetector:
+    """Turn PCM chunks into speech events using Silero's streaming iterator."""
 
     def __init__(
         self,
         *,
-        startup_grace_ms: int,
         end_silence_ms: int,
         capture_limit_seconds: int,
         no_speech_timeout_seconds: int = NO_SPEECH_TIMEOUT_SECONDS,
-        aggressiveness: int = VAD_AGGRESSIVENESS,
-        window_frames: int = DEFAULT_WINDOW_FRAMES,
-        window_speech_frames: int = DEFAULT_WINDOW_SPEECH_FRAMES,
-        activity_history: int = DEFAULT_ACTIVITY_HISTORY,
-        active_windows_required: int = DEFAULT_ACTIVE_WINDOWS_REQUIRED,
         on_frame: Callable[[VoiceActivityFrame], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        if not (1 <= window_speech_frames <= window_frames):
-            raise ValueError("window_speech_frames must fit within window_frames")
-        if not (1 <= active_windows_required <= activity_history):
-            raise ValueError("active_windows_required must fit within activity_history")
-        if window_frames < 1 or activity_history < 1 or end_silence_ms < 1:
-            raise ValueError("VAD window and quiet duration must be positive")
-        self._vad = webrtcvad.Vad(aggressiveness)
         self._clock = clock
         self._on_frame = on_frame
         self._started_at = clock()
         self._speech_wait_started_at = self._started_at
         self._capture_limit_seconds = capture_limit_seconds
         self._no_speech_timeout_seconds = no_speech_timeout_seconds
-        self._startup_grace_frames = math.ceil(startup_grace_ms / FRAME_MILLISECONDS)
-        self._end_silence_frames = math.ceil(end_silence_ms / FRAME_MILLISECONDS)
-        self._quiet_windows_to_end = math.ceil(
-            end_silence_ms / (window_frames * FRAME_MILLISECONDS)
-        )
-        self._grace_frames_seen = 0
-        self._start_candidate_frames = 0
         self._silence_frames = 0
         self._buffer = bytearray()
+        self._frame_index = 0
         self._interval_frames = 0
         self._interval_grace_frames = 0
         self._interval_speech_frames = 0
@@ -101,41 +81,32 @@ class VoiceActivityDetector:
         self._interval_rms_min: float | None = None
         self._interval_rms_max: float | None = None
         self._interval_peak_max = 0
-        self._interval_silence_resets = 0
-        self._non_speech_run_frames = 0
-        self._interval_longest_non_speech_run_frames = 0
-        self._window_frames = window_frames
-        self._window_speech_frames = window_speech_frames
-        self._activity_history = activity_history
-        self._active_windows_required = active_windows_required
-        # end_silence_ms is the user-facing quiet duration, rounded up to windows.
-        self._endpoint_tracking = False
-        self._bucket_frames = 0
-        self._bucket_speech_frames = 0
-        self._active_windows: deque[bool] = deque(maxlen=activity_history)
-        self._quiet_windows = 0
-        self._confirmed_activity = False
-        self._frame_index = 0
-        self.state = (
-            CaptureState.STARTUP_GRACE
-            if self._startup_grace_frames
-            else CaptureState.WAITING_FOR_SPEECH
+        self._iterator = VADIterator(
+            _load_model(),
+            threshold=0.5,
+            sampling_rate=VOICE_SAMPLE_RATE,
+            min_silence_duration_ms=end_silence_ms,
+            speech_pad_ms=30,
         )
+        self.state = CaptureState.WAITING_FOR_SPEECH
 
     def process(self, audio: bytes) -> list[CaptureEvent]:
-        """Process available PCM and return any state-transition events."""
+        """Process available PCM and return Silero capture events."""
+        # Buffer incoming bytes until a complete Silero frame is available.
         self._buffer.extend(audio)
         events: list[CaptureEvent] = []
+
+        # Process every complete frame currently in the buffer.
         while len(self._buffer) >= FRAME_BYTES and self.state is not CaptureState.ENDED:
             frame = bytes(self._buffer[:FRAME_BYTES])
             del self._buffer[:FRAME_BYTES]
             now = self._clock()
-            samples = struct.unpack(f"<{FRAME_BYTES // VOICE_SAMPLE_WIDTH}h", frame)
+
+            # Decode the frame and collect audio-level diagnostics.
+            samples = struct.unpack(f"<{FRAME_SAMPLES}h", frame)
             rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
             peak = max(abs(sample) for sample in samples)
-            rms_dbfs = (
-                20 * math.log10(rms / 32768.0) if rms > 0 else -120.0
-            )
+            rms_dbfs = 20 * math.log10(rms / 32768.0) if rms > 0 else -120.0
             self._frame_index += 1
             self._interval_frames += 1
             self._interval_rms_sum += rms
@@ -143,65 +114,36 @@ class VoiceActivityDetector:
             self._interval_rms_max = rms if self._interval_rms_max is None else max(self._interval_rms_max, rms)
             self._interval_peak_max = max(self._interval_peak_max, peak)
 
-            if (
-                self._capture_limit_seconds > 0
-                and now - self._started_at >= self._capture_limit_seconds
-            ):
+            # Stop when the maximum capture duration is reached.
+            if self._capture_limit_seconds > 0 and now - self._started_at >= self._capture_limit_seconds:
                 self.state = CaptureState.ENDED
                 events.append(CaptureEvent.MAX_DURATION_REACHED)
                 self._emit_frame(None, now, rms_dbfs)
                 break
 
-            if self.state is CaptureState.STARTUP_GRACE:
-                self._grace_frames_seen += 1
-                self._interval_grace_frames += 1
-                if self._grace_frames_seen >= self._startup_grace_frames:
-                    self.state = CaptureState.WAITING_FOR_SPEECH
-                    self._speech_wait_started_at = now
-                self._emit_frame(None, now, rms_dbfs)
-                continue
+            # Ask Silero to classify this frame and update its stream state.
+            tensor = torch.tensor(samples, dtype=torch.float32) / 32768.0
+            result = self._iterator(tensor)
+            speech = self._iterator.triggered
 
-            speech = self._vad.is_speech(frame, VOICE_SAMPLE_RATE)
+            # Track simple diagnostics and the no-speech timeout.
             if speech:
                 self._interval_speech_frames += 1
-                self._non_speech_run_frames = 0
+                self._silence_frames = 0
             else:
                 self._interval_non_speech_frames += 1
-                self._non_speech_run_frames += 1
-                self._interval_longest_non_speech_run_frames = max(
-                    self._interval_longest_non_speech_run_frames,
-                    self._non_speech_run_frames,
-                )
-            if self.state is CaptureState.WAITING_FOR_SPEECH:
-                self._start_candidate_frames = (
-                    self._start_candidate_frames + 1 if speech else 0
-                )
-                if self._start_candidate_frames >= START_CONFIRMATION_FRAMES:
-                    self.state = CaptureState.SPEAKING
-                    events.append(CaptureEvent.SPEECH_STARTED)
-                elif now - self._speech_wait_started_at >= self._no_speech_timeout_seconds:
-                    self.state = CaptureState.ENDED
-                    events.append(CaptureEvent.NO_SPEECH_TIMEOUT)
-            elif self.state is CaptureState.SPEAKING:
-                if not speech:
-                    self.state = CaptureState.WAITING_FOR_SILENCE
-                    self._silence_frames = 1
-            elif self.state is CaptureState.WAITING_FOR_SILENCE:
-                if speech:
-                    self._interval_silence_resets += 1
-                    self.state = CaptureState.SPEAKING
-                    self._silence_frames = 0
-                else:
-                    self._silence_frames += 1
-            if self._endpoint_tracking or CaptureEvent.SPEECH_STARTED in events:
-                fuzzy_end = self._update_endpoint(speech)
-                brief_speech_end = (
-                    not self._confirmed_activity
-                    and self._silence_frames >= self._end_silence_frames
-                )
-                if fuzzy_end or brief_speech_end:
-                    self.state = CaptureState.ENDED
-                    events.append(CaptureEvent.SPEECH_ENDED)
+                self._silence_frames += 1
+
+            # Convert Silero boundary results into capture events.
+            if result and "start" in result:
+                self.state = CaptureState.SPEAKING
+                events.append(CaptureEvent.SPEECH_STARTED)
+            elif result and "end" in result:
+                self.state = CaptureState.ENDED
+                events.append(CaptureEvent.SPEECH_ENDED)
+            elif self.state is CaptureState.WAITING_FOR_SPEECH and now - self._speech_wait_started_at >= self._no_speech_timeout_seconds:
+                self.state = CaptureState.ENDED
+                events.append(CaptureEvent.NO_SPEECH_TIMEOUT)
             self._emit_frame(speech, now, rms_dbfs)
         return events
 
@@ -213,41 +155,17 @@ class VoiceActivityDetector:
                 VoiceActivityFrame(
                     frame_index=self._frame_index,
                     elapsed_ms=max(0, round((now - self._started_at) * 1000)),
-                    webrtc_speech=speech,
+                    silero_speech=speech,
                     audio_level_dbfs=round(rms_dbfs, 2),
                     state=self.state.name.lower(),
                     silence_run=self._silence_frames,
                 )
             )
         except Exception:
-            # Diagnostics must never interfere with endpointing or audio handling.
             pass
 
-    def _update_endpoint(self, speech: bool) -> bool:
-        """End after enough mostly quiet windows despite isolated VAD hits."""
-        self._endpoint_tracking = True
-        self._bucket_frames += 1
-        self._bucket_speech_frames += int(speech)
-        if self._bucket_frames < self._window_frames:
-            return False
-
-        active = self._bucket_speech_frames >= self._window_speech_frames
-        self._active_windows.append(active)
-        sustained_activity = (
-            len(self._active_windows) == self._activity_history
-            and sum(self._active_windows) >= self._active_windows_required
-        )
-        if sustained_activity:
-            self._confirmed_activity = True
-        if self._confirmed_activity:
-            self._quiet_windows = 0 if sustained_activity else self._quiet_windows + 1
-
-        self._bucket_frames = 0
-        self._bucket_speech_frames = 0
-        return self._confirmed_activity and self._quiet_windows >= self._quiet_windows_to_end
-
     def take_diagnostics(self) -> dict[str, int | float | str | None]:
-        """Return and reset one interval of aggregate VAD/audio-level diagnostics."""
+        """Return and reset aggregate audio diagnostics."""
         frames = self._interval_frames
         diagnostics: dict[str, int | float | str | None] = {
             "state": self.state.name.lower(),
@@ -256,9 +174,9 @@ class VoiceActivityDetector:
             "speech_frames": self._interval_speech_frames,
             "non_speech_frames": self._interval_non_speech_frames,
             "silence_ms": self._silence_frames * FRAME_MILLISECONDS,
-            "silence_resets": self._interval_silence_resets,
-            "longest_non_speech_ms": self._interval_longest_non_speech_run_frames * FRAME_MILLISECONDS,
-            "endpoint_quiet_ms": self._quiet_windows * self._window_frames * FRAME_MILLISECONDS,
+            "silence_resets": 0,
+            "longest_non_speech_ms": self._silence_frames * FRAME_MILLISECONDS,
+            "endpoint_quiet_ms": self._silence_frames * FRAME_MILLISECONDS,
             "rms_avg": round(self._interval_rms_sum / frames, 1) if frames else None,
             "rms_min": round(self._interval_rms_min, 1) if self._interval_rms_min is not None else None,
             "rms_max": round(self._interval_rms_max, 1) if self._interval_rms_max is not None else None,
@@ -272,6 +190,18 @@ class VoiceActivityDetector:
         self._interval_rms_min = None
         self._interval_rms_max = None
         self._interval_peak_max = 0
-        self._interval_silence_resets = 0
-        self._interval_longest_non_speech_run_frames = 0
         return diagnostics
+
+
+# Compatibility exports for callers that still exercise the retired WebRTC detector.
+SileroCaptureEvent = CaptureEvent
+SileroCaptureState = CaptureState
+from app.agent.voice_activity_legacy import (  # noqa: E402
+    CaptureEvent as LegacyCaptureEvent,
+    CaptureState as LegacyCaptureState,
+    VoiceActivityDetector,
+    VoiceActivityFrame as LegacyVoiceActivityFrame,
+)
+CaptureEvent = LegacyCaptureEvent
+CaptureState = LegacyCaptureState
+VoiceActivityFrame = LegacyVoiceActivityFrame

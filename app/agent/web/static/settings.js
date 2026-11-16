@@ -10,6 +10,7 @@ const piperVoiceSelect = document.getElementById("piper-voice");
 const piperVoiceStatus = document.getElementById("piper-voice-status");
 let systemPromptIsDefault = true;
 let defaultSystemPrompt = "";
+let configuredPiperVoice = "";
 
 function updateSystemPromptStatus() {
   if (!systemPromptInput) return;
@@ -25,8 +26,14 @@ function renderRemoteMCPServers(servers = []) {
 }
 
 function renderPiperVoices(voices = []) {
-  if (!piperVoiceSelect || !voices.length) return;
-  const selected = piperVoiceSelect.value;
+  if (!piperVoiceSelect) return;
+  if (!voices.length) {
+    piperVoiceSelect.replaceChildren(new Option("No installed Piper voices found", ""));
+    piperVoiceSelect.disabled = true;
+    piperVoiceStatus.textContent = "Piper reported no installed voices. Install a voice before saving.";
+    return;
+  }
+  const selected = configuredPiperVoice || piperVoiceSelect.value;
   piperVoiceSelect.replaceChildren(...voices.map((voice) => {
     const option = document.createElement("option");
     option.value = voice;
@@ -34,17 +41,21 @@ function renderPiperVoices(voices = []) {
     return option;
   }));
   piperVoiceSelect.value = voices.includes(selected) ? selected : voices[0];
+  piperVoiceSelect.disabled = false;
+  configuredPiperVoice = piperVoiceSelect.value;
   piperVoiceStatus.textContent = `${voices.length} Piper voice${voices.length === 1 ? "" : "s"} installed.`;
 }
 
 async function loadPiperVoices() {
   try {
     const response = await fetch("/api/piper/voices");
-    if (!response.ok) return;
+    if (!response.ok) throw new Error("Piper voice discovery is unavailable.");
     const data = await response.json();
     renderPiperVoices(data.voices || []);
   } catch (_error) {
-    // Keep the built-in choices when Piper is temporarily unavailable.
+    piperVoiceSelect.replaceChildren(new Option("Piper voices unavailable", ""));
+    piperVoiceSelect.disabled = true;
+    piperVoiceStatus.textContent = "Could not load voices installed in Piper. Try refreshing after Piper is available.";
   }
 }
 
@@ -141,6 +152,7 @@ function fillForm(settings) {
     }
   }
   defaultSystemPrompt = settings.default_system_prompt || "";
+  configuredPiperVoice = settings.piper_voice || "";
   systemPromptIsDefault = Boolean(settings.system_prompt_is_default);
   updateSystemPromptStatus();
   renderRemoteMCPServers(settings.remote_mcp_servers || []);
@@ -168,6 +180,10 @@ async function loadSettings() {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (piperVoiceSelect?.disabled) {
+    setStatus("Piper voice discovery must succeed before settings can be saved.");
+    return;
+  }
   saveButton.disabled = true;
   setStatus("Saving…");
   const data = Object.fromEntries(new FormData(form));

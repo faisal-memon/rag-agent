@@ -150,29 +150,25 @@ class SettingsApiTest(unittest.TestCase):
         self.assertIn('"type":"complete"', body)
 
     def test_text_to_speech_returns_piper_audio(self) -> None:
-        with patch("app.agent.api.routes.PiperClient") as piper_class:
-            piper_class.return_value.synthesize_flac = AsyncMock(return_value=b"flac bytes")
-            response = asyncio.run(routes.text_to_speech(SpeakRequest(text="Hello there")))
+        piper_service = SimpleNamespace(synthesize_flac=AsyncMock(return_value=b"flac bytes"))
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(piper_service=piper_service)))
+        response = asyncio.run(routes.text_to_speech(request, SpeakRequest(text="Hello there")))
 
         self.assertEqual(200, response.status_code)
         self.assertEqual("audio/flac", response.media_type)
         self.assertEqual(b"flac bytes", response.body)
         self.assertEqual("no-store", response.headers["cache-control"])
-        piper_class.assert_called_once_with(
-            get_api_settings().piper_host,
-            get_api_settings().piper_port,
-            get_api_settings().piper_voice,
-        )
-        piper_class.return_value.synthesize_flac.assert_awaited_once_with("Hello there")
+        piper_service.synthesize_flac.assert_awaited_once_with("Hello there")
 
     def test_piper_voices_lists_installed_models(self) -> None:
-        with patch("app.agent.api.routes.PiperClient") as piper_class:
-            piper_class.return_value.list_voices = AsyncMock(
-                return_value=["en_GB-alba-medium", "en_US-lessac-medium"]
-            )
-            result = asyncio.run(routes.piper_voices())
+        piper_service = SimpleNamespace(
+            list_voices=AsyncMock(return_value=["en_GB-alba-medium", "en_US-lessac-medium"])
+        )
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(piper_service=piper_service)))
+        result = asyncio.run(routes.piper_voices(request))
 
         self.assertEqual({"voices": ["en_GB-alba-medium", "en_US-lessac-medium"]}, result)
+        piper_service.list_voices.assert_awaited_once_with()
 
     def test_agent_stream_keeps_progress_when_the_agent_fails(self) -> None:
         class FailingAgent:

@@ -16,6 +16,7 @@ from app.agent.esphome_voice import (
     _spoken_tool_status,
 )
 from app.agent.voice_activity import VoiceActivityFrame
+from app.agent.voice_state_machine import VoiceModeEvent, VoiceModeState
 from app.agent.silero_shadow import SileroShadowVAD
 
 
@@ -27,6 +28,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
                 WHISPERCPP_BASE_URL="http://whisper.test:8080",
             )
         )
+        self.client._voice_state_machine.dispatch(VoiceModeEvent.CONNECTION_READY)
 
     async def test_completed_session_is_wrapped_as_wav_and_transcribed(self):
         pcm = b"\x01\x00\x02\x00"
@@ -74,6 +76,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
     async def test_follow_up_uses_separate_speech_start_timeout(self):
         self.client._follow_up_pending = True
+        self.client._voice_state_machine.state = VoiceModeState.FOLLOWUP_LISTENING
 
         await self.client._handle_session_start("follow-up-timeout", 0, None, None)
 
@@ -131,6 +134,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
     async def test_unintelligible_follow_up_ends_quietly(self):
         self.client._follow_up_pending = True
+        self.client._voice_state_machine.state = VoiceModeState.FOLLOWUP_LISTENING
         self.client._client = MagicMock()
         await self.client._handle_session_start("follow-up-inaudible", 0, None, None)
         await self.client._handle_audio(b"\x01\x00")
@@ -167,7 +171,9 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         self.client._media_server = MagicMock()
         self.client._media_player_key = 1
         self.client._client = MagicMock()
-        self.client._piper.synthesize_flac = AsyncMock(side_effect=ConnectionError("Piper disconnected"))
+        self.client._piper_service.synthesize_flac = AsyncMock(
+            side_effect=ConnectionError("Piper disconnected")
+        )
         self.client._follow_up_pending = True
 
         with self.assertLogs("app.agent.esphome_voice", level="ERROR"):
@@ -191,7 +197,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
         self.client._record_activity("Speech generation", "failed")
 
-        self.assertIsNone(self.client._activity_write)
+        self.assertIsNone(self.client._activity)
 
     async def test_model_failure_ends_speaker_run_without_follow_up(self):
         await self.client._handle_session_start("model-failure", 0, None, None)
