@@ -539,10 +539,6 @@ class ESPHomeVoiceClient:
         if no_speech_timeout:
             if self._client is not None:
                 self._client.send_voice_assistant_event(
-                    aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
-                    {"text": ""},
-                )
-                self._client.send_voice_assistant_event(
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
                     {
                         "conversation_id": "",
