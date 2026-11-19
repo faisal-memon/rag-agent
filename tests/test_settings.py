@@ -45,7 +45,6 @@ class SettingsApiTest(unittest.TestCase):
                 query_limit=10,
                 agent_max_steps=5,
                 piper_voice="en_GB-alba-medium",
-                voice_start_grace_ms=0,
                 voice_end_silence_ms=600,
                 voice_capture_limit_seconds=0,
             )
@@ -62,10 +61,9 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual("gemma-4", result.llamacpp_chat_model)
         self.assertEqual(10, result.query_limit)
         self.assertEqual(0, result.voice_capture_limit_seconds)
-        self.assertEqual(0, result.voice_start_grace_ms)
         self.assertEqual(600, result.voice_end_silence_ms)
         self.assertEqual("en_GB-alba-medium", result.piper_voice)
-        self.assertEqual(3, result.voice_follow_up_start_timeout_seconds)
+        self.assertEqual(5, result.voice_follow_up_window_seconds)
         self.assertEqual({"backend": "docling"}, saved_settings["normalize"])
         self.assertEqual("gemma-4", saved_settings["api"]["llamacpp_chat_model"])
         self.assertEqual("en_GB-alba-medium", saved_settings["api"]["piper_voice"])

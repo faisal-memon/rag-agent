@@ -101,18 +101,12 @@ def _runtime_settings() -> AgentRuntimeSettings:
         home_longitude=settings.home_longitude,
         memory_enabled=settings.memory_enabled,
         memory_require_approval=settings.memory_require_approval,
-        voice_start_grace_ms=settings.voice_start_grace_ms,
         voice_end_silence_ms=settings.voice_end_silence_ms,
-        voice_vad_window_frames=settings.voice_vad_window_frames,
-        voice_vad_window_speech_frames=settings.voice_vad_window_speech_frames,
-        voice_vad_activity_history=settings.voice_vad_activity_history,
-        voice_vad_active_windows_required=settings.voice_vad_active_windows_required,
         voice_vad_silero_shadow_enabled=settings.voice_vad_silero_shadow_enabled,
         voice_capture_limit_seconds=settings.voice_capture_limit_seconds,
         remote_mcp_servers=settings.remote_mcp_servers,
-        voice_follow_up_timeout_seconds=settings.voice_follow_up_timeout_seconds,
+        voice_follow_up_window_seconds=settings.voice_follow_up_window_seconds,
         voice_follow_up_audio_grace_seconds=settings.voice_follow_up_audio_grace_seconds,
-        voice_follow_up_start_timeout_seconds=settings.voice_follow_up_start_timeout_seconds,
     )
 
 

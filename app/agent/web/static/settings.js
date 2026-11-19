@@ -190,17 +190,11 @@ form.addEventListener("submit", async (event) => {
   data.system_prompt_is_default = systemPromptIsDefault;
   data.query_limit = Number(data.query_limit);
   data.agent_max_steps = Number(data.agent_max_steps);
-  data.voice_start_grace_ms = Number(data.voice_start_grace_ms);
   data.voice_end_silence_ms = Number(data.voice_end_silence_ms);
-  data.voice_vad_window_frames = Number(data.voice_vad_window_frames);
-  data.voice_vad_window_speech_frames = Number(data.voice_vad_window_speech_frames);
-  data.voice_vad_activity_history = Number(data.voice_vad_activity_history);
-  data.voice_vad_active_windows_required = Number(data.voice_vad_active_windows_required);
   data.voice_vad_silero_shadow_enabled = form.elements.voice_vad_silero_shadow_enabled.checked;
   data.voice_capture_limit_seconds = Number(data.voice_capture_limit_seconds);
-  data.voice_follow_up_timeout_seconds = Number(data.voice_follow_up_timeout_seconds);
+  data.voice_follow_up_window_seconds = Number(data.voice_follow_up_window_seconds);
   data.voice_follow_up_audio_grace_seconds = Number(data.voice_follow_up_audio_grace_seconds);
-  data.voice_follow_up_start_timeout_seconds = Number(data.voice_follow_up_start_timeout_seconds);
   data.home_latitude = data.home_latitude === "" ? null : Number(data.home_latitude);
   data.home_longitude = data.home_longitude === "" ? null : Number(data.home_longitude);
   data.memory_enabled = form.elements.memory_enabled.checked;

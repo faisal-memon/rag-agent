@@ -304,7 +304,10 @@ class ESPHomeVoiceClient:
         wake_word_phrase: str | None,
     ) -> int:
         # Determine whether this is a normal capture or a follow-up.
-        self._session_is_follow_up = self._follow_up_pending and not wake_word_phrase
+        self._session_is_follow_up = (
+            self._voice_state_machine.state is VoiceModeState.FOLLOWUP_LISTENING
+            or (self._follow_up_pending and not wake_word_phrase)
+        )
         self._follow_up_pending = False
         self._follow_up_audio_grace_bytes_remaining = (
             self._settings.voice_follow_up_audio_grace_seconds
@@ -326,7 +329,7 @@ class ESPHomeVoiceClient:
             end_silence_ms=self._settings.voice_end_silence_ms,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
-                self._settings.voice_follow_up_start_timeout_seconds
+                self._settings.voice_follow_up_window_seconds
                 if self._session_is_follow_up
                 else 15
             ),
@@ -343,7 +346,7 @@ class ESPHomeVoiceClient:
         # Notify the state machine that capture has begun.
         session_event = (
             VoiceModeEvent.FOLLOWUP_STARTED
-            if self._session_is_follow_up
+            if self._session_is_follow_up and not wake_word_phrase
             else VoiceModeEvent.WAKE_WORD_DETECTED
         )
         if not self._dispatch_voice_event(session_event):
@@ -354,8 +357,14 @@ class ESPHomeVoiceClient:
                 )
             return 0
         log.info(
-            "ESPHome voice session started (conversation=%s, flags=%s, wake_word=%s, follow_up=%s, audio_settings=%s)",
-            conversation_id, flags, wake_word_phrase, self._session_is_follow_up, audio_settings,
+            "ESPHome voice session started (conversation=%s, flags=%s, wake_word=%s, "
+            "follow_up=%s, audio_grace_seconds=%d, audio_settings=%s)",
+            conversation_id,
+            flags,
+            wake_word_phrase,
+            self._session_is_follow_up,
+            self._settings.voice_follow_up_audio_grace_seconds if self._session_is_follow_up else 0,
+            audio_settings,
         )
         self._record_activity("Voice session", "started")
 
@@ -382,7 +391,7 @@ class ESPHomeVoiceClient:
         if self._session_audio_truncated:
             return
 
-        # Discard the initial follow-up audio so playback tail cannot reach VAD or Whisper.
+        # Discard initial follow-up audio so playback tail cannot reach VAD or Whisper.
         audio = data
         if self._follow_up_audio_grace_bytes_remaining:
             discarded = min(self._follow_up_audio_grace_bytes_remaining, len(audio))
@@ -555,7 +564,10 @@ class ESPHomeVoiceClient:
             if self._client is not None:
                 self._client.send_voice_assistant_event(
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END,
-                    {"conversation_id": "", "continue_conversation": "0"},
+                    {
+                        "conversation_id": "",
+                        "continue_conversation": "0",
+                    },
                 )
                 self._client.send_voice_assistant_event(
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, None
@@ -657,17 +669,12 @@ class ESPHomeVoiceClient:
                     aioesphomeapi.VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
                     {"text": ""},
                 )
-            # A follow-up capture can be triggered by room noise or the
-            # speaker's own playback.  Do not turn an unusable follow-up into
-            # another spoken retry and another follow-up window: that creates
-            # a self-sustaining "I didn't catch that" loop.  Return quietly
-            # to wake-word listening instead.
             if session_is_follow_up:
                 self._record_activity(
                     "Follow-up listening",
                     "completed",
                     duration_ms=round(capture_seconds * 1000),
-                    detail="Unintelligible audio; returned to wake-word listening",
+                    detail="Unintelligible audio; ended follow-up window",
                 )
                 self._finish_voice_run()
                 return
@@ -773,13 +780,13 @@ class ESPHomeVoiceClient:
         self._record_activity("Assistant", "completed", duration_ms=self._stage_ms(stage_started))
 
         continue_listening = (
-            self._settings.voice_follow_up_timeout_seconds > 0
+            self._settings.voice_follow_up_window_seconds > 0
             and result.get("continue_listening") is True
         )
         log.info(
             "ReSpeaker follow-up decision (continue_listening=%s, timeout_seconds=%d)",
             continue_listening,
-            self._settings.voice_follow_up_timeout_seconds,
+            self._settings.voice_follow_up_window_seconds,
         )
         self._pending_reply = (answer, conversation_id, continue_listening)
         if not self._dispatch_voice_event(VoiceModeEvent.RESPONSE_READY):
@@ -857,7 +864,7 @@ class ESPHomeVoiceClient:
             self._record_activity("Speech generation", "completed", duration_ms=self._stage_ms(stage_started))
             media_url = self._media_server.publish(flac_audio)
             should_continue = (
-                self._settings.voice_follow_up_timeout_seconds > 0
+                self._settings.voice_follow_up_window_seconds > 0
                 if continue_conversation is None
                 else continue_conversation
             )
@@ -919,7 +926,10 @@ class ESPHomeVoiceClient:
         self._reset_session()
         self._send_voice_run_end("api-reconnected")
 
-    def _send_voice_run_end(self, error: str | None = None) -> None:
+    def _send_voice_run_end(
+        self,
+        error: str | None = None,
+    ) -> None:
         """Tell ESPHome that a protocol voice run has ended, when connected."""
         if self._client is None:
             return

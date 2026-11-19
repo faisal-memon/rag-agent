@@ -47,27 +47,17 @@ class ApiSettings(ConfiguredSettings):
     esphome_device_port: int = Field(default=6053, ge=1, le=65535, alias="ESPHOME_DEVICE_PORT")
     esphome_device_name: str = Field(default="", alias="ESPHOME_DEVICE_NAME")
     esphome_api_key: str = Field(default="", alias="ESPHOME_API_KEY")
-    voice_start_grace_ms: int = Field(
-        default=960, ge=0, le=10_000, multiple_of=20, alias="ESPHOME_VOICE_START_GRACE_MS"
-    )
     voice_end_silence_ms: int = Field(
         default=800, ge=20, le=10_000, multiple_of=20, alias="ESPHOME_VOICE_END_SILENCE_MS"
     )
-    voice_vad_window_frames: int = Field(default=5, ge=1, le=20)
-    voice_vad_window_speech_frames: int = Field(default=2, ge=1, le=20)
-    voice_vad_activity_history: int = Field(default=3, ge=1, le=10)
-    voice_vad_active_windows_required: int = Field(default=2, ge=1, le=10)
     voice_capture_limit_seconds: int = Field(
         default=20, ge=0, le=3600, alias="ESPHOME_VOICE_CAPTURE_LIMIT_SECONDS"
     )
-    voice_follow_up_timeout_seconds: int = Field(
-        default=8, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
+    voice_follow_up_window_seconds: int = Field(
+        default=5, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
     )
     voice_follow_up_audio_grace_seconds: int = Field(
         default=1, ge=0, le=10, alias="ESPHOME_VOICE_FOLLOW_UP_AUDIO_GRACE_SECONDS"
-    )
-    voice_follow_up_start_timeout_seconds: int = Field(
-        default=3, ge=0, le=30, alias="ESPHOME_VOICE_FOLLOW_UP_START_TIMEOUT_SECONDS"
     )
     voice_vad_diagnostics_enabled: bool = Field(
         default=False, alias="ESPHOME_VAD_DIAGNOSTICS_ENABLED"
@@ -107,10 +97,6 @@ class ApiSettings(ConfiguredSettings):
 
     @model_validator(mode="after")
     def validate_vad_windows(self) -> "ApiSettings":
-        if self.voice_vad_window_speech_frames > self.voice_vad_window_frames:
-            raise ValueError("Speech frames cannot exceed frames per window")
-        if self.voice_vad_active_windows_required > self.voice_vad_activity_history:
-            raise ValueError("Active windows cannot exceed recent windows")
         return self
 
 
@@ -127,6 +113,12 @@ def get_api_settings() -> ApiSettings:
                 "remote_mcp_auth_token_file",
             },
         )
+    # Migrate the pre-simplification setting name once it is encountered.
+    if (
+        "voice_follow_up_window_seconds" not in values
+        and "voice_follow_up_timeout_seconds" in values
+    ):
+        values["voice_follow_up_window_seconds"] = values.pop("voice_follow_up_timeout_seconds")
     # Piper voice selection is persisted with the agent settings. Keep the
     # deployment environment from silently choosing a different voice.
     values.setdefault("piper_voice", ApiSettings.DEFAULT_PIPER_VOICE)

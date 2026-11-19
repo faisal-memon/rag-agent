@@ -121,12 +121,7 @@ class AgentRuntimeSettings(BaseModel):
     home_longitude: float | None = Field(default=None, ge=-180, le=180)
     memory_enabled: bool = True
     memory_require_approval: bool = True
-    voice_start_grace_ms: int = Field(default=960, ge=0, le=10_000, multiple_of=20)
     voice_end_silence_ms: int = Field(default=800, ge=20, le=10_000, multiple_of=20)
-    voice_vad_window_frames: int = Field(default=5, ge=1, le=20)
-    voice_vad_window_speech_frames: int = Field(default=2, ge=1, le=20)
-    voice_vad_activity_history: int = Field(default=3, ge=1, le=10)
-    voice_vad_active_windows_required: int = Field(default=2, ge=1, le=10)
     voice_vad_silero_shadow_enabled: bool = False
     voice_capture_limit_seconds: int = Field(default=20, ge=0, le=3600)
     remote_mcp_servers: list[RemoteMCPServerSetting] = Field(default_factory=list, max_length=20)
@@ -140,18 +135,13 @@ class AgentRuntimeSettings(BaseModel):
         if len(names) != len(set(names)):
             raise ValueError("Remote MCP server names must be unique.")
         return servers
-    voice_follow_up_timeout_seconds: int = Field(default=8, ge=0, le=60)
+    voice_follow_up_window_seconds: int = Field(default=5, ge=0, le=60)
     voice_follow_up_audio_grace_seconds: int = Field(default=1, ge=0, le=10)
-    voice_follow_up_start_timeout_seconds: int = Field(default=3, ge=0, le=30)
 
     @model_validator(mode="after")
     def validate_vad_windows(self) -> "AgentRuntimeSettings":
         if not self.system_prompt_is_default and not self.system_prompt.strip():
             raise ValueError("System prompt cannot be empty unless it is reset to the default.")
-        if self.voice_vad_window_speech_frames > self.voice_vad_window_frames:
-            raise ValueError("Speech frames cannot exceed frames per window")
-        if self.voice_vad_active_windows_required > self.voice_vad_activity_history:
-            raise ValueError("Active windows cannot exceed recent windows")
         return self
 
 

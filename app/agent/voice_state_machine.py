@@ -66,6 +66,7 @@ _TRANSITIONS: dict[VoiceModeState, dict[VoiceModeEvent, VoiceModeState]] = {
     },
     # Follow-up speech or timeout ends the short continuation window.
     VoiceModeState.FOLLOWUP_LISTENING: {
+        VoiceModeEvent.WAKE_WORD_DETECTED: VoiceModeState.CAPTURING,
         VoiceModeEvent.FOLLOWUP_STARTED: VoiceModeState.CAPTURING,
         VoiceModeEvent.FOLLOWUP_TIMEOUT: VoiceModeState.COOLDOWN,
     },

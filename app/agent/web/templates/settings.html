@@ -142,34 +142,18 @@
             <legend>voice activity detection</legend>
             <label class="checkbox-label"><input id="voice-vad-silero-shadow-enabled" name="voice_vad_silero_shadow_enabled" type="checkbox" /> Log Silero shadow probabilities</label>
             <p class="field-help">Runs Silero alongside WebRTC VAD for diagnostics only. WebRTC still controls capture. Requires the Silero VAD runtime in the API image.</p>
-            <label for="voice-start-grace-ms">Ignore startup sound (milliseconds)</label>
-            <input id="voice-start-grace-ms" name="voice_start_grace_ms" type="number" min="0" max="10000" step="20" required />
-            <p class="field-help">Audio is kept. This only delays voice detection. Use 0 when the speaker has no startup beep.</p>
             <label for="voice-end-silence-ms">Mostly quiet before ending speech (milliseconds)</label>
             <input id="voice-end-silence-ms" name="voice_end_silence_ms" type="number" min="20" max="10000" step="20" required />
             <p class="field-help">Quiet time is counted in windows below. An isolated speech-like frame will not restart the timer. A sustained voice will.</p>
-            <label for="voice-vad-window-frames">Frames per window</label>
-            <input id="voice-vad-window-frames" name="voice_vad_window_frames" type="number" min="1" max="20" step="1" required />
-            <p class="field-help">Each frame is 20 milliseconds. Five frames make a 100-millisecond window.</p>
-            <label for="voice-vad-window-speech-frames">Speech frames to count a window as active</label>
-            <input id="voice-vad-window-speech-frames" name="voice_vad_window_speech_frames" type="number" min="1" max="20" step="1" required />
-            <label for="voice-vad-activity-history">Recent windows to consider</label>
-            <input id="voice-vad-activity-history" name="voice_vad_activity_history" type="number" min="1" max="10" step="1" required />
-            <label for="voice-vad-active-windows-required">Active windows needed to restart quiet time</label>
-            <input id="voice-vad-active-windows-required" name="voice_vad_active_windows_required" type="number" min="1" max="10" step="1" required />
-            <p class="field-help">Defaults: at least 2 speech frames in a window, and 2 active windows among the last 3. Changes apply to the next voice session.</p>
             <label for="voice-capture-limit-seconds">Maximum capture time (seconds)</label>
             <input id="voice-capture-limit-seconds" name="voice_capture_limit_seconds" type="number" min="0" max="3600" step="1" required />
             <p class="field-help">Use 0 for no maximum. If no speech is detected, capture still ends after 15 seconds.</p>
-            <label for="voice-follow-up-timeout-seconds">Follow-up listening window (seconds)</label>
-            <input id="voice-follow-up-timeout-seconds" name="voice_follow_up_timeout_seconds" type="number" min="0" max="60" step="1" required />
-            <p class="field-help">After a spoken reply, listen for another request during this window. Use 0 to require the wake word for every request.</p>
+            <label for="voice-follow-up-window-seconds">Follow-up listening window (seconds)</label>
+            <input id="voice-follow-up-window-seconds" name="voice_follow_up_window_seconds" type="number" min="0" max="60" step="1" required />
+            <p class="field-help">After a spoken reply, wait this long for speech to begin. If no speech starts, the speaker closes the follow-up quietly. Use 0 to require the wake word for every request.</p>
             <label for="voice-follow-up-audio-grace-seconds">Ignore playback tail (seconds)</label>
             <input id="voice-follow-up-audio-grace-seconds" name="voice_follow_up_audio_grace_seconds" type="number" min="0" max="10" step="1" required />
             <p class="field-help">Discard this much audio at the start of each follow-up so the speaker's previous reply is not mistaken for new speech.</p>
-            <label for="voice-follow-up-start-timeout-seconds">Follow-up speech-start timeout (seconds)</label>
-            <input id="voice-follow-up-start-timeout-seconds" name="voice_follow_up_start_timeout_seconds" type="number" min="0" max="30" step="1" required />
-            <p class="field-help">How long to wait for confirmed speech after a reply. If no speech starts, the speaker closes the follow-up quietly.</p>
           </fieldset>
         </section>
 
