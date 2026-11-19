@@ -81,7 +81,11 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
         await self.client._handle_session_start("follow-up-timeout", 0, None, None)
 
         self.assertTrue(self.client._session_is_follow_up)
-        self.assertEqual(5, self.client._vad._no_speech_timeout_seconds)
+        self.assertEqual(
+            self.client._settings.voice_follow_up_window_seconds
+            + self.client._settings.voice_follow_up_audio_grace_seconds,
+            self.client._vad._no_speech_timeout_seconds,
+        )
 
     async def test_follow_up_accepts_wake_word_callback_from_device(self):
         self.client._follow_up_pending = True

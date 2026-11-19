@@ -309,12 +309,13 @@ class ESPHomeVoiceClient:
             or (self._follow_up_pending and not wake_word_phrase)
         )
         self._follow_up_pending = False
-        self._follow_up_audio_grace_bytes_remaining = (
+        follow_up_audio_grace_seconds = (
             self._settings.voice_follow_up_audio_grace_seconds
-            * VOICE_SAMPLE_RATE
-            * VOICE_SAMPLE_WIDTH
             if self._session_is_follow_up
             else 0
+        )
+        self._follow_up_audio_grace_bytes_remaining = (
+            follow_up_audio_grace_seconds * VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH
         )
         # Allocate and clear the per-session capture data.
         self._session_id = conversation_id
@@ -329,7 +330,7 @@ class ESPHomeVoiceClient:
             end_silence_ms=self._settings.voice_end_silence_ms,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
-                self._settings.voice_follow_up_window_seconds
+                self._settings.voice_follow_up_window_seconds + follow_up_audio_grace_seconds
                 if self._session_is_follow_up
                 else 15
             ),
