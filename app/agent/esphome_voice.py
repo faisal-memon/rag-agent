@@ -111,6 +111,7 @@ class ESPHomeVoiceClient:
 
         # Audio and metadata for the current voice-assistant capture.
         self._session_audio = bytearray()
+        self._follow_up_audio_grace_bytes_remaining = 0
         self._session_id: str | None = None
         self._session_audio_truncated = False
 
@@ -308,6 +309,13 @@ class ESPHomeVoiceClient:
             or (self._follow_up_pending and not wake_word_phrase)
         )
         self._follow_up_pending = False
+        self._follow_up_audio_grace_bytes_remaining = (
+            self._settings.voice_follow_up_audio_grace_seconds
+            * VOICE_SAMPLE_RATE
+            * VOICE_SAMPLE_WIDTH
+            if self._session_is_follow_up
+            else 0
+        )
         # Allocate and clear the per-session capture data.
         self._session_id = conversation_id
         self._session_audio.clear()
@@ -349,8 +357,14 @@ class ESPHomeVoiceClient:
                 )
             return 0
         log.info(
-            "ESPHome voice session started (conversation=%s, flags=%s, wake_word=%s, follow_up=%s, audio_settings=%s)",
-            conversation_id, flags, wake_word_phrase, self._session_is_follow_up, audio_settings,
+            "ESPHome voice session started (conversation=%s, flags=%s, wake_word=%s, "
+            "follow_up=%s, audio_grace_seconds=%d, audio_settings=%s)",
+            conversation_id,
+            flags,
+            wake_word_phrase,
+            self._session_is_follow_up,
+            self._settings.voice_follow_up_audio_grace_seconds if self._session_is_follow_up else 0,
+            audio_settings,
         )
         self._record_activity("Voice session", "started")
 
@@ -377,23 +391,33 @@ class ESPHomeVoiceClient:
         if self._session_audio_truncated:
             return
 
-        # Append this transport chunk to the current session recording.
+        # Discard initial follow-up audio so playback tail cannot reach VAD or Whisper.
+        audio = data
+        if self._follow_up_audio_grace_bytes_remaining:
+            discarded = min(self._follow_up_audio_grace_bytes_remaining, len(audio))
+            self._follow_up_audio_grace_bytes_remaining -= discarded
+            audio = audio[discarded:]
+
+        if not audio:
+            return
+
+        # Append the usable transport chunk to the current session recording.
         # ESPHome may split PCM samples across Native API messages, and its
         # optional second channel need not have the same chunk boundaries.
         # Use channel 1 (the default voice channel) and join bytes before WAV
         # framing rather than validating each transport frame independently.
-        if len(self._session_audio) + len(data) > MAX_SESSION_AUDIO_BYTES:
+        if len(self._session_audio) + len(audio) > MAX_SESSION_AUDIO_BYTES:
             self._session_audio_truncated = True
             log.warning(
                 "ESPHome audio session exceeded the %d-byte in-memory limit",
                 MAX_SESSION_AUDIO_BYTES,
             )
             return
-        self._session_audio.extend(data)
-        self._silero_probability = self._silero_shadow.score(data)
+        self._session_audio.extend(audio)
+        self._silero_probability = self._silero_shadow.score(audio)
 
         # Feed the chunk into voice activity detection.
-        self._update_vad(data)
+        self._update_vad(audio)
 
     def _update_vad(self, data: bytes) -> None:
         """Signal ESPHome when speech begins and ends so its mic stream closes."""
@@ -967,6 +991,7 @@ class ESPHomeVoiceClient:
     def _reset_session(self) -> None:
         self._session_id = None
         self._session_audio.clear()
+        self._follow_up_audio_grace_bytes_remaining = 0
         self._session_audio_truncated = False
         self._vad = None
         self._vad_frames = []

@@ -56,6 +56,9 @@ class ApiSettings(ConfiguredSettings):
     voice_follow_up_window_seconds: int = Field(
         default=5, ge=0, le=60, alias="ESPHOME_VOICE_FOLLOW_UP_TIMEOUT_SECONDS"
     )
+    voice_follow_up_audio_grace_seconds: int = Field(
+        default=1, ge=0, le=10, alias="ESPHOME_VOICE_FOLLOW_UP_AUDIO_GRACE_SECONDS"
+    )
     voice_vad_diagnostics_enabled: bool = Field(
         default=False, alias="ESPHOME_VAD_DIAGNOSTICS_ENABLED"
     )

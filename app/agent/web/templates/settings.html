@@ -151,6 +151,9 @@
             <label for="voice-follow-up-window-seconds">Follow-up listening window (seconds)</label>
             <input id="voice-follow-up-window-seconds" name="voice_follow_up_window_seconds" type="number" min="0" max="60" step="1" required />
             <p class="field-help">After a spoken reply, wait this long for speech to begin. If no speech starts, the speaker closes the follow-up quietly. Use 0 to require the wake word for every request.</p>
+            <label for="voice-follow-up-audio-grace-seconds">Ignore playback tail (seconds)</label>
+            <input id="voice-follow-up-audio-grace-seconds" name="voice_follow_up_audio_grace_seconds" type="number" min="0" max="10" step="1" required />
+            <p class="field-help">Discard this much audio at the start of each follow-up so the speaker's previous reply is not mistaken for new speech.</p>
           </fieldset>
         </section>
 

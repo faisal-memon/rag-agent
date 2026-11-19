@@ -136,6 +136,7 @@ class AgentRuntimeSettings(BaseModel):
             raise ValueError("Remote MCP server names must be unique.")
         return servers
     voice_follow_up_window_seconds: int = Field(default=5, ge=0, le=60)
+    voice_follow_up_audio_grace_seconds: int = Field(default=1, ge=0, le=10)
 
     @model_validator(mode="after")
     def validate_vad_windows(self) -> "AgentRuntimeSettings":
