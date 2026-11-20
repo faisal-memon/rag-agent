@@ -9,7 +9,7 @@ import logging
 import re
 import time
 import wave
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -69,6 +69,24 @@ NON_CONVERSATIONAL_TRANSCRIPTS = {
 REPEAT_REQUEST = "Sorry, I didn't catch that. Could you please repeat it?"
 
 
+@dataclass(slots=True)
+class VoiceSessionContext:
+    """Capture data and VAD state for one ESPHome voice session."""
+
+    conversation_id: str
+    started_at: float
+    is_follow_up: bool
+    audio: bytearray = field(default_factory=bytearray)
+    follow_up_audio_grace_bytes_remaining: int = 0
+    audio_truncated: bool = False
+    vad: SileroVoiceActivityDetector | None = None
+    vad_frames: list[VoiceActivityFrame] = field(default_factory=list)
+    silero_probability: float | None = None
+    vad_ended: bool = False
+    no_speech_timeout: bool = False
+    last_vad_diagnostic_at: float = 0.0
+
+
 class ESPHomeVoiceClient:
     """Maintain a Native API connection and receive ReSpeaker voice audio."""
 
@@ -110,26 +128,12 @@ class ESPHomeVoiceClient:
             on_disconnect=self._on_disconnect,
         )
 
-        # Audio and metadata for the current voice-assistant capture.
-        self._session_audio = bytearray()
-        self._follow_up_audio_grace_bytes_remaining = 0
-        self._session_id: str | None = None
-        self._session_audio_truncated = False
-
-        # Voice activity detection state and optional frame diagnostics.
-        self._vad: SileroVoiceActivityDetector | None = None
-        self._vad_frames: list[VoiceActivityFrame] = []
+        # This client is per device, so it owns that device's one active session.
+        self._session: VoiceSessionContext | None = None
         self._silero_shadow = SileroShadowVAD(settings.voice_vad_silero_shadow_enabled)
-        self._silero_probability: float | None = None
-        self._vad_ended = False
-        self._vad_no_speech_timeout = False
-        self._last_vad_diagnostic_at = 0.0
 
         # Conversation timing and the follow-up request window.
         self._follow_up_pending = False
-        self._session_is_follow_up = False
-        self._session_started_at = 0.0
-        self._turn_started_at = 0.0
 
         # Async helpers initialized when the client starts.
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -235,50 +239,47 @@ class ESPHomeVoiceClient:
         wake_word_phrase: str | None,
     ) -> int:
         # Determine whether this is a normal capture or a follow-up.
-        self._session_is_follow_up = (
+        session_is_follow_up = (
             self._voice_state_machine.state is VoiceModeState.FOLLOWUP_LISTENING
             or (self._follow_up_pending and not wake_word_phrase)
         )
         self._follow_up_pending = False
         follow_up_audio_grace_seconds = (
             self._settings.voice_follow_up_audio_grace_seconds
-            if self._session_is_follow_up
+            if session_is_follow_up
             else 0
         )
-        self._follow_up_audio_grace_bytes_remaining = (
-            follow_up_audio_grace_seconds * VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH
+
+        # Create the per-device context used by the following audio and stop callbacks.
+        started_at = time.monotonic()
+        session = VoiceSessionContext(
+            conversation_id=conversation_id,
+            started_at=started_at,
+            is_follow_up=session_is_follow_up,
+            follow_up_audio_grace_bytes_remaining=(
+                follow_up_audio_grace_seconds * VOICE_SAMPLE_RATE * VOICE_SAMPLE_WIDTH
+            ),
+            last_vad_diagnostic_at=started_at,
         )
-        # Allocate and clear the per-session capture data.
-        self._session_id = conversation_id
-        self._session_audio.clear()
-        self._vad_frames = []
+        self._session = session
         self._silero_shadow.reset()
-        self._silero_probability = None
-        self._session_audio_truncated = False
 
         # Configure voice activity detection for this capture.
-        self._vad = SileroVoiceActivityDetector(
+        session.vad = SileroVoiceActivityDetector(
             end_silence_ms=self._settings.voice_end_silence_ms,
             capture_limit_seconds=self._settings.voice_capture_limit_seconds,
             no_speech_timeout_seconds=(
                 self._settings.voice_follow_up_window_seconds + follow_up_audio_grace_seconds
-                if self._session_is_follow_up
+                if session.is_follow_up
                 else 15
             ),
             on_frame=self._record_vad_frame if self._settings.voice_vad_diagnostics_enabled else None,
         )
 
-        # Reset capture flags and record the session start time.
-        self._vad_ended = False
-        self._vad_no_speech_timeout = False
-        self._session_started_at = time.monotonic()
-        self._last_vad_diagnostic_at = self._session_started_at
-        self._turn_started_at = self._session_started_at
-
         # Notify the state machine that capture has begun.
         session_event = (
             VoiceModeEvent.FOLLOWUP_STARTED
-            if self._session_is_follow_up and not wake_word_phrase
+            if session.is_follow_up and not wake_word_phrase
             else VoiceModeEvent.WAKE_WORD_DETECTED
         )
         if not self._dispatch_voice_event(session_event):
@@ -294,8 +295,8 @@ class ESPHomeVoiceClient:
             conversation_id,
             flags,
             wake_word_phrase,
-            self._session_is_follow_up,
-            self._settings.voice_follow_up_audio_grace_seconds if self._session_is_follow_up else 0,
+            session.is_follow_up,
+            self._settings.voice_follow_up_audio_grace_seconds if session.is_follow_up else 0,
             audio_settings,
         )
         self._record_activity("Voice session", "started")
@@ -315,19 +316,20 @@ class ESPHomeVoiceClient:
 
     async def _handle_audio(self, data: bytes, data2: bytes | None = None) -> None:
         # Ignore audio that arrives outside an active session.
-        if self._session_id is None:
+        session = self._session
+        if session is None:
             log.debug("Ignoring ESPHome audio frame outside a voice session")
             return
 
         # Stop accepting audio after the session buffer reaches its limit.
-        if self._session_audio_truncated:
+        if session.audio_truncated:
             return
 
         # Discard initial follow-up audio so playback tail cannot reach VAD or Whisper.
         audio = data
-        if self._follow_up_audio_grace_bytes_remaining:
-            discarded = min(self._follow_up_audio_grace_bytes_remaining, len(audio))
-            self._follow_up_audio_grace_bytes_remaining -= discarded
+        if session.follow_up_audio_grace_bytes_remaining:
+            discarded = min(session.follow_up_audio_grace_bytes_remaining, len(audio))
+            session.follow_up_audio_grace_bytes_remaining -= discarded
             audio = audio[discarded:]
 
         if not audio:
@@ -338,27 +340,28 @@ class ESPHomeVoiceClient:
         # optional second channel need not have the same chunk boundaries.
         # Use channel 1 (the default voice channel) and join bytes before WAV
         # framing rather than validating each transport frame independently.
-        if len(self._session_audio) + len(audio) > MAX_SESSION_AUDIO_BYTES:
-            self._session_audio_truncated = True
+        if len(session.audio) + len(audio) > MAX_SESSION_AUDIO_BYTES:
+            session.audio_truncated = True
             log.warning(
                 "ESPHome audio session exceeded the %d-byte in-memory limit",
                 MAX_SESSION_AUDIO_BYTES,
             )
             return
-        self._session_audio.extend(audio)
-        self._silero_probability = self._silero_shadow.score(audio)
+        session.audio.extend(audio)
+        session.silero_probability = self._silero_shadow.score(audio)
 
         # Feed the chunk into voice activity detection.
         self._update_vad(audio)
 
     def _update_vad(self, data: bytes) -> None:
         """Signal ESPHome when speech begins and ends so its mic stream closes."""
-        if self._client is None or self._vad_ended or self._vad is None:
+        session = self._session
+        if self._client is None or session is None or session.vad_ended or session.vad is None:
             return
-        events = self._vad.process(data)
+        events = session.vad.process(data)
         now = time.monotonic()
-        if events or now - self._last_vad_diagnostic_at >= 1.0:
-            diagnostic = self._vad.take_diagnostics()
+        if events or now - session.last_vad_diagnostic_at >= 1.0:
+            diagnostic = session.vad.take_diagnostics()
             if diagnostic["frames"]:
                 log.info(
                     "ReSpeaker VAD diagnostics (state=%s, frames=%d, speech=%d, "
@@ -379,7 +382,7 @@ class ESPHomeVoiceClient:
                     diagnostic["rms_max"],
                     diagnostic["peak_max"],
                 )
-            self._last_vad_diagnostic_at = now
+            session.last_vad_diagnostic_at = now
         for event in events:
             if event is SileroCaptureEvent.SPEECH_STARTED:
                 self._client.send_voice_assistant_event(
@@ -390,7 +393,7 @@ class ESPHomeVoiceClient:
                 )
                 log.info("ReSpeaker VAD state: waiting_for_speech -> speaking")
             elif event is SileroCaptureEvent.SPEECH_ENDED:
-                self._vad_ended = True
+                session.vad_ended = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
                 log.info("ReSpeaker VAD state: waiting_for_silence -> ended")
@@ -402,7 +405,7 @@ class ESPHomeVoiceClient:
                 )
                 return
             elif event is SileroCaptureEvent.MAX_DURATION_REACHED:
-                self._vad_ended = True
+                session.vad_ended = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
                 log.warning("ReSpeaker capture reached its configured time limit")
@@ -414,8 +417,8 @@ class ESPHomeVoiceClient:
                 )
                 return
             elif event is SileroCaptureEvent.NO_SPEECH_TIMEOUT:
-                self._vad_ended = True
-                self._vad_no_speech_timeout = True
+                session.vad_ended = True
+                session.no_speech_timeout = True
                 if not self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED):
                     return
                 log.info("ReSpeaker capture ended: no speech detected")
@@ -451,18 +454,18 @@ class ESPHomeVoiceClient:
 
     async def _process_session_stop(self, aborted: bool) -> None:
         speaker_created_at = datetime.now(timezone.utc)
+        session = self._session
         capture_seconds = (
-            time.monotonic() - self._session_started_at
-            if self._session_started_at
+            time.monotonic() - session.started_at
+            if session is not None
             else 0.0
         )
-        conversation_id = self._session_id
-        audio = bytes(self._session_audio)
-        truncated = self._session_audio_truncated
-        vad_ended = self._vad_ended
-        no_speech_timeout = self._vad_no_speech_timeout
-        session_is_follow_up = self._session_is_follow_up
-        vad_frames = list(self._vad_frames)
+        conversation_id = session.conversation_id if session is not None else None
+        audio = bytes(session.audio) if session is not None else b""
+        truncated = session.audio_truncated if session is not None else False
+        no_speech_timeout = session.no_speech_timeout if session is not None else False
+        session_is_follow_up = session.is_follow_up if session is not None else False
+        vad_frames = list(session.vad_frames) if session is not None else []
         if self._voice_state_machine.state is not VoiceModeState.PROCESSING:
             self._dispatch_voice_event(VoiceModeEvent.CAPTURE_ENDED)
         self._reset_session()
@@ -847,7 +850,7 @@ class ESPHomeVoiceClient:
             VoiceModeState.UNAVAILABLE,
             VoiceModeState.IDLE,
         }
-        if self._session_id is None and not has_active_state:
+        if self._session is None and not has_active_state:
             return
         self._follow_up_pending = False
         self._reset_session()
@@ -878,10 +881,10 @@ class ESPHomeVoiceClient:
             log.exception("Could not send the ReSpeaker voice-session end event")
 
     def _elapsed_ms(self) -> int:
-        started_at = self._session_started_at or self._turn_started_at
-        if not started_at:
+        session = self._session
+        if session is None:
             return 0
-        return max(0, round((time.monotonic() - started_at) * 1000))
+        return max(0, round((time.monotonic() - session.started_at) * 1000))
 
     @staticmethod
     def _stage_ms(started_at: float) -> int:
@@ -916,20 +919,15 @@ class ESPHomeVoiceClient:
         )
 
     def _reset_session(self) -> None:
-        self._session_id = None
-        self._session_audio.clear()
-        self._follow_up_audio_grace_bytes_remaining = 0
-        self._session_audio_truncated = False
-        self._vad = None
-        self._vad_frames = []
-        self._vad_ended = False
-        self._vad_no_speech_timeout = False
-        self._session_is_follow_up = False
-        self._session_started_at = 0.0
+        self._session = None
 
     def _record_vad_frame(self, frame: VoiceActivityFrame) -> None:
         """Collect frame decisions when temporary VAD diagnostics are enabled."""
-        self._vad_frames.append(replace(frame, silero_probability=self._silero_probability))
+        session = self._session
+        if session is not None:
+            session.vad_frames.append(
+                replace(frame, silero_probability=session.silero_probability)
+            )
 
     def _write_vad_diagnostics(
         self, conversation_id: str | None, frames: list[VoiceActivityFrame]
