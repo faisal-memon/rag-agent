@@ -118,7 +118,7 @@ async def _reload_agent(request: Request) -> None:
     await tool_catalog_manager.start()
     agent = Agent(settings, tool_catalog_manager)
     agent.startup()
-    device_manager = _esphome_device_manager(request)
+    device_manager = _get_esphome_device_manager(request)
     if device_manager is not None:
         device_manager.update_settings(settings)
     piper_service = getattr(request.app.state, "piper_service", None)
@@ -161,7 +161,7 @@ def devices_console(request: Request):
 def list_voice_devices(request: Request) -> list[dict]:
     _conversation_user(request)
     devices = voice_devices.list_devices()
-    device_manager = _esphome_device_manager(request)
+    device_manager = _get_esphome_device_manager(request)
     live_statuses = (
         device_manager.statuses()
         if device_manager is not None and hasattr(device_manager, "statuses")
@@ -432,7 +432,7 @@ def debug_pipeline(limit: int = Query(default=10, ge=1, le=100)) -> PipelineStat
     return PipelineStatusResponse(**pipeline_status(limit=limit))
 
 
-def _esphome_device_manager(request: Request):
+def _get_esphome_device_manager(request: Request):
     """Return the device manager, with compatibility for older app fixtures."""
     return getattr(request.app.state, "esphome_device_manager", None) or getattr(
         request.app.state, "esphome_voice_client", None
