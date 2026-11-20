@@ -20,13 +20,23 @@ VoiceAudioHandler = Callable[..., Awaitable[None]]
 
 
 class DeviceVoiceClient(Protocol):
-    async def on_device_ready(self) -> None: ...
+    """Voice behavior owned by a connected ESPHome device."""
 
-    async def on_disconnect(self, expected: bool) -> None: ...
+    async def on_device_ready(self) -> None:
+        """Initialize voice handling and subscribe to this device's callbacks."""
+        ...
 
-    async def stop(self) -> None: ...
+    async def on_disconnect(self, expected: bool) -> None:
+        """Handle loss of the device connection and reset voice state."""
+        ...
 
-    def update_settings(self, settings: ApiSettings) -> None: ...
+    async def stop(self) -> None:
+        """Release voice resources without stopping the device connection."""
+        ...
+
+    def update_settings(self, settings: ApiSettings) -> None:
+        """Apply updated runtime settings to voice handling."""
+        ...
 
 
 VoiceClientFactory = Callable[["ESPHomeDevice"], DeviceVoiceClient]
