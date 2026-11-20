@@ -9,7 +9,6 @@ import logging
 import re
 import time
 import wave
-from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
 from functools import partial
@@ -20,6 +19,7 @@ import aioesphomeapi
 from app.agent import voice_devices
 from app.agent.agent import Agent
 from app.agent.config import ApiSettings
+from app.agent.esphome_devices import ESPHomeDevice
 from app.agent.esphome_playback import OneShotAudioServer
 from app.agent.piper_service import PiperService
 from app.agent.transcription import TranscriptionUnavailableError, transcribe_audio
@@ -100,14 +100,15 @@ class ESPHomeVoiceClient:
         if self._media_server is not None:
             self._media_server.set_fetch_callback(self._on_audio_fetched)
 
-        # ESPHome connection and device state, filled in after a successful connection.
-        self._client: aioesphomeapi.APIClient | None = None
-        self._media_player_key: int | None = None
-        self._reconnect: aioesphomeapi.ReconnectLogic | None = None
-        self._unsubscribe_voice: Callable[[], None] | None = None
-        self._device_id: str | None = None
-        self._device_name = settings.esphome_device_name or "ESPHome speaker"
-        self._connected = False
+        # One device owns its connection; this client owns the voice interaction.
+        self._device = ESPHomeDevice(
+            settings,
+            handle_start=self._handle_session_start,
+            handle_stop=self._handle_session_stop,
+            handle_audio=self._handle_audio,
+            on_ready=self._on_device_ready,
+            on_disconnect=self._on_disconnect,
+        )
 
         # Audio and metadata for the current voice-assistant capture.
         self._session_audio = bytearray()
@@ -143,123 +144,58 @@ class ESPHomeVoiceClient:
         self._loop = asyncio.get_running_loop()
         self._activity = VoiceActivityCoordinator(self._loop)
         if not self._settings.esphome_device_host:
-            log.info("ESPHome voice client disabled; ESPHOME_DEVICE_HOST is unset")
+            await self._device.start()
             return
-
         if self._media_server is not None:
             await self._media_server.start()
+        await self._device.start()
 
-        self._client = aioesphomeapi.APIClient(
-            self._settings.esphome_device_host,
-            self._settings.esphome_device_port,
-            client_info="RAG Agent",
-            noise_psk=self._settings.esphome_api_key or None,
-            expected_name=self._settings.esphome_device_name or None,
-        )
-        self._reconnect = aioesphomeapi.ReconnectLogic(
-            client=self._client,
-            name=self._settings.esphome_device_host,
-            on_connect=self._on_connect,
-            on_disconnect=self._on_disconnect,
-            on_connect_error=self._on_connect_error,
-            zeroconf_wake=False,
-        )
-        await self._reconnect.start()
-        log.info(
-            "ESPHome voice client started for %s:%s",
-            self._settings.esphome_device_host,
-            self._settings.esphome_device_port,
-        )
-
-    async def _on_connect(self) -> None:
-        assert self._client is not None
-
-        # Verify that this device supports Voice Assistant and Native API audio.
-        info = await self._client.device_info()
-        feature_flags = info.voice_assistant_feature_flags_compat(
-            self._client.api_version
-        )
-        if not feature_flags & aioesphomeapi.VoiceAssistantFeature.VOICE_ASSISTANT:
-            log.error("ESPHome device %s has no Voice Assistant capability", info.name)
-            return
-        if not feature_flags & aioesphomeapi.VoiceAssistantFeature.API_AUDIO:
-            log.error("ESPHome device %s does not support Native API audio", info.name)
-            return
-
-        # Find the device-assigned media-player entity identifier; this is not a secret key.
-        entities, _ = await self._client.list_entities_services()
-        media_player = next(
-            (
-                entity
-                for entity in entities
-                if isinstance(entity, aioesphomeapi.MediaPlayerInfo)
-                and entity.object_id == "media_player"
-            ),
-            None,
-        )
-        self._media_player_key = media_player.key if media_player is not None else None
-        if self._media_server is not None and self._media_player_key is None:
-            log.error("ESPHome device %s has no Media Player entity", info.name)
-
-        # Register voice-session callbacks; keep the returned function to remove them later.
-        self._unsubscribe_voice = self._client.subscribe_voice_assistant(
-            handle_start=self._handle_session_start,
-            handle_stop=self._handle_session_stop,
-            handle_audio=self._handle_audio,
-        )
-        # Clear a voice run that may have been interrupted before reconnecting.
+    async def _on_device_ready(
+        self, _device_id: str | None, _display_name: str, media_player_key: int | None
+    ) -> None:
+        """Finish voice setup after the device has validated and subscribed."""
+        self._media_player_key = media_player_key
         self._abort_interrupted_voice_run()
-
-        # Record the device identity and mark the Native API connection active.
-        device_id = _stable_device_id(info.mac_address, self._settings.esphome_device_host)
-        self._device_id = device_id
-        self._device_name = info.name or self._device_name
-        self._connected = True
-
-        # Register the device in Postgres.
-        try:
-            await asyncio.to_thread(
-                voice_devices.register_device,
-                device_id,
-                self._device_name,
-                self._settings.esphome_device_host,
-                self._settings.esphome_device_port,
-            )
-        except Exception:
-            log.exception("Could not persist ESPHome device registration")
-            self._device_id = None
-        log.info(
-            "Connected to ESPHome device %s (%s); Native API audio subscribed",
-            info.name,
-            info.mac_address,
-        )
-
-        # Finally mark the voice client ready for voice events.
         self._dispatch_voice_event(VoiceModeEvent.CONNECTION_READY)
 
     async def stop(self) -> None:
         """Unsubscribe and close the Native API connection on application shutdown."""
-        if self._reconnect is not None:
-            await self._reconnect.stop()
-        self._unsubscribe()
-        if self._client is not None:
-            await self._client.disconnect()
+        await self._device.stop()
         if self._media_server is not None:
             await self._media_server.stop()
 
-    def update_settings(self, settings: ApiSettings) -> None:
-        """Apply settings updates to subsequent voice sessions."""
-        self._settings = settings
+    @property
+    def _client(self) -> aioesphomeapi.APIClient | None:
+        """Expose the device API connection to the voice protocol handlers."""
+        return self._device.client
 
-    def status(self) -> dict:
-        """Return the currently configured speaker's live connection details."""
-        return {
-            "device_id": self._device_id,
-            "display_name": self._device_name,
-            "host": self._settings.esphome_device_host,
-            "port": self._settings.esphome_device_port,
-            "connected": self._connected,
-        }
+    @_client.setter
+    def _client(self, client: aioesphomeapi.APIClient | None) -> None:
+        self._device.client = client
+
+    @property
+    def _media_player_key(self) -> int | None:
+        return self._device.media_player_key
+
+    @_media_player_key.setter
+    def _media_player_key(self, key: int | None) -> None:
+        self._device.media_player_key = key
+
+    @property
+    def _device_id(self) -> str | None:
+        return self._device.device_id
+
+    @_device_id.setter
+    def _device_id(self, device_id: str | None) -> None:
+        self._device.device_id = device_id
+
+    @property
+    def _device_name(self) -> str:
+        return self._device.display_name
+
+    @property
+    def _connected(self) -> bool:
+        return self._device.connected
 
     def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
         """Apply one voice event and report whether the lifecycle accepted it."""
@@ -288,13 +224,8 @@ class ESPHomeVoiceClient:
         )
 
     async def _on_disconnect(self, expected: bool) -> None:
-        self._connected = False
-        self._unsubscribe()
         self._dispatch_voice_event(VoiceModeEvent.CONNECTION_LOST)
         log.info("ESPHome Native API disconnected (expected=%s)", expected)
-
-    async def _on_connect_error(self, error: Exception) -> None:
-        log.warning("Could not connect to ESPHome device: %s", error)
 
     async def _handle_session_start(
         self,
@@ -499,18 +430,13 @@ class ESPHomeVoiceClient:
     def update_settings(self, settings: ApiSettings) -> None:
         """Apply settings updates to subsequent voice sessions."""
         self._settings = settings
+        self._device.settings = settings
         self._piper_service.update_settings(settings)
         self._silero_shadow = SileroShadowVAD(settings.voice_vad_silero_shadow_enabled)
 
     def status(self) -> dict:
         """Return the currently configured speaker's live connection details."""
-        return {
-            "device_id": self._device_id,
-            "display_name": self._device_name,
-            "host": self._settings.esphome_device_host,
-            "port": self._settings.esphome_device_port,
-            "connected": self._connected,
-        }
+        return self._device.status()
 
     async def _handle_session_stop(self, aborted: bool) -> None:
         """Run one processing task, ignoring duplicate stop callbacks."""
@@ -1055,13 +981,6 @@ class ESPHomeVoiceClient:
         except Exception:
             log.warning("Could not write VAD diagnostics CSV", exc_info=True)
 
-    def _unsubscribe(self) -> None:
-        unsubscribe = self._unsubscribe_voice
-        self._unsubscribe_voice = None
-        if unsubscribe is not None:
-            unsubscribe()
-
-
 def _pcm_to_wav(pcm: bytes, *, channels: int) -> bytes:
     wav_buffer = io.BytesIO()
     with wave.open(wav_buffer, "wb") as wav_file:
@@ -1093,11 +1012,3 @@ def _spoken_tool_status(status: object) -> str:
         if normalized and len(normalized) <= 120:
             return normalized
     return "I'm checking that now."
-
-
-def _stable_device_id(mac_address: str | None, host: str) -> str:
-    """Prefer the hardware address so DHCP changes do not change device identity."""
-    mac = (mac_address or "").strip().lower()
-    if mac:
-        return mac
-    return f"host:{host.strip().lower()}"
