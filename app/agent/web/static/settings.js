@@ -214,7 +214,7 @@ form.addEventListener("submit", async (event) => {
     });
     if (!response.ok) throw new Error(await responseErrorMessage(response, "Could not save settings"));
     fillForm(await response.json());
-    setStatus("Saved. New chats will use these settings.");
+    setStatus("Saved. New requests use the changes now; voice applies them next session, and indexing on its next job.");
   } catch (error) {
     setStatus(error.message);
   } finally {

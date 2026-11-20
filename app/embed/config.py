@@ -40,3 +40,9 @@ def get_embed_settings() -> EmbedSettings:
             excluded={"database", "openai_api_key", "llamacpp_api_key"},
         )
     )
+
+
+def refresh_embed_settings() -> EmbedSettings:
+    """Reload shared settings at a safe indexing-job boundary."""
+    get_embed_settings.cache_clear()
+    return get_embed_settings()
