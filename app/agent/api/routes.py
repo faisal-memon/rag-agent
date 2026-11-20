@@ -169,35 +169,44 @@ def list_voice_devices(request: Request) -> list[dict]:
     _conversation_user(request)
     devices = voice_devices.list_devices()
     device_manager = _esphome_device_manager(request)
-    live_status = (
-        device_manager.status()
+    live_statuses = (
+        device_manager.statuses()
+        if device_manager is not None and hasattr(device_manager, "statuses")
+        else [device_manager.status()]
         if device_manager is not None
-        else {"device_id": None, "connected": False, "host": "", "port": 6053}
+        else []
     )
-    live_id = live_status.get("device_id")
-    found_live_device = False
+    live_by_id = {
+        status["device_id"]: status
+        for status in live_statuses
+        if status.get("device_id")
+    }
     for device in devices:
-        device["connected"] = bool(live_status["connected"] and device["device_id"] == live_id)
-        found_live_device = found_live_device or device["device_id"] == live_id
-    if live_id and not found_live_device:
-        devices.append(
-            {
-                **live_status,
-                "first_seen_at": None,
-                "last_connected_at": None,
-                "last_interaction_at": None,
-            }
-        )
-    elif not live_id and not devices and live_status.get("host"):
-        devices.append(
-            {
-                **live_status,
-                "device_id": "not-yet-seen",
-                "first_seen_at": None,
-                "last_connected_at": None,
-                "last_interaction_at": None,
-            }
-        )
+        live_status = live_by_id.get(device["device_id"])
+        device["connected"] = bool(live_status and live_status["connected"])
+    known_ids = {device["device_id"] for device in devices}
+    devices.extend(
+        {
+            **live_status,
+            "first_seen_at": None,
+            "last_connected_at": None,
+            "last_interaction_at": None,
+        }
+        for live_status in live_statuses
+        if live_status.get("device_id") not in known_ids
+    )
+    if not devices and device_manager is not None:
+        pending_status = device_manager.status()
+        if pending_status.get("host"):
+            devices.append(
+                {
+                    **pending_status,
+                    "device_id": "not-yet-seen",
+                    "first_seen_at": None,
+                    "last_connected_at": None,
+                    "last_interaction_at": None,
+                }
+            )
     return devices
 
 

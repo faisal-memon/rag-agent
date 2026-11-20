@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 VoiceStartHandler = Callable[..., Awaitable[int]]
 VoiceStopHandler = Callable[..., Awaitable[None]]
 VoiceAudioHandler = Callable[..., Awaitable[None]]
+DeviceLifecycleHandler = Callable[["ESPHomeDevice"], None]
 
 
 class DeviceVoiceClient(Protocol):
@@ -50,9 +51,13 @@ class ESPHomeDevice:
         settings: ApiSettings,
         *,
         voice_client_factory: VoiceClientFactory,
+        on_registered: DeviceLifecycleHandler,
+        on_unregistered: DeviceLifecycleHandler,
     ) -> None:
         self.settings = settings
         self._voice_client_factory = voice_client_factory
+        self._on_registered = on_registered
+        self._on_unregistered = on_unregistered
         self.voice_client: DeviceVoiceClient | None = None
         self.client: aioesphomeapi.APIClient | None = None
         self._reconnect: aioesphomeapi.ReconnectLogic | None = None
@@ -161,6 +166,7 @@ class ESPHomeDevice:
         if self.voice_client is None:
             self.voice_client = self._voice_client_factory(self)
         await self.voice_client.on_device_ready()
+        self._on_registered(self)
 
         log.info(
             "Connected to ESPHome device %s (%s); voice client ready",
@@ -173,6 +179,7 @@ class ESPHomeDevice:
         self._unsubscribe()
         if self.voice_client is not None:
             await self.voice_client.on_disconnect(expected)
+            self._on_unregistered(self)
 
     async def _on_connect_error(self, error: Exception) -> None:
         log.warning("Could not connect to ESPHome device: %s", error)
