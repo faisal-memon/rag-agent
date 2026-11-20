@@ -9,7 +9,7 @@ from app.agent import tools
 from app.agent.agent import Agent
 from app.agent.api.routes import router
 from app.agent.config import get_api_settings
-from app.agent.esphome_voice import ESPHomeVoiceClient
+from app.agent.esphome_device_manager import ESPHomeDeviceManager
 from app.agent.piper_service import PiperService
 from app.agent.version import APP_VERSION
 from app.agent.web.routes import STATIC_DIR
@@ -82,15 +82,15 @@ async def lifespan(app: FastAPI):
     piper_service = PiperService(settings)
     app.state.piper_service = piper_service
 
-    # Setup ESP Home Client
-    esphome_voice_client = ESPHomeVoiceClient(settings, agent, piper_service)
-    app.state.esphome_voice_client = esphome_voice_client
-    await esphome_voice_client.start()
+    # The device manager creates devices; each device creates its voice client after registration.
+    esphome_device_manager = ESPHomeDeviceManager(settings, agent, piper_service)
+    app.state.esphome_device_manager = esphome_device_manager
+    await esphome_device_manager.start()
 
     try:
         yield
     finally:
-        await esphome_voice_client.stop()
+        await esphome_device_manager.stop()
         await tool_catalog_manager.stop()
 
 

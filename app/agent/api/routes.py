@@ -118,9 +118,9 @@ async def _reload_agent(request: Request) -> None:
     await tool_catalog_manager.start()
     agent = Agent(settings, tool_catalog_manager)
     agent.startup()
-    voice_client = getattr(request.app.state, "esphome_voice_client", None)
-    if voice_client is not None:
-        voice_client.update_settings(settings)
+    device_manager = _esphome_device_manager(request)
+    if device_manager is not None:
+        device_manager.update_settings(settings)
     piper_service = getattr(request.app.state, "piper_service", None)
     if piper_service is not None:
         piper_service.update_settings(settings)
@@ -128,6 +128,13 @@ async def _reload_agent(request: Request) -> None:
     request.app.state.agent = agent
     if previous_agent is not None:
         await previous_agent.tool_catalog_manager.stop()
+
+
+def _esphome_device_manager(request: Request):
+    """Return the device manager, with compatibility for older app fixtures."""
+    return getattr(request.app.state, "esphome_device_manager", None) or getattr(
+        request.app.state, "esphome_voice_client", None
+    )
 
 
 @router.get("/", include_in_schema=False)
@@ -161,10 +168,10 @@ def devices_console(request: Request):
 def list_voice_devices(request: Request) -> list[dict]:
     _conversation_user(request)
     devices = voice_devices.list_devices()
-    voice_client = getattr(request.app.state, "esphome_voice_client", None)
+    device_manager = _esphome_device_manager(request)
     live_status = (
-        voice_client.status()
-        if voice_client is not None
+        device_manager.status()
+        if device_manager is not None
         else {"device_id": None, "connected": False, "host": "", "port": 6053}
     )
     live_id = live_status.get("device_id")

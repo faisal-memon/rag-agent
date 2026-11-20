@@ -1,4 +1,4 @@
-"""ESPHome Native API connection for ReSpeaker voice sessions."""
+"""Voice-session behavior for connected ESPHome devices."""
 
 from __future__ import annotations
 
@@ -88,13 +88,15 @@ class VoiceSessionContext:
 
 
 class ESPHomeVoiceClient:
-    """Maintain a Native API connection and receive ReSpeaker voice audio."""
+    """Handle voice sessions for one connected ESPHome device."""
 
     def __init__(
         self,
         settings: ApiSettings,
         agent: Agent | None = None,
         piper_service: PiperService | None = None,
+        *,
+        device: ESPHomeDevice | None = None,
     ) -> None:
         # Shared services used throughout the speaker lifecycle.
         self._settings = settings
@@ -118,15 +120,14 @@ class ESPHomeVoiceClient:
         if self._media_server is not None:
             self._media_server.set_fetch_callback(self._on_audio_fetched)
 
-        # One device owns its connection; this client owns the voice interaction.
-        self._device = ESPHomeDevice(
-            settings,
-            handle_start=self._handle_session_start,
-            handle_stop=self._handle_session_stop,
-            handle_audio=self._handle_audio,
-            on_ready=self._on_device_ready,
-            on_disconnect=self._on_disconnect,
-        )
+        # Production devices create this client after connecting and registering.
+        self._device = device
+        self._local_client: aioesphomeapi.APIClient | None = None
+        self._local_media_player_key: int | None = None
+        self._local_device_id: str | None = None
+        self._local_device_name = settings.esphome_device_name or "ESPHome speaker"
+        self._local_connected = False
+        self._media_server_started = False
 
         # This client is per device, so it owns that device's one active session.
         self._session: VoiceSessionContext | None = None
@@ -143,68 +144,89 @@ class ESPHomeVoiceClient:
         self._pending_reply: tuple[str, str, bool] | None = None
         self._playback_task: asyncio.Task[None] | None = None
 
-    async def start(self) -> None:
-        """Start reconnecting to the configured device; leave it disabled by default."""
-        self._loop = asyncio.get_running_loop()
-        self._activity = VoiceActivityCoordinator(self._loop)
-        if not self._settings.esphome_device_host:
-            await self._device.start()
-            return
-        if self._media_server is not None:
+    async def on_device_ready(self) -> None:
+        """Subscribe this device's voice callbacks after it connects and registers."""
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+            self._activity = VoiceActivityCoordinator(self._loop)
+        if self._media_server is not None and not self._media_server_started:
             await self._media_server.start()
-        await self._device.start()
-
-    async def _on_device_ready(
-        self, _device_id: str | None, _display_name: str, media_player_key: int | None
-    ) -> None:
-        """Finish voice setup after the device has validated and subscribed."""
-        self._media_player_key = media_player_key
+            self._media_server_started = True
+        if self._device is not None:
+            self._device.subscribe_voice_assistant(
+                handle_start=self._handle_session_start,
+                handle_stop=self._handle_session_stop,
+                handle_audio=self._handle_audio,
+            )
         self._abort_interrupted_voice_run()
         self._dispatch_voice_event(VoiceModeEvent.CONNECTION_READY)
 
     async def stop(self) -> None:
-        """Unsubscribe and close the Native API connection on application shutdown."""
-        await self._device.stop()
-        if self._media_server is not None:
+        """Stop voice-only resources; the owning device closes the API connection."""
+        if self._device is not None:
+            self._device.unsubscribe_voice_assistant()
+        if self._media_server is not None and self._media_server_started:
             await self._media_server.stop()
+            self._media_server_started = False
+
+    async def on_disconnect(self, expected: bool) -> None:
+        self._dispatch_voice_event(VoiceModeEvent.CONNECTION_LOST)
+        log.info("ESPHome Native API disconnected (expected=%s)", expected)
 
     @property
     def _client(self) -> aioesphomeapi.APIClient | None:
         """Expose the device API connection to the voice protocol handlers."""
-        return self._device.client
+        return self._device.client if self._device is not None else self._local_client
 
     @_client.setter
     def _client(self, client: aioesphomeapi.APIClient | None) -> None:
-        self._device.client = client
+        if self._device is not None:
+            self._device.client = client
+        else:
+            self._local_client = client
 
     @property
     def _media_player_key(self) -> int | None:
-        return self._device.media_player_key
+        if self._device is not None:
+            return self._device.media_player_key
+        return self._local_media_player_key
 
     @_media_player_key.setter
     def _media_player_key(self, key: int | None) -> None:
-        self._device.media_player_key = key
+        if self._device is not None:
+            self._device.media_player_key = key
+        else:
+            self._local_media_player_key = key
 
     @property
     def _device_id(self) -> str | None:
-        return self._device.device_id
+        return self._device.device_id if self._device is not None else self._local_device_id
 
     @_device_id.setter
     def _device_id(self, device_id: str | None) -> None:
-        self._device.device_id = device_id
+        if self._device is not None:
+            self._device.device_id = device_id
+        else:
+            self._local_device_id = device_id
 
     @property
     def _device_name(self) -> str:
-        return self._device.display_name
+        if self._device is not None:
+            return self._device.display_name
+        return self._local_device_name
 
     @property
     def _connected(self) -> bool:
-        return self._device.connected
+        return self._device.connected if self._device is not None else self._local_connected
 
     def _dispatch_voice_event(self, event: VoiceModeEvent) -> bool:
         """Apply one voice event and report whether the lifecycle accepted it."""
         if not (transition := self._voice_state_machine.dispatch(event)).accepted:
-            log.warning("Ignoring ESPHome voice event %s while in %s", event.name, transition.previous.name)
+            log.warning(
+                "Ignoring ESPHome voice event %s while in %s",
+                event.name,
+                transition.previous.name,
+            )
 
         return transition.accepted
 
@@ -226,10 +248,6 @@ class ESPHomeVoiceClient:
                 continue_conversation=continue_conversation,
             )
         )
-
-    async def _on_disconnect(self, expected: bool) -> None:
-        self._dispatch_voice_event(VoiceModeEvent.CONNECTION_LOST)
-        log.info("ESPHome Native API disconnected (expected=%s)", expected)
 
     async def _handle_session_start(
         self,
@@ -433,13 +451,20 @@ class ESPHomeVoiceClient:
     def update_settings(self, settings: ApiSettings) -> None:
         """Apply settings updates to subsequent voice sessions."""
         self._settings = settings
-        self._device.settings = settings
         self._piper_service.update_settings(settings)
         self._silero_shadow = SileroShadowVAD(settings.voice_vad_silero_shadow_enabled)
 
     def status(self) -> dict:
-        """Return the currently configured speaker's live connection details."""
-        return self._device.status()
+        """Return this voice client's device connection details."""
+        if self._device is not None:
+            return self._device.status()
+        return {
+            "device_id": self._local_device_id,
+            "display_name": self._local_device_name,
+            "host": self._settings.esphome_device_host,
+            "port": self._settings.esphome_device_port,
+            "connected": self._local_connected,
+        }
 
     async def _handle_session_stop(self, aborted: bool) -> None:
         """Run one processing task, ignoring duplicate stop callbacks."""

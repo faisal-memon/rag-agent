@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 import aioesphomeapi
 
@@ -16,29 +17,33 @@ log = logging.getLogger(__name__)
 VoiceStartHandler = Callable[..., Awaitable[int]]
 VoiceStopHandler = Callable[..., Awaitable[None]]
 VoiceAudioHandler = Callable[..., Awaitable[None]]
-DeviceReadyHandler = Callable[[str | None, str, int | None], Awaitable[None]]
-DeviceDisconnectedHandler = Callable[[bool], Awaitable[None]]
+
+
+class DeviceVoiceClient(Protocol):
+    async def on_device_ready(self) -> None: ...
+
+    async def on_disconnect(self, expected: bool) -> None: ...
+
+    async def stop(self) -> None: ...
+
+    def update_settings(self, settings: ApiSettings) -> None: ...
+
+
+VoiceClientFactory = Callable[["ESPHomeDevice"], DeviceVoiceClient]
 
 
 class ESPHomeDevice:
-    """Own one device connection, its identity, and its voice callbacks."""
+    """Own one device connection and create its voice client when it is registered."""
 
     def __init__(
         self,
         settings: ApiSettings,
         *,
-        handle_start: VoiceStartHandler,
-        handle_stop: VoiceStopHandler,
-        handle_audio: VoiceAudioHandler,
-        on_ready: DeviceReadyHandler,
-        on_disconnect: DeviceDisconnectedHandler,
+        voice_client_factory: VoiceClientFactory,
     ) -> None:
         self.settings = settings
-        self._handle_start = handle_start
-        self._handle_stop = handle_stop
-        self._handle_audio = handle_audio
-        self._on_ready = on_ready
-        self._on_disconnected = on_disconnect
+        self._voice_client_factory = voice_client_factory
+        self.voice_client: DeviceVoiceClient | None = None
         self.client: aioesphomeapi.APIClient | None = None
         self._reconnect: aioesphomeapi.ReconnectLogic | None = None
         self._unsubscribe_voice: Callable[[], None] | None = None
@@ -77,6 +82,8 @@ class ESPHomeDevice:
 
     async def stop(self) -> None:
         """Stop reconnecting, remove callbacks, and close the API connection."""
+        if self.voice_client is not None:
+            await self.voice_client.stop()
         if self._reconnect is not None:
             await self._reconnect.stop()
         self._unsubscribe()
@@ -121,13 +128,6 @@ class ESPHomeDevice:
         if self.settings.esphome_media_url_base and self.media_player_key is None:
             log.error("ESPHome device %s has no Media Player entity", info.name)
 
-        # Subscribe this device's voice callbacks and retain the unsubscriber.
-        self._unsubscribe_voice = self.client.subscribe_voice_assistant(
-            handle_start=self._handle_start,
-            handle_stop=self._handle_stop,
-            handle_audio=self._handle_audio,
-        )
-
         self.device_id = _stable_device_id(
             info.mac_address, self.settings.esphome_device_host
         )
@@ -147,17 +147,22 @@ class ESPHomeDevice:
             log.exception("Could not persist ESPHome device registration")
             self.device_id = None
 
+        # The device creates its voice client only after connection and registration.
+        if self.voice_client is None:
+            self.voice_client = self._voice_client_factory(self)
+        await self.voice_client.on_device_ready()
+
         log.info(
-            "Connected to ESPHome device %s (%s); Native API audio subscribed",
+            "Connected to ESPHome device %s (%s); voice client ready",
             info.name,
             info.mac_address,
         )
-        await self._on_ready(self.device_id, self.display_name, self.media_player_key)
 
     async def _on_disconnect(self, expected: bool) -> None:
         self.connected = False
         self._unsubscribe()
-        await self._on_disconnected(expected)
+        if self.voice_client is not None:
+            await self.voice_client.on_disconnect(expected)
 
     async def _on_connect_error(self, error: Exception) -> None:
         log.warning("Could not connect to ESPHome device: %s", error)
@@ -167,6 +172,31 @@ class ESPHomeDevice:
         self._unsubscribe_voice = None
         if unsubscribe is not None:
             unsubscribe()
+
+    def unsubscribe_voice_assistant(self) -> None:
+        self._unsubscribe()
+
+    def subscribe_voice_assistant(
+        self,
+        *,
+        handle_start: VoiceStartHandler,
+        handle_stop: VoiceStopHandler,
+        handle_audio: VoiceAudioHandler,
+    ) -> None:
+        """Register this device's voice callbacks and retain their unsubscriber."""
+        if self.client is None:
+            raise RuntimeError("Cannot subscribe voice callbacks before device connection")
+        self._unsubscribe()
+        self._unsubscribe_voice = self.client.subscribe_voice_assistant(
+            handle_start=handle_start,
+            handle_stop=handle_stop,
+            handle_audio=handle_audio,
+        )
+
+    def update_settings(self, settings: ApiSettings) -> None:
+        self.settings = settings
+        if self.voice_client is not None:
+            self.voice_client.update_settings(settings)
 
 
 def _stable_device_id(mac_address: str | None, host: str) -> str:
