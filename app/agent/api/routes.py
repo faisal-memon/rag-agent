@@ -130,13 +130,6 @@ async def _reload_agent(request: Request) -> None:
         await previous_agent.tool_catalog_manager.stop()
 
 
-def _esphome_device_manager(request: Request):
-    """Return the device manager, with compatibility for older app fixtures."""
-    return getattr(request.app.state, "esphome_device_manager", None) or getattr(
-        request.app.state, "esphome_voice_client", None
-    )
-
-
 @router.get("/", include_in_schema=False)
 def index():
     return index_page()
@@ -437,3 +430,10 @@ def debug_retrieve(payload: QueryRequest) -> RetrievalDebugResponse:
 @router.get("/debug/pipeline", response_model=PipelineStatusResponse)
 def debug_pipeline(limit: int = Query(default=10, ge=1, le=100)) -> PipelineStatusResponse:
     return PipelineStatusResponse(**pipeline_status(limit=limit))
+
+
+def _esphome_device_manager(request: Request):
+    """Return the device manager, with compatibility for older app fixtures."""
+    return getattr(request.app.state, "esphome_device_manager", None) or getattr(
+        request.app.state, "esphome_voice_client", None
+    )
