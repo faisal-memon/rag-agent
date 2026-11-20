@@ -118,9 +118,9 @@ async def _reload_agent(request: Request) -> None:
     await tool_catalog_manager.start()
     agent = Agent(settings, tool_catalog_manager)
     agent.startup()
-    voice_client = getattr(request.app.state, "esphome_voice_client", None)
-    if voice_client is not None:
-        voice_client.update_settings(settings)
+    device_manager = _get_esphome_device_manager(request)
+    if device_manager is not None:
+        device_manager.update_settings(settings)
     piper_service = getattr(request.app.state, "piper_service", None)
     if piper_service is not None:
         piper_service.update_settings(settings)
@@ -161,36 +161,45 @@ def devices_console(request: Request):
 def list_voice_devices(request: Request) -> list[dict]:
     _conversation_user(request)
     devices = voice_devices.list_devices()
-    voice_client = getattr(request.app.state, "esphome_voice_client", None)
-    live_status = (
-        voice_client.status()
-        if voice_client is not None
-        else {"device_id": None, "connected": False, "host": "", "port": 6053}
+    device_manager = _get_esphome_device_manager(request)
+    live_statuses = (
+        device_manager.statuses()
+        if device_manager is not None and hasattr(device_manager, "statuses")
+        else [device_manager.status()]
+        if device_manager is not None
+        else []
     )
-    live_id = live_status.get("device_id")
-    found_live_device = False
+    live_by_id = {
+        status["device_id"]: status
+        for status in live_statuses
+        if status.get("device_id")
+    }
     for device in devices:
-        device["connected"] = bool(live_status["connected"] and device["device_id"] == live_id)
-        found_live_device = found_live_device or device["device_id"] == live_id
-    if live_id and not found_live_device:
-        devices.append(
-            {
-                **live_status,
-                "first_seen_at": None,
-                "last_connected_at": None,
-                "last_interaction_at": None,
-            }
-        )
-    elif not live_id and not devices and live_status.get("host"):
-        devices.append(
-            {
-                **live_status,
-                "device_id": "not-yet-seen",
-                "first_seen_at": None,
-                "last_connected_at": None,
-                "last_interaction_at": None,
-            }
-        )
+        live_status = live_by_id.get(device["device_id"])
+        device["connected"] = bool(live_status and live_status["connected"])
+    known_ids = {device["device_id"] for device in devices}
+    devices.extend(
+        {
+            **live_status,
+            "first_seen_at": None,
+            "last_connected_at": None,
+            "last_interaction_at": None,
+        }
+        for live_status in live_statuses
+        if live_status.get("device_id") not in known_ids
+    )
+    if not devices and device_manager is not None:
+        pending_status = device_manager.status()
+        if pending_status.get("host"):
+            devices.append(
+                {
+                    **pending_status,
+                    "device_id": "not-yet-seen",
+                    "first_seen_at": None,
+                    "last_connected_at": None,
+                    "last_interaction_at": None,
+                }
+            )
     return devices
 
 
@@ -421,3 +430,10 @@ def debug_retrieve(payload: QueryRequest) -> RetrievalDebugResponse:
 @router.get("/debug/pipeline", response_model=PipelineStatusResponse)
 def debug_pipeline(limit: int = Query(default=10, ge=1, le=100)) -> PipelineStatusResponse:
     return PipelineStatusResponse(**pipeline_status(limit=limit))
+
+
+def _get_esphome_device_manager(request: Request):
+    """Return the device manager, with compatibility for older app fixtures."""
+    return getattr(request.app.state, "esphome_device_manager", None) or getattr(
+        request.app.state, "esphome_voice_client", None
+    )
