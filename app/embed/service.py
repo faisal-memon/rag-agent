@@ -6,10 +6,10 @@ from time import monotonic
 from psycopg.types.json import Json
 
 from app.core.chunking import chunk_text
-from app.embed.config import get_embed_settings
 from app.core.db import db_cursor
 from app.core.embeddings import embed_texts
 from app.core.files import file_checksum
+from app.embed.config import get_embed_settings, refresh_embed_settings
 
 NORMALIZED_DOCUMENTS_DIR = "documents"
 NORMALIZED_METADATA_DIR = "metadata"
@@ -30,6 +30,7 @@ DOCUMENT_MISSING_SINCE_COL = 12
 
 
 def reindex_artifact(path: Path) -> dict:
+    refresh_embed_settings()
     started_at = monotonic()
     indexing_strategy = _current_indexing_strategy()
     markdown_path = _markdown_path_from_normalized_artifact(path)
@@ -141,7 +142,7 @@ def _artifact_result(
 
 
 def reindex_source() -> dict:
-    settings = get_embed_settings()
+    settings = refresh_embed_settings()
     scan_dir = _scan_dir()
     scan_dir.mkdir(parents=True, exist_ok=True)
     started_at = monotonic()
