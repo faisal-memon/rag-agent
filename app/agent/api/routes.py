@@ -18,7 +18,17 @@ from app.agent.agent import Agent
 from app.agent.config import get_api_settings
 from app.agent.piper_service import PiperService
 from app.embed.config import get_embed_settings
-from app.agent.conversations import append_messages, delete_conversation, get_conversation, list_conversations, load_or_create
+from app.agent.conversations import (
+    append_messages,
+    complete_agent_request,
+    create_agent_request,
+    delete_conversation,
+    fail_agent_request,
+    get_agent_request,
+    get_conversation,
+    list_conversations,
+    load_or_create,
+)
 from app.agent.api.schemas import (
     AgentRuntimeSettings,
     AgentQueryRequest,
@@ -380,6 +390,7 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
     request_id = uuid.uuid4().hex
     started_at = time.monotonic()
     conversation_id, saved_history, user = _load_conversation(request, payload)
+    create_agent_request(user, conversation_id, request_id)
     history = saved_history
     agent = _agent(request)
     events: Queue[dict | None] = Queue()
@@ -403,15 +414,21 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
             saved_question = payload.question + ("\n[Image attached for this turn; image not saved]" if payload.image_data_url else "")
             append_messages(user, conversation_id, [{"role": "user", "content": saved_question}, {"role": "assistant", "content": result["answer"]}])
             result["conversation_id"] = conversation_id
+            complete_agent_request(user, request_id, result)
             events.put({"type": "complete", "result": result})
             logger.info("Agent worker completed request_id=%s", request_id)
         except Exception as exc:  # pragma: no cover - exercised by the browser error path
             logger.exception("Agent worker failed request_id=%s", request_id)
-            events.put({
+            error_event = {
                 "type": "error",
                 "message": _agent_exception_message(exc),
                 "error_type": type(exc).__name__,
-            })
+            }
+            try:
+                fail_agent_request(user, request_id, error_event)
+            except Exception:
+                logger.exception("Could not persist failed agent request request_id=%s", request_id)
+            events.put(error_event)
         finally:
             events.put(None)
             worker_finished.set()
@@ -472,6 +489,19 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
             "X-Request-ID": request_id,
         },
     )
+
+
+@router.get("/agent/requests/{request_id}")
+def agent_request_status(request: Request, request_id: str, response: Response) -> dict:
+    """Fetch a completed result after the browser's event stream has disconnected."""
+    user = _conversation_user(request)
+    if len(request_id) != 32 or any(char not in "0123456789abcdef" for char in request_id):
+        raise HTTPException(status_code=404, detail="Request not found")
+    stored = get_agent_request(user, request_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    response.headers["Cache-Control"] = "no-store"
+    return {"request_id": request_id, **stored}
 
 
 @router.post("/debug/retrieve", response_model=RetrievalDebugResponse)
