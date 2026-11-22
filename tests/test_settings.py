@@ -135,7 +135,7 @@ class SettingsApiTest(unittest.TestCase):
             app=SimpleNamespace(state=SimpleNamespace(agent=StreamingAgent())),
             headers={"Remote-User": "test-user"},
         )
-        with patch("app.agent.api.routes.load_or_create", return_value=("00000000-0000-0000-0000-000000000001", [])), patch("app.agent.api.routes.append_messages"):
+        with patch("app.agent.api.routes.load_or_create", return_value=("00000000-0000-0000-0000-000000000001", [])), patch("app.agent.api.routes.create_agent_request"), patch("app.agent.api.routes.complete_agent_request"), patch("app.agent.api.routes.append_messages"):
             response = routes.stream_agent_query(request, AgentQueryRequest(question="What is lunch?"))
             request_id = response.headers["x-request-id"]
 
@@ -188,7 +188,7 @@ class SettingsApiTest(unittest.TestCase):
             app=SimpleNamespace(state=SimpleNamespace(agent=FailingAgent())),
             headers={"Remote-User": "test-user"},
         )
-        with patch("app.agent.api.routes.load_or_create", return_value=("00000000-0000-0000-0000-000000000001", [])):
+        with patch("app.agent.api.routes.load_or_create", return_value=("00000000-0000-0000-0000-000000000001", [])), patch("app.agent.api.routes.create_agent_request"), patch("app.agent.api.routes.fail_agent_request"):
             response = routes.stream_agent_query(request, AgentQueryRequest(question="What is lunch?"))
 
             async def read_stream():
