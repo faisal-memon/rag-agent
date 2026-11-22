@@ -205,7 +205,12 @@ def sanitize_step(step: Any, catalog: tools.ToolCatalog | None = None) -> dict |
                 requested_day = date.fromisoformat(str(requested_day)).isoformat()
             except ValueError:
                 requested_day = None
-        return {"tool": tool, "arguments": {"day": requested_day}}
+        normalized_arguments = {"day": requested_day}
+        if tool == "get_weather":
+            location = str(arguments.get("location") or "").strip()
+            if location:
+                normalized_arguments["location"] = location[:120]
+        return {"tool": tool, "arguments": normalized_arguments}
 
     if tool == "get_upcoming_yoga_classes":
         return {"tool": tool, "arguments": {}}
