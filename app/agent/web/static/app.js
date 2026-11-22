@@ -44,6 +44,7 @@ let pendingConversation = false;
 let showAllConversations = false;
 let mediaRecorder = null;
 let recordedChunks = [];
+let sendRecordingAfterStop = false;
 let activeSpeech = null;
 const speechAudio = new Audio();
 speechAudio.preload = "auto";
@@ -1287,10 +1288,7 @@ async function runAgent() {
 
 async function toggleRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    recordButton.disabled = true;
-    status.classList.remove("error");
-    status.textContent = "Transcribing recording...";
+    stopRecording();
     return;
   }
 
@@ -1302,17 +1300,23 @@ async function toggleRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordedChunks = [];
+    sendRecordingAfterStop = false;
     mediaRecorder = new MediaRecorder(stream);
     mediaRecorder.addEventListener("dataavailable", (event) => {
       if (event.data.size) recordedChunks.push(event.data);
     });
     mediaRecorder.addEventListener("stop", async () => {
       stream.getTracks().forEach((track) => track.stop());
-      const audio = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      const recorder = mediaRecorder;
+      const shouldSend = sendRecordingAfterStop;
+      sendRecordingAfterStop = false;
+      const audio = new Blob(recordedChunks, { type: recorder?.mimeType || "audio/webm" });
       mediaRecorder = null;
       recordButton.classList.remove("recording");
       recordButton.setAttribute("aria-label", "Record message");
       recordButton.title = "Record message";
+      agentButton.setAttribute("aria-label", "Send message");
+      agentButton.title = "Send message";
       try {
         const form = new FormData();
         form.append("audio", audio, "recording.webm");
@@ -1323,24 +1327,50 @@ async function toggleRecording() {
           throw new Error(data.detail || "Transcription failed.");
         }
         question.value = data.text;
-        question.focus();
         status.classList.remove("error");
-        status.textContent = "Transcript is ready to review.";
+        if (shouldSend) {
+          await runAgent();
+        } else {
+          question.focus();
+          status.textContent = "Transcript is ready to review.";
+        }
       } catch (error) {
         showRecordingError(error.message || "Transcription failed.");
       } finally {
         recordButton.disabled = false;
+        agentButton.disabled = false;
       }
     });
     mediaRecorder.start();
     recordButton.classList.add("recording");
     recordButton.setAttribute("aria-label", "Stop recording");
     recordButton.title = "Stop recording";
+    agentButton.setAttribute("aria-label", "Stop recording and send");
+    agentButton.title = "Stop recording and send";
     status.classList.remove("error");
     status.textContent = "Recording...";
   } catch (_error) {
     showRecordingError("Microphone access was not granted.");
   }
+}
+
+function stopRecording(sendAfterTranscription = false) {
+  if (!mediaRecorder || mediaRecorder.state !== "recording") return false;
+
+  sendRecordingAfterStop = sendAfterTranscription;
+  mediaRecorder.stop();
+  recordButton.disabled = true;
+  agentButton.disabled = true;
+  status.classList.remove("error");
+  status.textContent = sendAfterTranscription
+    ? "Transcribing and sending recording..."
+    : "Transcribing recording...";
+  return true;
+}
+
+function handleAgentButtonClick() {
+  if (stopRecording(true)) return;
+  runAgent();
 }
 
 async function loadPipelineStatus() {
@@ -1380,7 +1410,7 @@ async function loadPipelineStatus() {
 }
 
 button.addEventListener("click", () => runQuery());
-agentButton.addEventListener("click", runAgent);
+agentButton.addEventListener("click", handleAgentButtonClick);
 recordButton.addEventListener("click", toggleRecording);
 
 if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
