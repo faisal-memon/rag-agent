@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from psycopg.types.json import Jsonb
+
 from app.agent.config import get_api_settings
 from app.core.db import db_cursor
 
@@ -26,6 +28,17 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_conversation_messages_order
   ON conversation_messages (conversation_id, id);
+CREATE TABLE IF NOT EXISTS agent_requests (
+  request_id TEXT PRIMARY KEY,
+  user_name TEXT NOT NULL,
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('running', 'complete', 'error', 'interrupted')),
+  result JSONB,
+  error JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '24 hours'
+);
+CREATE INDEX IF NOT EXISTS idx_agent_requests_expiration ON agent_requests (expires_at);
 """
 
 
@@ -71,6 +84,66 @@ def append_messages(user_name: str, conversation_id: str, messages: list[dict]) 
         )
         cur.execute("UPDATE conversations SET updated_at = NOW() WHERE id = %s", (UUID(conversation_id),))
         conn.commit()
+
+
+def create_agent_request(user_name: str, conversation_id: str, request_id: str) -> None:
+    """Persist a running request so its result can be recovered after a stream drops."""
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute("DELETE FROM agent_requests WHERE expires_at <= NOW()")
+        cur.execute(
+            """INSERT INTO agent_requests (request_id, user_name, conversation_id, status)
+               VALUES (%s, %s, %s, 'running')""",
+            (request_id, user_name, UUID(conversation_id)),
+        )
+        conn.commit()
+
+
+def complete_agent_request(user_name: str, request_id: str, result: dict) -> None:
+    """Store the completed response for the authenticated request owner."""
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute(
+            """UPDATE agent_requests SET status = 'complete', result = %s, error = NULL
+               WHERE request_id = %s AND user_name = %s AND status = 'running'""",
+            (Jsonb(result), request_id, user_name),
+        )
+        conn.commit()
+
+
+def fail_agent_request(user_name: str, request_id: str, error: dict) -> None:
+    """Store a bounded error response for later retrieval."""
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute(
+            """UPDATE agent_requests SET status = 'error', error = %s
+               WHERE request_id = %s AND user_name = %s AND status = 'running'""",
+            (Jsonb(error), request_id, user_name),
+        )
+        conn.commit()
+
+
+def get_agent_request(user_name: str, request_id: str) -> dict | None:
+    """Return a non-expired request only to the user who started it."""
+    with db_cursor(get_api_settings().database) as (conn, cur):
+        _ensure_schema(cur)
+        cur.execute(
+            """UPDATE agent_requests SET status = 'interrupted'
+               WHERE request_id = %s AND user_name = %s AND status = 'running'
+                 AND created_at <= NOW() - INTERVAL '15 minutes'
+                 AND expires_at > NOW()""",
+            (request_id, user_name),
+        )
+        cur.execute(
+            """SELECT status, result, error FROM agent_requests
+               WHERE request_id = %s AND user_name = %s AND expires_at > NOW()""",
+            (request_id, user_name),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    if row is None:
+        return None
+    return {"status": row[0], "result": row[1], "error": row[2]}
 
 def list_conversations(user_name: str, limit: int = 50) -> list[dict]:
     with db_cursor(get_api_settings().database) as (conn, cur):

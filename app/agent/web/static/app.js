@@ -751,14 +751,18 @@ function restoreAgentConversation(messages) {
   return messages.map((message) => {
     if (message.role !== "assistant") return message;
     const wasInterrupted = Boolean(message.streaming);
+    const canRecover = wasInterrupted && Boolean(message.requestId);
     const progress = (message.progress || []).filter((event) => event.type !== "thinking");
     return {
       ...message,
-      content: wasInterrupted && !message.content
-        ? "This request was interrupted before a response arrived."
+      content: canRecover
+        ? "Connection lost. Checking for the completed response…"
+        : wasInterrupted && !message.content
+          ? "This request was interrupted before a response arrived."
         : message.content,
       progress,
       streaming: false,
+      recoverable: canRecover,
     };
   });
 }
@@ -1023,6 +1027,105 @@ async function runQuery(requestedOffset = 0) {
   }
 }
 
+function showAgentResult(data, progressMessage, recovered = false) {
+  if (data.conversation_id) {
+    agentConversationId = data.conversation_id;
+    pendingConversation = false;
+    localStorage.setItem(agentConversationIdKey, agentConversationId);
+    loadConversations();
+  }
+  Object.assign(progressMessage, {
+    content: data.answer || "No answer returned.",
+    plan: data.plan || [],
+    toolResults: data.tool_results || [],
+    reasoning: data.reasoning || [],
+    debug: data.debug || [],
+    citations: data.citations || [],
+    streaming: false,
+    recoverable: false,
+  });
+  status.textContent = recovered
+    ? "Recovered the completed response."
+    : `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
+  if (!recovered && speakReplies && data.answer) speakText(data.answer);
+}
+
+function showAgentRequestError(event, progressMessage, requestId = null) {
+  const errorMessage = event.message || "Agent request failed.";
+  const requestReference = requestId ? ` (request ${requestId})` : "";
+  Object.assign(progressMessage, {
+    content: `Agent request failed: ${errorMessage}${requestReference}`,
+    error: errorMessage,
+    streaming: false,
+    recoverable: false,
+    progress: [
+      ...(progressMessage.progress || []),
+      { type: "error", message: `${errorMessage}${requestReference}` },
+    ],
+  });
+  status.textContent = "Agent query failed.";
+  renderAgentConversation();
+}
+
+async function recoverAgentRequest(requestId, progressMessage) {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`/agent/requests/${encodeURIComponent(requestId)}`, {
+        cache: "no-store",
+      });
+      if (redirectToLoginIfNeeded(response)) return false;
+      if (response.status === 404) throw new Error("The server no longer has a saved result for this request.");
+      if (!response.ok) throw new Error(`Request recovery failed with HTTP ${response.status}`);
+      const request = await response.json();
+      lastError = null;
+      if (request.status === "complete") {
+        showAgentResult(request.result || {}, progressMessage, true);
+        saveAgentConversation();
+        renderAgentConversation();
+        return true;
+      }
+      if (request.status === "error") {
+        showAgentRequestError(request.error || {}, progressMessage, requestId);
+        saveAgentConversation();
+        return true;
+      }
+      if (request.status === "interrupted") {
+        throw new Error("The server stopped before this request completed.");
+      }
+      status.textContent = "Reconnecting to retrieve the response…";
+    } catch (error) {
+      lastError = error;
+      if (error.message.includes("no longer has a saved result")
+          || error.message.includes("stopped before this request completed")) {
+        break;
+      }
+      status.textContent = "Waiting for the server to finish the request…";
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 2500));
+  }
+
+  Object.assign(progressMessage, {
+    content: `The response could not be recovered${lastError ? `: ${lastError.message}` : "."} (request ${requestId})`,
+    streaming: false,
+    recoverable: false,
+  });
+  saveAgentConversation();
+  renderAgentConversation();
+  status.textContent = `Unable to recover request ${requestId}.`;
+  return false;
+}
+
+async function resumeSavedAgentRequests() {
+  const pending = agentConversation.filter((message) => message.recoverable && message.requestId);
+  if (!pending.length) return;
+  result.classList.add("visible");
+  for (const message of pending) {
+    await recoverAgentRequest(message.requestId, message);
+  }
+}
+
 async function runAgent() {
   if (imagePreparing) {
     status.textContent = "Wait for the photo to finish preparing.";
@@ -1085,6 +1188,11 @@ async function runAgent() {
     });
     trace.headersAt = performance.now();
     trace.requestId = response.headers.get("X-Request-ID");
+    if (trace.requestId) {
+      progressMessage.requestId = trace.requestId;
+      progressMessage.recoverable = true;
+      saveAgentConversation();
+    }
     console.info("Agent stream response received", {
       requestId: trace.requestId,
       status: response.status,
@@ -1101,36 +1209,11 @@ async function runAgent() {
       trace.eventCount += 1;
       if (event.type === "complete") {
         const data = event.result || {};
-        if (data.conversation_id) {
-          agentConversationId = data.conversation_id;
-          pendingConversation = false;
-          localStorage.setItem(agentConversationIdKey, agentConversationId);
-          loadConversations();
-        }
-        Object.assign(progressMessage, {
-          content: data.answer || "No answer returned.",
-          plan: data.plan || [],
-          toolResults: data.tool_results || [],
-          reasoning: data.reasoning || [],
-          debug: data.debug || [],
-          citations: data.citations || [],
-          streaming: false,
-        });
-        status.textContent = `Agent completed ${Number((data.tool_results || []).length)} tool call(s).`;
-        if (speakReplies && data.answer) speakText(data.answer);
+        trace.finalEventReceived = true;
+        showAgentResult(data, progressMessage);
       } else if (event.type === "error") {
-        const errorMessage = event.message || "Agent request failed.";
-        Object.assign(progressMessage, {
-          content: `Agent request failed: ${errorMessage}`,
-          error: errorMessage,
-          streaming: false,
-          progress: [
-            ...(progressMessage.progress || []),
-            { type: "error", message: errorMessage },
-          ],
-        });
-        status.textContent = "Agent query failed.";
-        renderAgentConversation();
+        trace.finalEventReceived = true;
+        showAgentRequestError(event, progressMessage);
       } else {
         progressMessage.progress.push(event);
         status.textContent = event.type === "tool_call" ? progressToolTitle(event.tool, event.arguments) : "Agent is working...";
@@ -1143,6 +1226,9 @@ async function runAgent() {
       trace.chunkCount += 1;
       trace.byteCount += byteCount;
     });
+    if (!trace.finalEventReceived && trace.requestId) {
+      await recoverAgentRequest(trace.requestId, progressMessage);
+    }
     console.info("Agent stream ended", {
       requestId: trace.requestId,
       elapsedMs: Math.round(performance.now() - trace.startedAt),
@@ -1168,6 +1254,12 @@ async function runAgent() {
       errorName: error.name,
       errorMessage,
     });
+    if (trace.requestId) {
+      progressMessage.recoverable = true;
+      progressMessage.requestId = trace.requestId;
+      status.textContent = "Connection lost. Checking for the completed response…";
+      if (await recoverAgentRequest(trace.requestId, progressMessage)) return;
+    }
     Object.assign(progressMessage, {
       content: `Agent request failed: ${errorMessage}${requestReference}`,
       error: errorMessage,
@@ -1176,6 +1268,7 @@ async function runAgent() {
         { type: "error", message: `${errorMessage}${requestReference}` },
       ],
       streaming: false,
+      recoverable: false,
     });
     saveAgentConversation();
     renderAgentConversation();
@@ -1319,3 +1412,4 @@ question.addEventListener("keydown", (event) => {
   }
 });
 renderAgentConversation();
+resumeSavedAgentRequests();
