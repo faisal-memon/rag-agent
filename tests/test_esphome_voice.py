@@ -57,7 +57,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
                 for line in logs.output
             )
         )
-        self.assertIsNone(self.client._session_id)
+        self.assertIsNone(self.client._session)
 
     def test_unintelligible_transcript_filter_keeps_short_valid_requests(self):
         self.assertTrue(_is_unintelligible_transcript(""))
@@ -80,11 +80,11 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
         await self.client._handle_session_start("follow-up-timeout", 0, None, None)
 
-        self.assertTrue(self.client._session_is_follow_up)
+        self.assertTrue(self.client._session.is_follow_up)
         self.assertEqual(
             self.client._settings.voice_follow_up_window_seconds
             + self.client._settings.voice_follow_up_audio_grace_seconds,
-            self.client._vad._no_speech_timeout_seconds,
+            self.client._session.vad._no_speech_timeout_seconds,
         )
 
     async def test_follow_up_accepts_wake_word_callback_from_device(self):
@@ -93,16 +93,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
         await self.client._handle_session_start("follow-up-wake-word", 0, None, "Okay Nabu")
 
-        self.assertTrue(self.client._session_is_follow_up)
-        self.assertEqual(VoiceModeState.CAPTURING, self.client._voice_state_machine.state)
-
-    async def test_follow_up_accepts_wake_word_callback_from_device(self):
-        self.client._follow_up_pending = True
-        self.client._voice_state_machine.state = VoiceModeState.FOLLOWUP_LISTENING
-
-        await self.client._handle_session_start("follow-up-wake-word", 0, None, "Okay Nabu")
-
-        self.assertTrue(self.client._session_is_follow_up)
+        self.assertTrue(self.client._session.is_follow_up)
         self.assertEqual(VoiceModeState.CAPTURING, self.client._voice_state_machine.state)
 
     def test_spoken_tool_status_uses_generic_fallback_when_missing_or_oversized(self):
@@ -152,7 +143,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
 
         speak_reply.assert_not_awaited()
         finish_voice_run.assert_called_once_with()
-        self.assertEqual(self.client._session_audio, bytearray())
+        self.assertIsNone(self.client._session)
 
     async def test_unintelligible_follow_up_ends_quietly(self):
         self.client._follow_up_pending = True
@@ -273,7 +264,7 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             await self.client._handle_session_stop(aborted=True)
 
         transcribe.assert_called_once()
-        self.assertIsNone(self.client._session_id)
+        self.assertIsNone(self.client._session)
 
     async def test_oversized_session_is_discarded_and_next_session_can_run(self):
         await self.client._handle_session_start("conversation-large", 0, None, None)
@@ -281,11 +272,11 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             await self.client._handle_audio(b"\x01\x00\x02\x00")
             await self.client._handle_audio(b"\x03\x00\x04\x00")
 
-        self.assertTrue(self.client._session_audio_truncated)
+        self.assertTrue(self.client._session.audio_truncated)
         with patch("app.agent.esphome_voice.transcribe_audio") as transcribe:
             await self.client._handle_session_stop(aborted=False)
         transcribe.assert_not_called()
-        self.assertIsNone(self.client._session_id)
+        self.assertIsNone(self.client._session)
 
         await self.client._handle_session_start("conversation-next", 0, None, None)
         await self.client._handle_audio(b"\x01\x00")
@@ -298,4 +289,4 @@ class ESPHomeVoiceClientTest(IsolatedAsyncioTestCase):
             await self.client._handle_audio(b"\x01\x00")
 
         transcribe.assert_not_called()
-        self.assertEqual(self.client._session_audio, bytearray())
+        self.assertIsNone(self.client._session)
