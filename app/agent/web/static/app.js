@@ -925,7 +925,7 @@ function hideAgentConversation() {
   agentChatToolbar.classList.remove("visible");
 }
 
-async function readAgentProgress(response, onEvent) {
+async function readAgentProgress(response, onEvent, onChunk = () => {}) {
   if (!response.body) {
     throw new Error("This browser does not support streamed agent updates.");
   }
@@ -950,6 +950,7 @@ async function readAgentProgress(response, onEvent) {
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    onChunk(value?.byteLength || 0);
     consume(decoder.decode(value, { stream: true }));
   }
   consume(decoder.decode());
@@ -1065,11 +1066,29 @@ async function runAgent() {
   pager.classList.remove("visible");
   citations.innerHTML = "";
 
+  const trace = {
+    requestId: null,
+    startedAt: performance.now(),
+    headersAt: null,
+    firstChunkAt: null,
+    lastChunkAt: null,
+    chunkCount: 0,
+    byteCount: 0,
+    eventCount: 0,
+  };
+
   try {
     const response = await fetch("/agent/query/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ conversation_id: agentConversationId, question: value, image_data_url: imageDataUrl }),
+    });
+    trace.headersAt = performance.now();
+    trace.requestId = response.headers.get("X-Request-ID");
+    console.info("Agent stream response received", {
+      requestId: trace.requestId,
+      status: response.status,
+      headersAfterMs: Math.round(trace.headersAt - trace.startedAt),
     });
 
     if (redirectToLoginIfNeeded(response)) return;
@@ -1079,6 +1098,7 @@ async function runAgent() {
     }
 
     await readAgentProgress(response, (event) => {
+      trace.eventCount += 1;
       if (event.type === "complete") {
         const data = event.result || {};
         if (data.conversation_id) {
@@ -1116,11 +1136,37 @@ async function runAgent() {
         status.textContent = event.type === "tool_call" ? progressToolTitle(event.tool, event.arguments) : "Agent is working...";
       }
       renderAgentConversation();
+    }, (byteCount) => {
+      const now = performance.now();
+      trace.firstChunkAt ??= now;
+      trace.lastChunkAt = now;
+      trace.chunkCount += 1;
+      trace.byteCount += byteCount;
+    });
+    console.info("Agent stream ended", {
+      requestId: trace.requestId,
+      elapsedMs: Math.round(performance.now() - trace.startedAt),
+      firstChunkAfterMs: trace.firstChunkAt === null ? null : Math.round(trace.firstChunkAt - trace.startedAt),
+      chunkCount: trace.chunkCount,
+      bytesReceived: trace.byteCount,
+      eventCount: trace.eventCount,
     });
     saveAgentConversation();
     renderAgentConversation();
   } catch (error) {
     const errorMessage = error.message || "Agent request failed.";
+    console.warn("Agent stream failed", {
+      requestId: trace.requestId,
+      elapsedMs: Math.round(performance.now() - trace.startedAt),
+      headersAfterMs: trace.headersAt === null ? null : Math.round(trace.headersAt - trace.startedAt),
+      firstChunkAfterMs: trace.firstChunkAt === null ? null : Math.round(trace.firstChunkAt - trace.startedAt),
+      msSinceLastChunk: trace.lastChunkAt === null ? null : Math.round(performance.now() - trace.lastChunkAt),
+      chunkCount: trace.chunkCount,
+      bytesReceived: trace.byteCount,
+      eventCount: trace.eventCount,
+      errorName: error.name,
+      errorMessage,
+    });
     Object.assign(progressMessage, {
       content: `Agent request failed: ${errorMessage}`,
       error: errorMessage,
@@ -1132,7 +1178,9 @@ async function runAgent() {
     });
     saveAgentConversation();
     renderAgentConversation();
-    status.textContent = "Agent query failed.";
+    status.textContent = trace.requestId
+      ? `Agent query failed (request ${trace.requestId}).`
+      : "Agent query failed before the server returned a request ID.";
   } finally {
     result.classList.add("visible");
     button.disabled = false;
