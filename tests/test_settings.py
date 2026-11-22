@@ -117,8 +117,9 @@ class SettingsApiTest(unittest.TestCase):
 
     def test_agent_stream_emits_progress_before_the_final_response(self) -> None:
         class StreamingAgent:
-            def answer(self, _question, history=None, on_progress=None):
+            def answer(self, _question, history=None, on_progress=None, request_id=None):
                 self.history = history
+                self.request_id = request_id
                 on_progress({"type": "thinking", "message": "Thinking"})
                 on_progress({"type": "tool_call", "tool": "get_school_lunch", "arguments": {}})
                 return {
@@ -136,6 +137,7 @@ class SettingsApiTest(unittest.TestCase):
         )
         with patch("app.agent.api.routes.load_or_create", return_value=("00000000-0000-0000-0000-000000000001", [])), patch("app.agent.api.routes.append_messages"):
             response = routes.stream_agent_query(request, AgentQueryRequest(question="What is lunch?"))
+            request_id = response.headers["x-request-id"]
 
             async def read_stream():
                 return [chunk async for chunk in response.body_iterator]
@@ -146,6 +148,7 @@ class SettingsApiTest(unittest.TestCase):
         self.assertIn('"type":"thinking"', body)
         self.assertIn('"type":"tool_call"', body)
         self.assertIn('"type":"complete"', body)
+        self.assertEqual(request_id, request.app.state.agent.request_id)
 
     def test_text_to_speech_returns_piper_audio(self) -> None:
         piper_service = SimpleNamespace(synthesize_flac=AsyncMock(return_value=b"flac bytes"))
@@ -170,7 +173,7 @@ class SettingsApiTest(unittest.TestCase):
 
     def test_agent_stream_keeps_progress_when_the_agent_fails(self) -> None:
         class FailingAgent:
-            def answer(self, _question, history=None, on_progress=None):
+            def answer(self, _question, history=None, on_progress=None, request_id=None):
                 on_progress({"type": "thinking", "message": "Thinking"})
                 on_progress({"type": "tool_call", "tool": "get_school_lunch", "arguments": {"day": "today"}})
                 on_progress({
