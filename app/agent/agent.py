@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import threading
+import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 from pathlib import Path
@@ -31,6 +33,7 @@ DOCUMENT_SEARCH_TOOLS = frozenset(
 IDENTITY_ONBOARDING_QUESTION = "Before I search your documents, what name should I use to identify your records?"
 ProgressCallback = Callable[[dict], None]
 logger = logging.getLogger(__name__)
+_request_id_context: ContextVar[str] = ContextVar("agent_request_id", default="-")
 
 
 @dataclass
@@ -82,9 +85,45 @@ class Agent:
         profile_name: str | None = None,
         response_mode: Literal["text", "spoken"] = "text",
         image_data_url: str | None = None,
+        request_id: str | None = None,
+    ) -> dict:
+        """Answer one question while attaching its trace ID to agent logs."""
+        trace_id = request_id or "-"
+        token = _request_id_context.set(trace_id)
+        started_at = time.monotonic()
+        outcome = "ok"
+        logger.info("Agent request started request_id=%s thread=%s", trace_id, threading.get_ident())
+        try:
+            return self._answer(
+                question,
+                history=history,
+                on_progress=on_progress,
+                profile_name=profile_name,
+                response_mode=response_mode,
+                image_data_url=image_data_url,
+            )
+        except Exception:
+            outcome = "error"
+            raise
+        finally:
+            logger.info(
+                "Agent request finished request_id=%s outcome=%s elapsed_ms=%d",
+                trace_id,
+                outcome,
+                round((time.monotonic() - started_at) * 1000),
+            )
+            _request_id_context.reset(token)
+
+    def _answer(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        on_progress: ProgressCallback | None = None,
+        profile_name: str | None = None,
+        response_mode: Literal["text", "spoken"] = "text",
+        image_data_url: str | None = None,
     ) -> dict:
         """Answer one user question using bounded model-selected tools."""
-        logger.info("Agent input (thread=%s): %r", threading.get_ident(), question)
         if not self.memory.loaded:
             self.startup()
         turn = TurnContext(
@@ -118,8 +157,6 @@ class Agent:
             _emit_progress(turn.on_progress, "thinking", message="Preparing answer")
             answer = _synthesize_answer(self, turn)
         citations = _citations_from_tool_results(turn.tool_results)
-        logger.info("Agent final answer (thread=%s): %r", threading.get_ident(), answer)
-
         return {
             "answer": answer,
             "continue_listening": turn.continue_listening,
@@ -155,10 +192,9 @@ class Agent:
             if latitude is not None and longitude is not None
             else tools.ToolExecutionContext()
         )
-        logger.info(
-            "Agent tool call (thread=%s, tool=%s): arguments=%r",
-            threading.get_ident(), tool, arguments,
-        )
+        started_at = time.monotonic()
+        request_id = _request_id_context.get()
+        logger.info("Agent tool started request_id=%s thread=%s tool=%s", request_id, threading.get_ident(), tool)
         try:
             if tool == "remember":
                 if not self.settings.memory_enabled:
@@ -185,8 +221,12 @@ class Agent:
             result = {"error": str(exc)}
 
         logger.info(
-            "Agent tool result (thread=%s, tool=%s): arguments=%r result=%r",
-            threading.get_ident(), tool, arguments, result,
+            "Agent tool finished request_id=%s thread=%s tool=%s outcome=%s elapsed_ms=%d",
+            request_id,
+            threading.get_ident(),
+            tool,
+            "error" if isinstance(result, dict) and result.get("error") else "ok",
+            round((time.monotonic() - started_at) * 1000),
         )
         return {"tool": tool, "arguments": arguments, "result": result}
 
@@ -686,10 +726,57 @@ def _complete_text(
     response_format: dict[str, Any] | None = None,
     temperature: float | None = None,
 ) -> str:
+    started_at = time.monotonic()
+    request_id = _request_id_context.get()
     logger.info(
-        "Agent model request (thread=%s, phase=%s, model=%s): system=%r prompt=%r",
-        threading.get_ident(), phase, model, system, prompt,
+        "Agent model request started request_id=%s thread=%s phase=%s model=%s",
+        request_id, threading.get_ident(), phase, model,
     )
+    try:
+        result = _complete_text_request(
+            client,
+            model,
+            system,
+            prompt,
+            settings,
+            reasoning=reasoning,
+            phase=phase,
+            image_data_url=image_data_url,
+            response_format=response_format,
+            temperature=temperature,
+        )
+    except Exception:
+        logger.exception(
+            "Agent model request failed request_id=%s thread=%s phase=%s elapsed_ms=%d",
+            request_id,
+            threading.get_ident(),
+            phase,
+            round((time.monotonic() - started_at) * 1000),
+        )
+        raise
+    logger.info(
+        "Agent model request completed request_id=%s thread=%s phase=%s elapsed_ms=%d",
+        request_id,
+        threading.get_ident(),
+        phase,
+        round((time.monotonic() - started_at) * 1000),
+    )
+    return result
+
+
+def _complete_text_request(
+    client: OpenAI,
+    model: str,
+    system: str,
+    prompt: str,
+    settings: ApiSettings,
+    reasoning: list[dict] | None = None,
+    phase: str = "",
+    image_data_url: str | None = None,
+    response_format: dict[str, Any] | None = None,
+    temperature: float | None = None,
+) -> str:
+    """Make one model request without logging prompt or response contents."""
     if settings.llm_provider == "llamacpp":
         user_content: str | list[dict[str, object]] = prompt
         if image_data_url:
@@ -713,10 +800,6 @@ def _complete_text(
         message = response.choices[0].message
         reasoning_text = _message_reasoning_content(message)
         _record_reasoning(reasoning, phase, reasoning_text)
-        logger.info(
-            "Agent model response (thread=%s, phase=%s): text=%r reasoning=%r",
-            threading.get_ident(), phase, message.content or "", reasoning_text,
-        )
         return message.content or ""
 
     response_input: str | list[dict[str, object]] = f"{system}\n\n{prompt}"
@@ -729,10 +812,6 @@ def _complete_text(
             ]},
         ]
     response = client.responses.create(model=model, input=response_input)
-    logger.info(
-        "Agent model response (thread=%s, phase=%s): text=%r",
-        threading.get_ident(), phase, response.output_text,
-    )
     return response.output_text
 
 

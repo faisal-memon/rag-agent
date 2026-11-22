@@ -3,8 +3,10 @@
 import asyncio
 import json
 import logging
+import time
+import uuid
 from queue import Empty, Queue
-from threading import Thread
+from threading import Event, Thread
 from typing import Iterator
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
@@ -375,24 +377,36 @@ async def browser_speech_event(payload: BrowserSpeechEvent) -> Response:
 @router.post("/agent/query/stream")
 def stream_agent_query(request: Request, payload: AgentQueryRequest) -> StreamingResponse:
     """Stream concise agent lifecycle events, followed by the final response."""
+    request_id = uuid.uuid4().hex
+    started_at = time.monotonic()
     conversation_id, saved_history, user = _load_conversation(request, payload)
     history = saved_history
     agent = _agent(request)
     events: Queue[dict | None] = Queue()
+    worker_finished = Event()
+    logger.info("Agent stream opened request_id=%s conversation_id=%s", request_id, conversation_id)
 
     def run_agent() -> None:
+        worker_started_at = time.monotonic()
         try:
             profile_name = _conversation_profile_name(request)
             answer_kwargs = {"profile_name": profile_name} if profile_name else {}
             if payload.image_data_url:
                 answer_kwargs["image_data_url"] = payload.image_data_url
-            result = agent.answer(payload.question, history=history, on_progress=events.put, **answer_kwargs)
+            result = agent.answer(
+                payload.question,
+                history=history,
+                on_progress=events.put,
+                request_id=request_id,
+                **answer_kwargs,
+            )
             saved_question = payload.question + ("\n[Image attached for this turn; image not saved]" if payload.image_data_url else "")
             append_messages(user, conversation_id, [{"role": "user", "content": saved_question}, {"role": "assistant", "content": result["answer"]}])
             result["conversation_id"] = conversation_id
             events.put({"type": "complete", "result": result})
+            logger.info("Agent worker completed request_id=%s", request_id)
         except Exception as exc:  # pragma: no cover - exercised by the browser error path
-            logger.exception("Agent request failed", extra={"conversation_id": conversation_id})
+            logger.exception("Agent worker failed request_id=%s", request_id)
             events.put({
                 "type": "error",
                 "message": _agent_exception_message(exc),
@@ -400,24 +414,63 @@ def stream_agent_query(request: Request, payload: AgentQueryRequest) -> Streamin
             })
         finally:
             events.put(None)
+            worker_finished.set()
+            logger.info(
+                "Agent worker stopped request_id=%s elapsed_ms=%d",
+                request_id,
+                round((time.monotonic() - worker_started_at) * 1000),
+            )
 
     def event_stream() -> Iterator[str]:
         worker = Thread(target=run_agent, daemon=True)
         worker.start()
-        while True:
-            try:
-                event = events.get(timeout=5)
-            except Empty:
-                yield ": keep-alive\n\n"
-                continue
-            if event is None:
-                break
-            yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+        stream_completed = False
+        try:
+            while True:
+                try:
+                    event = events.get(timeout=5)
+                except Empty:
+                    yield ": keep-alive\n\n"
+                    continue
+                if event is None:
+                    stream_completed = True
+                    break
+                event_type = str(event.get("type", "unknown"))
+                tool_name = event.get("tool")
+                logger.info(
+                    "Agent stream event request_id=%s type=%s%s elapsed_ms=%d",
+                    request_id,
+                    event_type,
+                    f" tool={tool_name}" if tool_name else "",
+                    round((time.monotonic() - started_at) * 1000),
+                )
+                yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+        except GeneratorExit:
+            logger.warning(
+                "Agent stream disconnected request_id=%s worker_finished=%s elapsed_ms=%d",
+                request_id,
+                worker_finished.is_set(),
+                round((time.monotonic() - started_at) * 1000),
+            )
+            raise
+        finally:
+            if stream_completed:
+                logger.info(
+                    "Agent stream completed request_id=%s elapsed_ms=%d",
+                    request_id,
+                    round((time.monotonic() - started_at) * 1000),
+                )
+            elif not worker_finished.is_set():
+                logger.warning("Agent stream closed before worker finished request_id=%s", request_id)
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Request-ID": request_id,
+        },
     )
 
 
