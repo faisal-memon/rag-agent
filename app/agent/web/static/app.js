@@ -1155,6 +1155,7 @@ async function runAgent() {
     renderAgentConversation();
   } catch (error) {
     const errorMessage = error.message || "Agent request failed.";
+    const requestReference = trace.requestId ? ` (request ${trace.requestId})` : "";
     console.warn("Agent stream failed", {
       requestId: trace.requestId,
       elapsedMs: Math.round(performance.now() - trace.startedAt),
@@ -1168,11 +1169,11 @@ async function runAgent() {
       errorMessage,
     });
     Object.assign(progressMessage, {
-      content: `Agent request failed: ${errorMessage}`,
+      content: `Agent request failed: ${errorMessage}${requestReference}`,
       error: errorMessage,
       progress: [
         ...(progressMessage.progress || []),
-        { type: "error", message: errorMessage },
+        { type: "error", message: `${errorMessage}${requestReference}` },
       ],
       streaming: false,
     });
