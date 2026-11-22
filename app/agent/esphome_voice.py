@@ -488,6 +488,7 @@ class ESPHomeVoiceClient:
         conversation_id = session.conversation_id if session is not None else None
         audio = bytes(session.audio) if session is not None else b""
         truncated = session.audio_truncated if session is not None else False
+        vad_ended = session.vad_ended if session is not None else False
         no_speech_timeout = session.no_speech_timeout if session is not None else False
         session_is_follow_up = session.is_follow_up if session is not None else False
         vad_frames = list(session.vad_frames) if session is not None else []
