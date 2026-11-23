@@ -11,41 +11,72 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
+from app.agent.config import get_api_settings
+
 logger = logging.getLogger(__name__)
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 REQUEST_TIMEOUT_SECONDS = 2
 MAX_ATTEMPTS = 3
 RETRY_DELAY_SECONDS = 0.25
-PACIFIC_TIME = ZoneInfo("America/Los_Angeles")
 SAN_FRANCISCO = (37.7749, -122.4194)
 RETRYABLE_HTTP_STATUSES = {408, 429, 500, 502, 503, 504}
 _WEATHER_CODES = {0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "depositing rime fog", 51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 61: "slight rain", 63: "rain", 65: "heavy rain", 71: "slight snow", 73: "snow", 75: "heavy snow", 80: "rain showers", 81: "rain showers", 82: "heavy rain showers", 95: "thunderstorm", 96: "thunderstorm with hail", 99: "thunderstorm with hail"}
 
 
-def get_weather(day: str | None = None) -> dict:
-    """Get the San Francisco daily summary and upcoming hourly forecast for a date.
+def get_weather(day: str | None = None, location: str | None = None) -> dict:
+    """Get the daily summary and upcoming hourly forecast for a date and place.
 
-    The hourly forecast contains local Pacific timestamps, conditions, temperature,
-    precipitation chance, and precipitation amount. For today, past hours are omitted.
+    The hourly forecast contains the place's local timestamps, conditions, temperature,
+    precipitation chance, and amount. For today, past hours are omitted. An omitted
+    location uses the configured home coordinates.
 
     Args:
-        day: Optional local calendar date in YYYY-MM-DD format. Defaults to today in Pacific time.
+        day: Optional local calendar date in YYYY-MM-DD format. Defaults to today at the place.
+        location: Optional city or place name. Defaults to the configured home location.
     """
-    now = datetime.now(PACIFIC_TIME)
-    requested = date.fromisoformat(day) if day else now.date()
-    params = urlencode({
-        "latitude": SAN_FRANCISCO[0], "longitude": SAN_FRANCISCO[1], "timezone": "America/Los_Angeles",
-        "start_date": requested.isoformat(), "end_date": requested.isoformat(),
+    selected_location = (location or "").strip()
+    if selected_location:
+        place = _geocode_location(selected_location)
+        latitude = place["latitude"]
+        longitude = place["longitude"]
+        location_name = _format_location(place)
+    else:
+        settings = get_api_settings()
+        if settings.home_latitude is not None and settings.home_longitude is not None:
+            latitude = settings.home_latitude
+            longitude = settings.home_longitude
+            location_name = "Home"
+        else:
+            latitude, longitude = SAN_FRANCISCO
+            location_name = "San Francisco, CA"
+
+    params: dict[str, str | float] = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "timezone": "auto",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunrise,sunset",
         "hourly": "weather_code,temperature_2m,precipitation_probability,precipitation",
         "temperature_unit": "fahrenheit", "precipitation_unit": "inch",
-    })
-    request = Request(f"{OPEN_METEO_URL}?{params}", headers={"User-Agent": "rag-agent/0.1"})
+    }
+    if day:
+        requested = date.fromisoformat(day)
+        params["start_date"] = requested.isoformat()
+        params["end_date"] = requested.isoformat()
+    else:
+        params["forecast_days"] = 1
+    request = Request(
+        f"{OPEN_METEO_URL}?{urlencode(params)}",
+        headers={"User-Agent": "rag-agent/0.1"},
+    )
     payload = _fetch_forecast(request)
     daily = payload.get("daily") or {}
     if not daily.get("time"):
         raise ValueError("Weather service returned no forecast for the requested date")
+    place_timezone = ZoneInfo(payload.get("timezone") or "UTC")
+    now = datetime.now(place_timezone)
+    requested = date.fromisoformat(day) if day else date.fromisoformat(daily["time"][0])
     hourly = payload.get("hourly") or {}
     hourly_times = hourly.get("time") or []
     hourly_indexes = range(len(hourly_times))
@@ -63,7 +94,7 @@ def get_weather(day: str | None = None) -> dict:
             "precipitation_inches": _hourly_value(hourly, "precipitation", index),
         })
     return {
-        "location": "San Francisco, CA",
+        "location": location_name,
         "date": daily["time"][0],
         "condition": _WEATHER_CODES.get(daily["weather_code"][0], "unknown conditions"),
         "temperature_high_f": daily["temperature_2m_max"][0],
@@ -75,6 +106,26 @@ def get_weather(day: str | None = None) -> dict:
         "hourly_forecast": hourly_forecast,
         "source": "Open-Meteo",
     }
+
+
+def _geocode_location(location: str) -> dict[str, Any]:
+    """Resolve a user-provided place name to Open-Meteo forecast coordinates."""
+    params = urlencode({"name": location, "count": 10, "language": "en", "format": "json"})
+    request = Request(
+        f"{OPEN_METEO_GEOCODING_URL}?{params}",
+        headers={"User-Agent": "rag-agent/0.1"},
+    )
+    payload = _fetch_forecast(request)
+    results = payload.get("results") or []
+    if not results:
+        raise ValueError(f"Could not find a weather location matching {location!r}")
+    return results[0]
+
+
+def _format_location(place: dict[str, Any]) -> str:
+    """Return a concise city, region, and country label for a geocoded place."""
+    parts = [place.get("name"), place.get("admin1"), place.get("country")]
+    return ", ".join(dict.fromkeys(part for part in parts if part))
 
 
 def _fetch_forecast(request: Request) -> dict:
