@@ -49,7 +49,7 @@ def get_weather(day: str | None = None, location: str | None = None) -> dict:
             longitude = settings.home_longitude
             location_name = "Home"
         else:
-            latitude, longitude = SAN FRANCISCO
+            latitude, longitude = SAN_FRANCISCO
             location_name = "San Francisco, CA"
 
     params: dict[str, str | float] = {
