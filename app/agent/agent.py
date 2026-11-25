@@ -5,7 +5,7 @@ import threading
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, tzinfo
+from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -27,11 +27,6 @@ MAX_DEBUG_TEXT_CHARS = 12000
 MAX_DEBUG_EVENTS = 80
 MAX_DOCUMENT_SEARCH_CALLS = 3
 MAX_PLANNER_FORMAT_ATTEMPTS = 2
-WEATHER_REQUEST_TERMS = re.compile(r"\b(?:weather|forecast|temperature|rain|raining|precipitation|snow)\b", re.I)
-WEATHER_REQUEST_PREFIX = re.compile(
-    r"^(?:what|how|will|is|are|should|can|could|tell|check|give|show)\b|^weather\s+(?:in|for|today|tomorrow)\b",
-    re.I,
-)
 DOCUMENT_SEARCH_TOOLS = frozenset(
     {"search_documents", "keyword_search", "semantic_search", "hybrid_search", "grep_documents"}
 )
@@ -239,7 +234,6 @@ class Agent:
 def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
     """Run bounded planner and tool iterations, returning a direct answer if chosen."""
     decision_feedback = ""
-    weather_arguments = _required_weather_arguments(turn.question, agent.settings.timezone)
 
     for _ in range(turn.max_steps):
         _emit_progress(
@@ -247,24 +241,7 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
             "thinking",
             message="Reviewing available information" if turn.tool_results else "Thinking",
         )
-        if weather_arguments is not None and not any(
-            item.get("tool") == "get_weather" for item in turn.plan
-        ):
-            decision = {
-                "action": "tool",
-                "tool": "get_weather",
-                "arguments": weather_arguments,
-                "status": "Checking the live forecast.",
-            }
-            _append_debug(
-                turn.debug,
-                "controller_decision",
-                phase="planning",
-                decision="require_live_weather_tool",
-                tool="get_weather",
-            )
-        else:
-            decision = _decide_next_action(agent, turn, decision_feedback)
+        decision = _decide_next_action(agent, turn, decision_feedback)
         if (
             decision.get("action") == "tool"
             and decision.get("tool") in DOCUMENT_SEARCH_TOOLS
@@ -290,21 +267,6 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
             continue
         tool_result = _execute_planned_tool(agent, decision, turn)
         result = tool_result.get("result") or {}
-        if weather_arguments is not None and decision["tool"] == "get_weather":
-            if isinstance(result, dict) and result.get("error"):
-                _append_debug(
-                    turn.debug,
-                    "tool_failure",
-                    phase="execution",
-                    tool="get_weather",
-                    error=str(result["error"]),
-                )
-                answer = "I couldn't get a live forecast for that place right now."
-            elif isinstance(result, dict):
-                answer = _format_weather_result(result, turn.question, agent.settings.timezone)
-            else:
-                answer = "I couldn't get a live forecast for that place right now."
-            break
         if isinstance(result, dict) and result.get("error"):
             error = str(result["error"])
             decision_feedback = (
@@ -321,79 +283,6 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
             )
 
     return answer or ""
-
-
-def _required_weather_arguments(question: str, timezone: tzinfo) -> dict | None:
-    """Require a live weather lookup for direct weather requests."""
-    text = question.strip()
-    if not WEATHER_REQUEST_TERMS.search(text) or not WEATHER_REQUEST_PREFIX.search(text):
-        return None
-
-    arguments: dict[str, str] = {}
-    location_match = re.search(r"\b(?:in|near)\s+(.+?)(?=[?!;.]|$)", text, re.I)
-    if location_match is None:
-        location_match = re.search(r"\bfor\s+(.+?)(?=[?!;.]|$)", text, re.I)
-    if location_match:
-        location = re.split(
-            r"\b(?:today|tomorrow|tonight|currently|right now|this morning|this afternoon|this evening)\b",
-            location_match.group(1),
-            maxsplit=1,
-            flags=re.I,
-        )[0].strip(" ,")
-        if location:
-            arguments["location"] = location
-
-    today = datetime.now(timezone).date()
-    if re.search(r"\btomorrow\b", text, re.I):
-        arguments["day"] = (today + timedelta(days=1)).isoformat()
-    elif re.search(r"\btoday\b", text, re.I):
-        arguments["day"] = today.isoformat()
-    return arguments
-
-
-def _format_weather_result(result: dict, question: str, timezone: tzinfo) -> str:
-    """Summarize only fields returned by the live weather service."""
-    location = str(result.get("location") or "the requested location")
-    result_date = str(result.get("date") or "")
-    today = datetime.now(timezone).date().isoformat()
-    if result_date == today:
-        date_label = "today"
-    elif result_date:
-        try:
-            parsed_date = datetime.strptime(result_date, "%Y-%m-%d")
-            date_label = f"on {parsed_date.strftime('%A, %B %d').replace(' 0', ' ')}"
-        except ValueError:
-            date_label = "for the requested date"
-    else:
-        date_label = "for the requested date"
-
-    hourly = result.get("hourly_forecast") or []
-    current = hourly[0] if hourly else {}
-    current_parts = []
-    if current.get("condition"):
-        current_parts.append(str(current["condition"]))
-    if isinstance(current.get("temperature_f"), (int, float)):
-        current_parts.append(f"{round(current['temperature_f'])}°F")
-    if current.get("time"):
-        time_part = str(current["time"]).split("T")[-1][:5]
-        try:
-            time_label = datetime.strptime(time_part, "%H:%M").strftime("%I %p").lstrip("0")
-            current_parts.append(f"around {time_label} local time")
-        except ValueError:
-            pass
-
-    parts = [f"Open-Meteo's forecast for {location} {date_label}"]
-    if current_parts:
-        parts.append("the current-hour forecast is " + " and ".join(current_parts))
-    if result.get("condition"):
-        parts.append(f"the day's outlook is {result['condition']}")
-    if isinstance(result.get("temperature_high_f"), (int, float)):
-        parts.append(f"high {round(result['temperature_high_f'])}°F")
-    if isinstance(result.get("temperature_low_f"), (int, float)):
-        parts.append(f"low {round(result['temperature_low_f'])}°F")
-    if isinstance(result.get("precipitation_probability_percent"), (int, float)):
-        parts.append(f"up to {round(result['precipitation_probability_percent'])}% chance of precipitation")
-    return "; ".join(parts) + "."
 
 
 def _handle_planner_decision(
