@@ -5,5 +5,7 @@ __pycache__/
 .env
 data/
 postgres-data/
+local-chat-data/
+local-chat-config/
 config/runtime-settings.json
 evals/cases.local.json

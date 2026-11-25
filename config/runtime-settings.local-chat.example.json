@@ -1,0 +1,11 @@
+{
+  "api": {
+    "llm_provider": "llamacpp",
+    "llamacpp_base_url": "http://host.docker.internal:8080/v1",
+    "llamacpp_chat_model": "Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M",
+    "query_limit": 8,
+    "agent_max_steps": 6,
+    "embedding_provider": "openai",
+    "openai_embedding_model": "text-embedding-3-small"
+  }
+}

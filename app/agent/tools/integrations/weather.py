@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import date, datetime
 from typing import Any
@@ -110,16 +111,21 @@ def get_weather(day: str | None = None, location: str | None = None) -> dict:
 
 def _geocode_location(location: str) -> dict[str, Any]:
     """Resolve a user-provided place name to Open-Meteo forecast coordinates."""
-    params = urlencode({"name": location, "count": 10, "language": "en", "format": "json"})
-    request = Request(
-        f"{OPEN_METEO_GEOCODING_URL}?{params}",
-        headers={"User-Agent": "rag-agent/0.1"},
-    )
-    payload = _fetch_forecast(request)
-    results = payload.get("results") or []
-    if not results:
-        raise ValueError(f"Could not find a weather location matching {location!r}")
-    return results[0]
+    queries = [location]
+    without_state_code = re.sub(r",?\s+[A-Z]{2}$", "", location, flags=re.I).strip()
+    if without_state_code != location:
+        queries.append(without_state_code)
+    for query in queries:
+        params = urlencode({"name": query, "count": 10, "language": "en", "format": "json"})
+        request = Request(
+            f"{OPEN_METEO_GEOCODING_URL}?{params}",
+            headers={"User-Agent": "rag-agent/0.1"},
+        )
+        payload = _fetch_forecast(request)
+        results = payload.get("results") or []
+        if results:
+            return results[0]
+    raise ValueError(f"Could not find a weather location matching {location!r}")
 
 
 def _format_location(place: dict[str, Any]) -> str:
