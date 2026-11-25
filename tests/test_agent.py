@@ -96,7 +96,7 @@ class AgentTest(unittest.TestCase):
 
     def test_duplicate_tool_call_is_recoverable(self) -> None:
         step = {"tool": "semantic_search", "arguments": {"query": "weather", "limit": 1}}
-        turn = _turn("What is the weather?")
+        turn = _turn("Which item is mentioned in the manual?")
         turn.seen_calls.add(json.dumps(step, sort_keys=True))
         decisions = iter([
             {"action": "tool", **step},
@@ -828,8 +828,11 @@ class AgentTest(unittest.TestCase):
         ):
             result = _agent(settings).answer("What's the weather?", response_mode="spoken")
 
-        self.assertEqual("I could not contact the weather service. Please try again later.", result["answer"])
+        self.assertEqual("I couldn't get a live forecast for that place right now.", result["answer"])
         self.assertIn("tool_failure", [event["event"] for event in result["debug"]])
+        self.assertTrue(
+            any(event.get("decision") == "require_live_weather_tool" for event in result["debug"])
+        )
 
     def test_agent_retries_a_non_json_planner_response(self) -> None:
         responses = iter(

@@ -292,6 +292,13 @@ def _run_agent_loop(agent: Agent, turn: TurnContext) -> str:
         result = tool_result.get("result") or {}
         if weather_arguments is not None and decision["tool"] == "get_weather":
             if isinstance(result, dict) and result.get("error"):
+                _append_debug(
+                    turn.debug,
+                    "tool_failure",
+                    phase="execution",
+                    tool="get_weather",
+                    error=str(result["error"]),
+                )
                 answer = "I couldn't get a live forecast for that place right now."
             elif isinstance(result, dict):
                 answer = _format_weather_result(result, turn.question, agent.settings.timezone)
