@@ -14,7 +14,7 @@ DOCKER_TARGET ?= api
 	docker-build docker-build-api docker-build-embed docker-build-normalize docker-build-all \
 	docker-push docker-push-api docker-push-embed docker-push-normalize docker-push-all \
 	docker-run-worker docker-run-normalize docker-run-normalize-watch \
-	local-chat-config local-chat-up local-chat-down local-chat-logs local-chat-model
+	local-dev-config local-dev-up local-dev-down local-dev-logs local-dev-model
 
 # -----------------------------------------------------------------------------
 # Python environment
@@ -104,22 +104,22 @@ docker-run-normalize-watch:
 	docker run --rm $(NORMALIZE_IMAGE):$(TAG) python -m app.normalize.main
 
 # -----------------------------------------------------------------------------
-# Local chat development stack
+# Local development stack
 # -----------------------------------------------------------------------------
 # llama.cpp runs natively on the Mac so the model can use Apple Metal acceleration.
-local-chat-config:
-	@mkdir -p local-chat-config local-chat-data/postgres
-	@test -f local-chat-config/runtime-settings.json || cp config/runtime-settings.local-chat.example.json local-chat-config/runtime-settings.json
+local-dev-config:
+	@mkdir -p local-dev-config local-dev-data/postgres
+	@test -f local-dev-config/runtime-settings.json || cp config/runtime-settings.local-dev.example.json local-dev-config/runtime-settings.json
 
-local-chat-up: local-chat-config
-	docker compose -p rag-local-chat -f docker-compose.yml -f docker-compose.local-chat.yml up --build -d
+local-dev-up: local-dev-config
+	docker compose -p rag-local-dev -f docker-compose.yml -f docker-compose.local-dev.yml up --build -d
 
-local-chat-down:
-	docker compose -p rag-local-chat -f docker-compose.yml -f docker-compose.local-chat.yml down
+local-dev-down:
+	docker compose -p rag-local-dev -f docker-compose.yml -f docker-compose.local-dev.yml down
 
-local-chat-logs:
-	docker compose -p rag-local-chat -f docker-compose.yml -f docker-compose.local-chat.yml logs -f api db
+local-dev-logs:
+	docker compose -p rag-local-dev -f docker-compose.yml -f docker-compose.local-dev.yml logs -f api db
 
-local-chat-model:
+local-dev-model:
 	@command -v llama-server >/dev/null || (echo "Install llama.cpp first: brew install llama.cpp" >&2; exit 1)
 	llama-server -hf Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M --host 0.0.0.0 --port 8080 --ctx-size 8192 --parallel 1 --api-key local-chat-dev-token

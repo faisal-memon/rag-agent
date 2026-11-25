@@ -39,7 +39,7 @@ RAG Agent is a local-first MVP for a headless document agent that ingests files 
 docker compose up --build
 ```
 
-### Local chat only (Phase 1)
+### Local development environment (Phase 1: chat)
 
 This first phase runs the existing chat UI and API with a fresh, isolated local
 database. It uses Qwen2.5 1.5B Instruct through `llama.cpp`; embeddings, PDF ingestion, and
@@ -51,22 +51,22 @@ Install `llama.cpp` once, then start the model server in one terminal:
 
 ```bash
 brew install llama.cpp
-make local-chat-model
+make local-dev-model
 ```
 
 On first start, llama.cpp downloads the Qwen2.5 1.5B Q4_K_M model (about 1 GB). In
 another terminal, start the local UI and API:
 
 ```bash
-make local-chat-up
+make local-dev-up
 ```
 
 Open <http://localhost:8000>. A localhost-only proxy supplies a fixed local
 identity so the existing conversation UI works without Authelia. The first
 Compose build may take a few minutes.
-Use `make local-chat-logs` to follow startup logs and `make local-chat-down` to
+Use `make local-dev-logs` to follow startup logs and `make local-dev-down` to
 stop the services. The database and local settings stay under ignored
-`local-chat-data/` and `local-chat-config/` folders; this setup does not reuse
+`local-dev-data/` and `local-dev-config/` folders; this setup does not reuse
 the normal Compose database or settings.
 
 The UI port is bound to localhost, and the API is only reachable inside the
