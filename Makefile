@@ -108,17 +108,17 @@ docker-run-normalize-watch:
 # -----------------------------------------------------------------------------
 # llama.cpp runs natively on the Mac so the model can use Apple Metal acceleration.
 local-dev-config:
-	@mkdir -p local-dev-config local-dev-data/postgres
-	@test -f local-dev-config/runtime-settings.json || cp config/runtime-settings.local-dev.example.json local-dev-config/runtime-settings.json
+	@mkdir -p local-dev/config local-dev/data/postgres
+	@test -f local-dev/config/runtime-settings.json || cp local-dev/config/runtime-settings.example.json local-dev/config/runtime-settings.json
 
 local-dev-up: local-dev-config
-	docker compose -p rag-local-dev -f docker-compose.yml -f docker-compose.local-dev.yml up --build -d
+	docker compose -p rag-local-dev -f docker-compose.yml -f local-dev/compose.yml up --build -d
 
 local-dev-down:
-	docker compose -p rag-local-dev -f docker-compose.yml -f docker-compose.local-dev.yml down
+	docker compose -p rag-local-dev -f docker-compose.yml -f local-dev/compose.yml down
 
 local-dev-logs:
-	docker compose -p rag-local-dev -f docker-compose.yml -f docker-compose.local-dev.yml logs -f api db
+	docker compose -p rag-local-dev -f docker-compose.yml -f local-dev/compose.yml logs -f api db
 
 local-dev-model:
 	@command -v llama-server >/dev/null || (echo "Install llama.cpp first: brew install llama.cpp" >&2; exit 1)

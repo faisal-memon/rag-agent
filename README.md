@@ -66,7 +66,7 @@ identity so the existing conversation UI works without Authelia. The first
 Compose build may take a few minutes.
 Use `make local-dev-logs` to follow startup logs and `make local-dev-down` to
 stop the services. The database and local settings stay under ignored
-`local-dev-data/` and `local-dev-config/` folders; this setup does not reuse
+`local-dev/data/` and `local-dev/config/` folders; this setup does not reuse
 the normal Compose database or settings.
 
 The UI port is bound to localhost, and the API is only reachable inside the

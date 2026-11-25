@@ -5,7 +5,7 @@ __pycache__/
 .env
 data/
 postgres-data/
-local-dev-data/
-local-dev-config/
+local-dev/data/
+local-dev/config/runtime-settings.json
 config/runtime-settings.json
 evals/cases.local.json
