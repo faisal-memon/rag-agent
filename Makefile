@@ -90,13 +90,13 @@ local-chat-config:
 	@test -f local-chat-config/runtime-settings.json || cp config/runtime-settings.local-chat.example.json local-chat-config/runtime-settings.json
 
 local-chat-up: local-chat-config
-	docker compose -f docker-compose.local-chat.yml up --build -d
+	docker compose -p rag-local-chat -f docker-compose.yml -f docker-compose.local-chat.yml up --build -d
 
 local-chat-down:
-	docker compose -f docker-compose.local-chat.yml down
+	docker compose -p rag-local-chat -f docker-compose.yml -f docker-compose.local-chat.yml down
 
 local-chat-logs:
-	docker compose -f docker-compose.local-chat.yml logs -f api db
+	docker compose -p rag-local-chat -f docker-compose.yml -f docker-compose.local-chat.yml logs -f api db
 
 local-chat-model:
 	@command -v llama-server >/dev/null || (echo "Install llama.cpp first: brew install llama.cpp" >&2; exit 1)
