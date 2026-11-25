@@ -1,6 +1,7 @@
 PYTHON ?= python3
 VENV_DIR ?= .venv
 VENV_PYTHON := $(VENV_DIR)/bin/python
+
 GHCR_OWNER ?= your-github-user-or-org
 IMAGE ?= ghcr.io/$(GHCR_OWNER)/rag
 API_IMAGE ?= ghcr.io/$(GHCR_OWNER)/rag-api
@@ -9,8 +10,15 @@ NORMALIZE_IMAGE ?= ghcr.io/$(GHCR_OWNER)/rag-normalize
 TAG ?= latest
 DOCKER_TARGET ?= api
 
-.PHONY: deps deps-test lint test test-components build eval eval-init docker-build docker-build-api docker-build-embed docker-build-normalize docker-build-all docker-push docker-push-api docker-push-embed docker-push-normalize docker-push-all docker-run-worker docker-run-normalize docker-run-normalize-watch local-chat-config local-chat-up local-chat-down local-chat-logs local-chat-model
+.PHONY: deps deps-test lint test test-components build eval eval-init \
+	docker-build docker-build-api docker-build-embed docker-build-normalize docker-build-all \
+	docker-push docker-push-api docker-push-embed docker-push-normalize docker-push-all \
+	docker-run-worker docker-run-normalize docker-run-normalize-watch \
+	local-chat-config local-chat-up local-chat-down local-chat-logs local-chat-model
 
+# -----------------------------------------------------------------------------
+# Python environment
+# -----------------------------------------------------------------------------
 $(VENV_PYTHON):
 	$(PYTHON) -m venv $(VENV_DIR)
 
@@ -22,6 +30,9 @@ deps-test:
 	$(VENV_PYTHON) -m pip install --upgrade pip
 	$(VENV_PYTHON) -m pip install -r requirements-test.txt
 
+# -----------------------------------------------------------------------------
+# Quality checks and tests
+# -----------------------------------------------------------------------------
 lint: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m compileall app scripts
 
@@ -38,6 +49,9 @@ test-components: $(VENV_PYTHON)
 build: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m compileall app
 
+# -----------------------------------------------------------------------------
+# Agent evaluations
+# -----------------------------------------------------------------------------
 eval: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m app.agent.evals evals/cases.local.json
 
@@ -45,6 +59,9 @@ eval-init:
 	@test ! -e evals/cases.local.json || (echo "evals/cases.local.json already exists" >&2; exit 1)
 	cp evals/cases.example.json evals/cases.local.json
 
+# -----------------------------------------------------------------------------
+# Docker image build and publish
+# -----------------------------------------------------------------------------
 docker-build:
 	docker build --target $(DOCKER_TARGET) -t $(IMAGE):$(TAG) .
 
@@ -74,6 +91,9 @@ docker-push-normalize:
 
 docker-push-all: docker-push-api docker-push-embed docker-push-normalize
 
+# -----------------------------------------------------------------------------
+# Docker worker commands
+# -----------------------------------------------------------------------------
 docker-run-worker:
 	docker run --rm $(EMBED_IMAGE):$(TAG) python -m app.embed.worker
 
@@ -83,8 +103,10 @@ docker-run-normalize:
 docker-run-normalize-watch:
 	docker run --rm $(NORMALIZE_IMAGE):$(TAG) python -m app.normalize.main
 
-# Phase 1: local chat UI + PostgreSQL in Compose, with llama.cpp running natively
-# on the Mac so Apple Metal acceleration is available.
+# -----------------------------------------------------------------------------
+# Local chat development stack
+# -----------------------------------------------------------------------------
+# llama.cpp runs natively on the Mac so the model can use Apple Metal acceleration.
 local-chat-config:
 	@mkdir -p local-chat-config local-chat-data/postgres
 	@test -f local-chat-config/runtime-settings.json || cp config/runtime-settings.local-chat.example.json local-chat-config/runtime-settings.json
