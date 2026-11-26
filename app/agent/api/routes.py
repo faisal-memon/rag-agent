@@ -198,7 +198,7 @@ def list_voice_devices(request: Request) -> list[dict]:
             "last_interaction_at": None,
         }
         for live_status in live_statuses
-        if live_status.get("device_id") not in known_ids
+        if live_status.get("device_id") and live_status["device_id"] not in known_ids
     )
     if not devices and device_manager is not None:
         pending_status = device_manager.status()

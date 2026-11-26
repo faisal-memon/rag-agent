@@ -27,7 +27,9 @@ class ESPHomeDeviceManager:
 
     async def start(self) -> None:
         """Create the configured device and start its reconnect lifecycle."""
-        host = self._settings.esphome_device_host or "default"
+        host = self._settings.esphome_device_host.strip()
+        if not host:
+            return
         device = ESPHomeDevice(
             self._settings,
             voice_client_factory=self._create_voice_client,

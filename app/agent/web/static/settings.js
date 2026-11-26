@@ -106,19 +106,25 @@ document.getElementById("add-wikimedia-mcp-server").addEventListener("click", ()
   }
 });
 
-for (const tab of document.querySelectorAll(".settings-tab")) {
-  tab.addEventListener("click", () => {
-    for (const candidate of document.querySelectorAll(".settings-tab")) {
-      const active = candidate === tab;
-      candidate.classList.toggle("active", active);
-      candidate.setAttribute("aria-selected", String(active));
-    }
-    for (const panel of document.querySelectorAll(".settings-panel")) {
-      panel.hidden = panel.id !== tab.dataset.panel;
-    }
-    document.getElementById(tab.dataset.panel)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
+const settingsPanels = [...document.querySelectorAll(".settings-panel")];
+const settingsLinks = [...document.querySelectorAll(".settings-subnav a")];
+const settingsForm = document.getElementById("settings-form");
+
+function selectSettingsPanel() {
+  const requested = decodeURIComponent(window.location.hash.slice(1));
+  const selected = settingsPanels.some((panel) => panel.id === requested) ? requested : "models-panel";
+  for (const panel of settingsPanels) {
+    panel.hidden = panel.id !== selected;
+  }
+  settingsForm.hidden = selected === "appearance-panel";
+  for (const link of settingsLinks) {
+    if (link.hash === `#${selected}`) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
 }
+
+window.addEventListener("hashchange", selectSettingsPanel);
+selectSettingsPanel();
 
 function setStatus(message) {
   status.textContent = message;

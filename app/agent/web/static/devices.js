@@ -31,76 +31,90 @@ function makeMeta(label, value) {
   return item;
 }
 
-async function loadHistory(device, container) {
-  container.textContent = "Loading chat history…";
+function showStatusMessage(container, text) {
+  const message = document.createElement("p");
+  message.className = "status";
+  message.textContent = text;
+  container.replaceChildren(message);
+}
+
+async function loadDeviceDetails(url, container, failureMessage, render) {
   try {
-    const response = await fetch(`/api/devices/${encodeURIComponent(device.device_id)}/history`);
-    if (!response.ok) throw new Error("Could not load device history");
-    const messages = await response.json();
-    container.replaceChildren();
-    if (!messages.length) {
-      const empty = document.createElement("p");
-      empty.className = "status";
-      empty.textContent = "No voice conversations saved yet.";
-      container.append(empty);
-    }
-    // Keep each turn in conversational order while placing the newest turn first.
-    for (let end = messages.length; end > 0;) {
-      const start = Math.max(0, end - 2);
-      for (const message of messages.slice(start, end)) {
-        const article = document.createElement("article");
-        article.className = `device-message ${message.role}`;
-        const heading = document.createElement("div");
-        heading.className = "device-message-meta";
-        heading.textContent = `${message.role === "user" ? "Speaker" : "Assistant"} · ${formatMessageDate(message.created_at)}`;
-        const content = document.createElement("p");
-        content.textContent = message.content;
-        article.append(heading, content);
-        container.append(article);
-      }
-      end = start;
-    }
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(failureMessage);
+    render(await response.json(), container);
   } catch (error) {
-    const message = document.createElement("p");
-    message.className = "status";
-    message.textContent = error.message;
-    container.replaceChildren(message);
+    showStatusMessage(container, error.message || failureMessage);
   }
 }
 
-async function loadActivity(device, container) {
-  try {
-    const response = await fetch(`/api/devices/${encodeURIComponent(device.device_id)}/activity?limit=30`);
-    if (!response.ok) throw new Error("Could not load recent activity");
-    const events = await response.json();
-    container.replaceChildren();
-    if (!events.length) {
-      const empty = document.createElement("p");
-      empty.className = "status";
-      empty.textContent = "No voice activity recorded yet.";
-      container.append(empty);
-      return;
-    }
-    for (const event of events) {
-      const item = document.createElement("article");
-      item.className = `device-activity-event ${event.status}`;
-      const heading = document.createElement("strong");
-      heading.textContent = event.stage;
-      const status = document.createElement("span");
-      status.className = "device-activity-status";
-      status.textContent = event.status === "completed" ? "Done" : event.status === "failed" ? "Failed" : event.status === "started" ? "Started" : "Info";
-      const meta = document.createElement("p");
-      const duration = Number.isFinite(event.duration_ms) ? ` · ${event.duration_ms < 1000 ? `${event.duration_ms} ms` : `${(event.duration_ms / 1000).toFixed(1)} sec`}` : "";
-      meta.textContent = `${formatDate(event.created_at)}${duration}${event.detail ? ` · ${event.detail}` : ""}`;
-      item.append(heading, status, meta);
-      container.append(item);
-    }
-  } catch (error) {
-    const message = document.createElement("p");
-    message.className = "status";
-    message.textContent = error.message;
-    container.replaceChildren(message);
+function renderHistory(messages, container) {
+  container.replaceChildren();
+  if (!messages.length) {
+    showStatusMessage(container, "No voice conversations saved yet.");
+    return;
   }
+
+  // Keep each turn in order while showing the newest turn first.
+  for (let end = messages.length; end > 0;) {
+    const start = Math.max(0, end - 2);
+    for (const message of messages.slice(start, end)) {
+      const article = document.createElement("article");
+      article.className = `device-message ${message.role}`;
+      const heading = document.createElement("div");
+      heading.className = "device-message-meta";
+      heading.textContent = `${message.role === "user" ? "Speaker" : "Assistant"} · ${formatMessageDate(message.created_at)}`;
+      const content = document.createElement("p");
+      content.textContent = message.content;
+      article.append(heading, content);
+      container.append(article);
+    }
+    end = start;
+  }
+}
+
+function renderActivity(events, container) {
+  container.replaceChildren();
+  if (!events.length) {
+    showStatusMessage(container, "No voice activity recorded yet.");
+    return;
+  }
+
+  for (const event of events) {
+    const item = document.createElement("article");
+    item.className = `device-activity-event ${event.status}`;
+    const heading = document.createElement("strong");
+    heading.textContent = event.stage;
+    const status = document.createElement("span");
+    status.className = "device-activity-status";
+    status.textContent = event.status === "completed" ? "Done" : event.status === "failed" ? "Failed" : event.status === "started" ? "Started" : "Info";
+    const meta = document.createElement("p");
+    const duration = Number.isFinite(event.duration_ms)
+      ? ` · ${event.duration_ms < 1000 ? `${event.duration_ms} ms` : `${(event.duration_ms / 1000).toFixed(1)} sec`}`
+      : "";
+    meta.textContent = `${formatDate(event.created_at)}${duration}${event.detail ? ` · ${event.detail}` : ""}`;
+    item.append(heading, status, meta);
+    container.append(item);
+  }
+}
+
+function loadHistory(device, container) {
+  container.textContent = "Loading chat history…";
+  return loadDeviceDetails(
+    `/api/devices/${encodeURIComponent(device.device_id)}/history`,
+    container,
+    "Could not load device history",
+    renderHistory,
+  );
+}
+
+function loadActivity(device, container) {
+  return loadDeviceDetails(
+    `/api/devices/${encodeURIComponent(device.device_id)}/activity?limit=30`,
+    container,
+    "Could not load recent activity",
+    renderActivity,
+  );
 }
 
 function renderDevice(device) {
