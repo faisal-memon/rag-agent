@@ -3,98 +3,140 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Personal RAG</title>
+    <title>RAG Agent</title>
     <script src="/static/theme.js"></script>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body class="__BODY_CLASS__">
     <main>
-      <aside class="conversation-sidebar" id="conversation-sidebar" aria-label="Navigation and conversations">
-        <div class="conversation-sidebar-header"><strong>Personal AI</strong><button class="secondary icon-button" id="toggle-conversations" type="button" aria-label="Close navigation menu" title="Close menu"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div>
+      <aside class="conversation-sidebar page-sidebar" id="conversation-sidebar" aria-label="Navigation and conversations">
+        <div class="sidebar-brand-row conversation-sidebar-header">
+          <a class="sidebar-brand" href="/" id="sidebar-home-link" aria-label="RAG Agent home">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8 8h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3Z"/><path d="M12 4v4M9 13h.01M15 13h.01M9 16h6"/><circle cx="12" cy="3" r="1"/></svg>
+            </span>
+            <span class="sidebar-brand-copy"><strong>RAG Agent</strong><small>Home assistant</small></span>
+          </a>
+          <button class="sidebar-control collapse-control" id="collapse-sidebar" type="button" aria-label="Collapse sidebar" aria-controls="conversation-sidebar" aria-expanded="true" title="Collapse sidebar">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg>
+          </button>
+          <button class="sidebar-control drawer-close" id="toggle-conversations" type="button" aria-label="Close navigation menu" title="Close menu">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <button id="new-conversation" class="new-conversation" type="button">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="new-conversation-label">New conversation</span>
+        </button>
+        <p class="sidebar-section-label">Workspace</p>
         <nav class="conversation-drawer-nav" id="conversation-drawer-nav" aria-label="Application">
-          <a class="agent-nav" href="/">Chat</a>
-          <a class="debug-nav" href="/debug">Debug</a>
-          <a href="/devices">Devices</a>
-          <a href="/tools">Tools</a>
-          <a class="settings-nav" href="/settings">Settings</a>
-          <a href="/docs">API</a>
+          <a class="agent-nav" href="/" id="sidebar-chat-link"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 3v-14Z"/></svg><span>Chat</span></a>
+          <a class="debug-nav" href="/debug"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 4-6"/></svg><span>Debug</span></a>
+          <a href="/devices"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h3"/></svg><span>Devices</span></a>
+          <a href="/tools"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 7 3-3a4 4 0 0 1-5 5L7 14l3 3 5-5a4 4 0 0 1 5-5l-3 3"/><path d="m5 16-2 2 3 3 2-2"/></svg><span>Tools</span></a>
+          <div class="settings-nav-group">
+            <div class="settings-nav-row"><a class="settings-nav" href="/settings"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.8-1l-1.6.6-1.4-2.4 1.4-1.1a7 7 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.6.6a8 8 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.6 1.4 2.4-1.4 1.1a7 7 0 0 1-.1 2Z"/></svg><span>Settings</span></a><button class="settings-nav-toggle" type="button" aria-label="Expand settings sections" aria-expanded="false" aria-controls="settings-subnav"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg></button></div>
+            <div class="settings-subnav" id="settings-subnav" hidden><a href="/settings#appearance-panel">Appearance</a><a href="/settings#general-panel">General</a><a href="/settings#memory-panel">Memory</a><a href="/settings#models-panel">Models</a><a href="/settings#remote-mcp-panel">Remote MCP</a><a href="/settings#voice-panel">Voice activity</a></div>
+          </div>
+          <a href="/docs"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/></svg><span>API</span></a>
         </nav>
-        <button id="new-conversation" type="button">New conversation</button>
+        <p class="sidebar-section-label recent-label">Recent</p>
         <div id="conversation-list" class="conversation-list"></div>
         <button class="secondary" id="show-all-conversations" type="button" hidden>See all conversations</button>
       </aside>
-      <header class="app-header" aria-label="Application header">
-        <button class="secondary mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="conversation-sidebar" aria-expanded="false">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
-        </button>
-        <span class="app-header-brand">Personal AI</span>
-        <span class="app-version mobile-app-version" aria-label="Application version">v__APP_VERSION__</span>
-        <button class="secondary account-placeholder" type="button" aria-label="Account, coming soon" title="Account, coming soon" disabled>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>
-        </button>
-      </header>
-      <section class="hero">
-        __PAGE_INTRO__
-        <nav class="page-nav" id="page-nav" aria-label="Application">
-          <button class="secondary" id="show-conversations" data-close-mobile-menu type="button">Conversations</button>
-          <a class="agent-nav" href="/">Chat</a>
-          <a class="debug-nav" href="/debug">Debug</a>
-          <a href="/devices">Devices</a>
-          <a href="/tools">Tools</a>
-          <a class="settings-nav" href="/settings">Settings</a>
-          <a href="/docs">API</a>
-        </nav>
-      </section>
-      <section class="query-card">
-        <input id="agent-image-input" type="file" accept="image/png,image/jpeg" hidden />
-        <button class="secondary icon-button" id="agent-image" type="button" aria-label="Attach image" title="Attach image">+</button>
-        <label for="question">__INPUT_LABEL__</label>
-        <textarea id="question" placeholder="__INPUT_PLACEHOLDER__"></textarea>
-        <div class="actions">
-          <div class="mode-picker" aria-label="Retrieval mode">
-            <input type="radio" id="mode-semantic" name="retrieval-mode" value="semantic" checked />
-            <label for="mode-semantic">Semantic</label>
-            <input type="radio" id="mode-keyword" name="retrieval-mode" value="keyword" />
-            <label for="mode-keyword">Keyword</label>
+      <button class="drawer-backdrop" id="drawer-backdrop" type="button" aria-label="Close navigation menu" hidden></button>
+
+      <div class="agent-workspace page-workspace" id="agent-workspace">
+        <header class="app-header" aria-label="Application header">
+          <button class="secondary mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="conversation-sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+          <nav class="chat-breadcrumb" aria-label="Breadcrumb">
+            <a href="/" id="chat-home-link">Chat</a>
+            <span class="breadcrumb-separator" id="breadcrumb-separator" aria-hidden="true" hidden>/</span>
+            <span class="breadcrumb-current" id="breadcrumb-current" aria-current="page" __BREADCRUMB_CURRENT_HIDDEN__>__BREADCRUMB_CURRENT__</span>
+          </nav>
+          <span class="app-header-brand">RAG Agent</span>
+          <span class="app-version mobile-app-version" aria-label="Application version">v__APP_VERSION__</span>
+          <span class="app-version agent-version" aria-label="Application version">v__APP_VERSION__</span>
+          <button class="secondary account-placeholder" type="button" aria-label="Account, coming soon" title="Account, coming soon" disabled>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>
+          </button>
+        </header>
+
+        <section class="hero">
+          __PAGE_INTRO__
+          <nav class="page-nav" id="page-nav" aria-label="Application">
+            <button class="secondary" id="show-conversations" data-close-mobile-menu type="button">Conversations</button>
+            <a class="agent-nav" href="/">Chat</a>
+            <a class="debug-nav" href="/debug">Debug</a>
+            <a href="/devices">Devices</a>
+            <a href="/tools">Tools</a>
+            <a class="settings-nav" href="/settings">Settings</a>
+            <a href="/docs">API</a>
+          </nav>
+        </section>
+
+        <section class="chat-home" id="chat-home-view" aria-labelledby="home-heading" hidden>
+          <div class="home-intro">
+            <h1 id="home-heading">How can I help?</h1>
+            <p>Ask a question or pick up a recent conversation.</p>
           </div>
-          <button id="ask">Ask</button>
-          <button class="secondary icon-button" id="agent" type="button" aria-label="Send message" title="Send message">
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
-          </button>
-          <button class="secondary icon-button" id="record" type="button" aria-label="Record message" title="Record message">
-            <svg class="record-mic-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0M12 17v4M8 21h8" /></svg>
-            <svg class="record-stop-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" /></svg>
-          </button>
-          <button class="secondary icon-button" id="speak-replies" type="button" aria-label="Speak replies is off" title="Speak replies: off" aria-pressed="false">
-            <span aria-hidden="true">🔊</span>
-          </button>
-          <button class="secondary" id="debug">Debug retrieval</button>
-          <button class="secondary" id="pipeline">Pipeline status</button>
-          <span class="status" id="status">Ready</span>
-        </div>
-        <div id="agent-image-preview" class="agent-image-preview" hidden>
-          <img id="agent-image-thumbnail" alt="Selected image" />
-          <span id="agent-image-name"></span>
-          <button class="secondary" id="agent-image-remove" type="button" aria-label="Remove attached image">Remove</button>
-        </div>
-      </section>
-      <section class="result" id="result">
-        <div class="agent-chat-toolbar" id="agent-chat-toolbar">
-          <span>Agent conversation · saved in this browser</span>
-          <div class="agent-chat-controls">
-            <button class="secondary" id="clear-chat">Clear chat</button>
+          <div class="home-composer-slot" id="home-composer-slot"></div>
+          <section class="home-recents" aria-labelledby="home-recents-heading">
+            <h2 class="home-recents-heading" id="home-recents-heading">Recent conversations</h2>
+            <div class="home-recent-groups" id="home-recent-groups"></div>
+          </section>
+        </section>
+
+        <section class="query-card">
+          <input id="agent-image-input" type="file" accept="image/png,image/jpeg" hidden />
+          <label for="question">__INPUT_LABEL__</label>
+          <textarea id="question" placeholder="__INPUT_PLACEHOLDER__"></textarea>
+          <div class="actions">
+            <button class="secondary icon-button" id="agent-image" type="button" aria-label="Attach image" title="Attach image">+</button>
+            <div class="mode-picker" aria-label="Retrieval mode">
+              <input type="radio" id="mode-semantic" name="retrieval-mode" value="semantic" checked />
+              <label for="mode-semantic">Semantic</label>
+              <input type="radio" id="mode-keyword" name="retrieval-mode" value="keyword" />
+              <label for="mode-keyword">Keyword</label>
+            </div>
+            <button id="ask">Ask</button>
+            <button class="secondary icon-button" id="agent" type="button" aria-label="Send message" title="Send message">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 12 16-8-5 16-3-6-8-2Zm8 2 4-5" /></svg>
+            </button>
+            <button class="secondary icon-button" id="record" type="button" aria-label="Record message" title="Record message">
+              <svg class="record-mic-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0M12 17v4M8 21h8" /></svg>
+              <svg class="record-stop-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" /></svg>
+            </button>
+            <button class="secondary icon-button" id="speak-replies" type="button" aria-label="Speak replies is off" title="Speak replies: off" aria-pressed="false"><span aria-hidden="true">🔊</span></button>
+            <button class="secondary" id="debug">Debug retrieval</button>
+            <button class="secondary" id="pipeline">Pipeline status</button>
+            <span class="status" id="status">Ready</span>
           </div>
-        </div>
-        <div class="agent-chat" id="agent-chat" aria-live="polite"></div>
-        <div id="pipeline-summary"></div>
-        <div class="answer" id="answer"></div>
-        <div class="pager" id="pager">
-          <button class="secondary" id="previous">Previous</button>
-          <button class="secondary" id="next">Next</button>
-          <span class="status" id="page-status"></span>
-        </div>
-        <div class="citations" id="citations"></div>
-      </section>
+          <div id="agent-image-preview" class="agent-image-preview" hidden>
+            <img id="agent-image-thumbnail" alt="Selected image" />
+            <span id="agent-image-name"></span>
+            <button class="secondary" id="agent-image-remove" type="button" aria-label="Remove attached image">Remove</button>
+          </div>
+        </section>
+
+        <section class="result" id="result">
+          <div class="agent-chat-toolbar" id="agent-chat-toolbar">
+            <span>Agent conversation · saved in this browser</span>
+            <div class="agent-chat-controls"><button class="secondary" id="clear-chat">Clear chat</button></div>
+          </div>
+          <div class="agent-chat" id="agent-chat" aria-live="polite"></div>
+          <div id="pipeline-summary"></div>
+          <div class="answer" id="answer"></div>
+          <div class="pager" id="pager">
+            <button class="secondary" id="previous">Previous</button>
+            <button class="secondary" id="next">Next</button>
+            <span class="status" id="page-status"></span>
+          </div>
+          <div class="citations" id="citations"></div>
+        </section>
+      </div>
     </main>
 
     <div class="app-version desktop-app-version" aria-label="Application version">v__APP_VERSION__</div>

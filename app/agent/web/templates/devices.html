@@ -3,24 +3,26 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Devices · Personal AI</title>
+    <title>Devices · RAG Agent</title>
     <script src="/static/theme.js"></script>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
-  <body class="devices-console">
+  <body class="devices-console page-console">
     <main>
+      __SIDEBAR__
+      <div class="page-workspace">
       <header class="app-header" aria-label="Application header">
         <button class="secondary mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="page-nav" aria-expanded="false">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
-        <span class="app-header-brand">Personal AI</span>
+        <nav class="chat-breadcrumb" aria-label="Breadcrumb"><a href="/">Chat</a><span class="breadcrumb-separator" aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">Devices</span></nav>
         <button class="secondary account-placeholder" type="button" aria-label="Account, coming soon" title="Account, coming soon" disabled>
           <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>
         </button>
       </header>
       <section class="hero">
-        <div class="hero-topline"><div class="eyebrow">Personal AI</div></div>
-        <h1>devices</h1>
+        <div class="hero-topline"><div class="eyebrow">RAG Agent</div></div>
+        <h1>Devices</h1>
         <p class="subtitle">Connected voice devices, their recent activity, and the shared conversation history for each device.</p>
         <nav class="page-nav" id="page-nav" aria-label="Application">
           <a class="agent-nav" href="/">Chat</a>
@@ -33,7 +35,7 @@
       </section>
       <section class="query-card device-note">
         <strong>Shared device history</strong>
-        <p>Voice transcripts and replies are saved in this installation as one shared history for the ReSpeaker. The speaker does not identify which person is talking. Only sign in through the trusted web app proxy to view this page; it contains private conversation content.</p>
+        <p>When a voice device is configured, its transcripts and replies are saved in this installation. The device does not identify which person is talking. Only sign in through the trusted web app proxy to view this page; it may contain private conversation content.</p>
       </section>
       <div class="device-actions">
         <button class="secondary" id="refresh-devices" type="button">Refresh status</button>
@@ -42,6 +44,7 @@
         <p class="status">Loading devices…</p>
       </section>
       <p id="devices-status" class="status" role="status"></p>
+      </div>
     </main>
     <script src="/static/navigation.js" defer></script>
     <script src="/static/devices.js" defer></script>

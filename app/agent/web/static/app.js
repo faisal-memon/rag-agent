@@ -17,9 +17,20 @@ const agentChatToolbar = document.getElementById("agent-chat-toolbar");
 const agentChat = document.getElementById("agent-chat");
 const clearChatButton = document.getElementById("clear-chat");
 const conversationSidebar = document.getElementById("conversation-sidebar");
+const agentWorkspace = document.getElementById("agent-workspace");
 const conversationList = document.getElementById("conversation-list");
+const homeRecentGroups = document.getElementById("home-recent-groups");
+const homeComposerSlot = document.getElementById("home-composer-slot");
+const chatHomeView = document.getElementById("chat-home-view");
 const conversationDrawerNav = document.getElementById("conversation-drawer-nav");
 const mobileMenuToggle = document.getElementById("mobile-menu-toggle");
+const collapseSidebarButton = document.getElementById("collapse-sidebar");
+const drawerBackdrop = document.getElementById("drawer-backdrop");
+const chatHomeLink = document.getElementById("chat-home-link");
+const sidebarChatLink = document.getElementById("sidebar-chat-link");
+const sidebarHomeLink = document.getElementById("sidebar-home-link");
+const breadcrumbSeparator = document.getElementById("breadcrumb-separator");
+const breadcrumbCurrent = document.getElementById("breadcrumb-current");
 const newConversationButton = document.getElementById("new-conversation");
 const toggleConversations = document.getElementById("toggle-conversations");
 const showConversations = document.getElementById("show-conversations");
@@ -40,6 +51,10 @@ const agentConversationIdKey = "nextcloud-rag-agent-conversation-id-v1";
 const maxSavedAgentMessages = 20;
 let agentConversation = loadAgentConversation();
 let agentConversationId = localStorage.getItem(agentConversationIdKey) || null;
+const requestedConversationId = new URLSearchParams(window.location.search).get("conversation_id");
+const openNewConversation = new URLSearchParams(window.location.search).has("new");
+let showingChatHome = !openNewConversation;
+let conversationItems = [];
 let pendingConversation = false;
 let showAllConversations = false;
 let mediaRecorder = null;
@@ -199,16 +214,19 @@ async function loadConversations() {
       return;
     }
     const items = await response.json();
+    conversationItems = items;
     const isMobileMenu = window.matchMedia("(max-width: 720px)").matches;
-    const visibleItems = isMobileMenu && !showAllConversations ? items.slice(0, 5) : items;
+    const visibleItems = isMobileMenu && !showAllConversations ? items.slice(0, 5) : items.slice(0, 12);
     const pendingMarkup = pendingConversation
       ? '<div class="conversation-row"><button class="conversation-item active" disabled><span>New thread</span><small>Not started</small></button></div>'
       : '';
-    conversationList.innerHTML = pendingMarkup + visibleItems.map(item => `<div class="conversation-row"><button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></button><button class="conversation-delete" data-delete-conversation-id="${escapeHtml(item.id)}" aria-label="Delete conversation">×</button></div>`).join("");
-    showAllConversationsButton.hidden = !isMobileMenu || items.length <= 5;
+    conversationList.innerHTML = pendingMarkup + visibleItems.map(item => `<div class="conversation-row"><button class="conversation-item ${item.id === agentConversationId ? "active" : ""}" data-conversation-id="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(formatConversationDate(item.updated_at))}</small></button><button class="conversation-delete" data-delete-conversation-id="${escapeHtml(item.id)}" aria-label="Delete conversation">×</button></div>`).join("");
+    showAllConversationsButton.hidden = items.length <= 5;
     showAllConversationsButton.textContent = showAllConversations ? "Show latest five" : `See all ${items.length} conversations`;
     conversationList.querySelectorAll("[data-conversation-id]").forEach(button => button.addEventListener("click", () => loadConversation(button.dataset.conversationId)));
     conversationList.querySelectorAll("[data-delete-conversation-id]").forEach(button => button.addEventListener("click", () => deleteConversation(button.dataset.deleteConversationId)));
+    renderHomeRecentGroups(items);
+    updateChatBreadcrumb();
   } catch (error) { console.warn("Unable to load conversations", error); }
 }
 
@@ -226,6 +244,7 @@ async function deleteConversation(conversationId) {
     agentConversation = [];
     localStorage.removeItem(agentConversationIdKey);
     localStorage.setItem(agentHistoryKey, "[]");
+    showingChatHome = true;
     renderAgentConversation();
   }
   await loadConversations();
@@ -237,11 +256,13 @@ async function loadConversation(conversationId) {
     if (redirectToLoginIfNeeded(response)) return;
     if (!response.ok) throw new Error(`conversation load failed (${response.status})`);
     agentConversationId = conversationId;
+    showingChatHome = false;
     agentConversation = restoreAgentConversation(await response.json());
     localStorage.setItem(agentConversationIdKey, agentConversationId);
     localStorage.setItem(agentHistoryKey, JSON.stringify(agentConversation));
     renderAgentConversation();
-    if (window.matchMedia("(max-width: 720px)").matches) setConversationSidebar(true);
+    const mobileBreakpoint = document.body.classList.contains("agent-only") ? 680 : 700;
+    if (window.matchMedia(`(max-width: ${mobileBreakpoint}px)`).matches) setConversationSidebar(true);
     await loadConversations();
   } catch (error) {
     console.warn("Unable to load conversation", error);
@@ -251,11 +272,141 @@ async function loadConversation(conversationId) {
 }
 
 function setConversationSidebar(hidden) {
-  conversationSidebar?.classList.toggle("hidden", hidden);
-  localStorage.setItem("conversation-sidebar-hidden", hidden ? "1" : "0");
+  const isAgentChat = document.body.classList.contains("agent-only");
+  const hasPageSidebar = document.body.classList.contains("page-console");
+  const isMobile = window.matchMedia(`(max-width: ${isAgentChat ? 680 : 700}px)`).matches;
+  if (!isAgentChat && !hasPageSidebar) {
+    conversationSidebar?.classList.toggle("hidden", hidden);
+    try {
+      localStorage.setItem("conversation-sidebar-hidden", hidden ? "1" : "0");
+    } catch {
+      // Keep navigation working when browser storage is unavailable.
+    }
+    mobileMenuToggle?.setAttribute("aria-expanded", String(!hidden));
+    mobileMenuToggle?.setAttribute("aria-label", hidden ? "Open navigation menu" : "Close navigation menu");
+    return;
+  }
+  if (isMobile) {
+    document.body.classList.remove("sidebar-collapsed");
+    conversationSidebar?.classList.toggle("open", !hidden);
+    document.body.classList.toggle("drawer-open", !hidden);
+    if (drawerBackdrop) drawerBackdrop.hidden = hidden;
+  } else {
+    conversationSidebar?.classList.remove("open");
+    document.body.classList.toggle("sidebar-collapsed", hidden);
+    if (drawerBackdrop) drawerBackdrop.hidden = true;
+    document.body.classList.remove("drawer-open");
+    collapseSidebarButton?.setAttribute("aria-expanded", String(!hidden));
+    collapseSidebarButton?.setAttribute("aria-label", hidden ? "Expand sidebar" : "Collapse sidebar");
+    collapseSidebarButton?.setAttribute("title", hidden ? "Expand sidebar" : "Collapse sidebar");
+  }
+  try {
+    localStorage.setItem("conversation-sidebar-hidden", hidden ? "1" : "0");
+  } catch {
+    // The sidebar remains usable for this page even if storage is unavailable.
+  }
   mobileMenuToggle?.setAttribute("aria-expanded", String(!hidden));
-  mobileMenuToggle?.setAttribute("aria-label", hidden ? "Open navigation menu" : "Close navigation menu");
+  const label = isMobile
+    ? (hidden ? "Open navigation menu" : "Close navigation menu")
+    : (hidden ? "Expand sidebar" : "Collapse sidebar");
+  mobileMenuToggle?.setAttribute("aria-label", label);
+  mobileMenuToggle?.setAttribute("title", label);
 }
+
+function formatConversationDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function conversationAgeLabel(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Earlier";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const daysAgo = Math.round((today.getTime() - day.getTime()) / 86400000);
+  if (daysAgo <= 0) return "Today";
+  if (daysAgo === 1) return "Yesterday";
+  if (daysAgo < 7) return date.toLocaleDateString(undefined, { weekday: "long" });
+  return date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: date.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+}
+
+function renderHomeRecentGroups(items = conversationItems) {
+  if (!homeRecentGroups) return;
+  if (!items.length) {
+    homeRecentGroups.innerHTML = '<p class="home-recent-empty">Your recent conversations will appear here.</p>';
+    return;
+  }
+  const groups = new Map();
+  items.slice(0, 12).forEach((item) => {
+    const label = conversationAgeLabel(item.updated_at);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(item);
+  });
+  homeRecentGroups.innerHTML = [...groups.entries()].map(([label, conversations]) => `
+    <section class="home-recent-group" aria-label="${escapeHtml(label)} conversations">
+      <h3 class="home-recent-group-label">${escapeHtml(label)}</h3>
+      <div class="home-recent-list">
+        ${conversations.map(item => `
+          <button class="home-recent" type="button" data-home-conversation-id="${escapeHtml(item.id)}">
+            <span class="home-recent-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 3v-14Z"/></svg></span>
+            <span class="home-recent-copy"><span class="home-recent-title">${escapeHtml(item.title)}</span><span class="home-recent-preview">Updated ${escapeHtml(new Date(item.updated_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))}</span></span>
+          </button>`).join("")}
+      </div>
+    </section>`).join("");
+  homeRecentGroups.querySelectorAll("[data-home-conversation-id]").forEach((button) => {
+    button.addEventListener("click", () => loadConversation(button.dataset.homeConversationId));
+  });
+}
+
+function updateChatBreadcrumb() {
+  if (!document.body.classList.contains("agent-only") || !breadcrumbCurrent || !breadcrumbSeparator) return;
+  const savedTitle = conversationItems.find((item) => item.id === agentConversationId)?.title;
+  const firstQuestion = agentConversation.find((message) => message.role === "user")?.content;
+  const title = savedTitle || firstQuestion?.split("\n")[0] || "New conversation";
+  breadcrumbSeparator.hidden = showingChatHome;
+  breadcrumbCurrent.hidden = showingChatHome;
+  breadcrumbCurrent.textContent = title.length > 64 ? `${title.slice(0, 61)}…` : title;
+}
+
+function resetCurrentConversation() {
+  agentConversationId = null;
+  pendingConversation = true;
+  agentConversation = [];
+  localStorage.removeItem(agentConversationIdKey);
+  localStorage.setItem(agentHistoryKey, "[]");
+}
+
+function showChatHome() {
+  if (!document.body.classList.contains("agent-only")) return;
+  resetCurrentConversation();
+  showingChatHome = true;
+  renderAgentConversation();
+  loadConversations();
+  if (window.matchMedia("(max-width: 680px)").matches) setConversationSidebar(true);
+}
+
+function showNewConversation() {
+  resetCurrentConversation();
+  showingChatHome = false;
+  renderAgentConversation();
+  loadConversations();
+  if (window.matchMedia("(max-width: 680px)").matches) setConversationSidebar(true);
+  question.focus();
+}
+
+function setChatHomeLinkHandler(link) {
+  link?.addEventListener("click", (event) => {
+    if (!document.body.classList.contains("agent-only")) return;
+    event.preventDefault();
+    showChatHome();
+  });
+}
+
+setChatHomeLinkHandler(chatHomeLink);
+setChatHomeLinkHandler(sidebarChatLink);
+setChatHomeLinkHandler(sidebarHomeLink);
 
 function updateMobileViewport() {
   const viewport = window.visualViewport;
@@ -271,39 +422,58 @@ window.addEventListener("resize", updateMobileViewport);
 window.addEventListener("scroll", updateMobileViewport);
 
 mobileMenuToggle?.addEventListener("click", () => {
-  const isHidden = conversationSidebar?.classList.contains("hidden") ?? true;
+  if (!document.body.classList.contains("agent-only") && !document.body.classList.contains("page-console")) {
+    const isHidden = conversationSidebar?.classList.contains("hidden") ?? true;
+    setConversationSidebar(!isHidden);
+    if (isHidden) loadConversations();
+    return;
+  }
+  const isMobile = window.matchMedia(`(max-width: ${document.body.classList.contains("agent-only") ? 680 : 700}px)`).matches;
+  const isHidden = isMobile
+    ? !(conversationSidebar?.classList.contains("open") ?? false)
+    : document.body.classList.contains("sidebar-collapsed");
   setConversationSidebar(!isHidden);
   if (isHidden) loadConversations();
 });
 
+collapseSidebarButton?.addEventListener("click", () => {
+  if (window.matchMedia(`(max-width: ${document.body.classList.contains("agent-only") ? 680 : 700}px)`).matches) return;
+  setConversationSidebar(!document.body.classList.contains("sidebar-collapsed"));
+});
+drawerBackdrop?.addEventListener("click", () => setConversationSidebar(true));
+
 conversationDrawerNav?.addEventListener("click", (event) => {
-  if (event.target.closest("a")) setConversationSidebar(true);
+  const mobileBreakpoint = document.body.classList.contains("agent-only") ? 680 : 700;
+  if (event.target.closest("a") && window.matchMedia(`(max-width: ${mobileBreakpoint}px)`).matches) {
+    setConversationSidebar(true);
+  }
 });
 
 document.addEventListener("click", (event) => {
-  if (!conversationSidebar?.classList.contains("hidden")
+  const sidebarIsOpen = document.body.classList.contains("agent-only") || document.body.classList.contains("page-console")
+    ? conversationSidebar?.classList.contains("open")
+    : !conversationSidebar?.classList.contains("hidden");
+  const mobileBreakpoint = document.body.classList.contains("agent-only") ? 680 : 700;
+  if (sidebarIsOpen
       && !conversationSidebar?.contains(event.target)
       && !mobileMenuToggle?.contains(event.target)
-      && window.matchMedia("(max-width: 720px)").matches) {
+      && window.matchMedia(`(max-width: ${mobileBreakpoint}px)`).matches) {
     setConversationSidebar(true);
   }
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !conversationSidebar?.classList.contains("hidden")) {
+  const sidebarIsOpen = document.body.classList.contains("agent-only") || document.body.classList.contains("page-console")
+    ? conversationSidebar?.classList.contains("open")
+    : !conversationSidebar?.classList.contains("hidden");
+  if (event.key === "Escape" && sidebarIsOpen) {
     setConversationSidebar(true);
   }
 });
 
 newConversationButton?.addEventListener("click", () => {
-  agentConversationId = null;
-  pendingConversation = true;
-  agentConversation = [];
-  localStorage.removeItem(agentConversationIdKey);
-  localStorage.setItem(agentHistoryKey, "[]");
-  renderAgentConversation();
-  loadConversations();
-  if (window.matchMedia("(max-width: 720px)").matches) setConversationSidebar(true);
+  if (document.body.classList.contains("agent-only")) showNewConversation();
+  else window.location.assign("/?new=1");
 });
 toggleConversations?.addEventListener("click", () => setConversationSidebar(true));
 showConversations?.addEventListener("click", () => setConversationSidebar(false));
@@ -311,7 +481,7 @@ showAllConversationsButton?.addEventListener("click", () => {
   showAllConversations = !showAllConversations;
   loadConversations();
 });
-setConversationSidebar(window.matchMedia("(max-width: 720px)").matches || localStorage.getItem("conversation-sidebar-hidden") === "1");
+setConversationSidebar(window.matchMedia(`(max-width: ${document.body.classList.contains("agent-only") ? 680 : 700}px)`).matches || localStorage.getItem("conversation-sidebar-hidden") === "1");
 loadConversations();
 
 function showRecordingError(message) {
@@ -489,17 +659,6 @@ function progressResultTitle(event) {
   return "Tool completed";
 }
 
-function thinkingIndicatorHtml() {
-  return `<div class="thinking-indicator agent-progress-live" aria-live="polite">
-    <span>Thinking</span>
-    <span class="thinking-dots" aria-hidden="true">
-      <span class="thinking-dot"></span>
-      <span class="thinking-dot"></span>
-      <span class="thinking-dot"></span>
-    </span>
-  </div>`;
-}
-
 function progressEventPresentation(event) {
   switch (event.type) {
     case "thinking":
@@ -513,62 +672,32 @@ function progressEventPresentation(event) {
   }
 }
 
-function groupedProgressEvents(events) {
-  const items = [];
-  (events || []).forEach((event) => {
-    // Thinking events describe live work; don't replay them as a lingering
-    // status after the response is complete. The trace keeps the full history.
-    if (event.type === "thinking") return;
-    if (event.type === "tool_result") {
-      const toolCall = [...items].reverse().find((item) => item.type === "tool_call" && !item.result);
-      if (toolCall) {
-        toolCall.result = event;
-        return;
-      }
+function agentProgressTimelineHtml(message) {
+  const progress = (message.progress || []).filter((event) => event.type !== "thinking");
+  if (!progress.length && !message.streaming) {
+    return buildAgentTraceEvents(message)
+      .filter((event) => event.type === "tool-call" || event.type === "tool-result" || event.type === "tool-error")
+      .map((event) => `<details class="agent-progress-tool turn-step">
+        <summary><span class="agent-progress-icon" aria-hidden="true">${event.type === "tool-call" ? "↗" : event.type === "tool-error" ? "!" : "✓"}</span><span>${escapeHtml(event.title)}</span><span class="agent-progress-tool-state">${event.type === "tool-call" ? "Tool call" : "Result"}</span></summary>
+        <div class="agent-progress-tool-details"><pre>${escapeHtml(event.detail || "")}</pre></div>
+      </details>`).join("");
+  }
+  return progress.map((event) => {
+    if (event.type === "tool_call") {
+      return `<details class="agent-progress-tool turn-step">
+        <summary><span class="agent-progress-icon" aria-hidden="true">↗</span><span>${escapeHtml(progressToolTitle(event.tool, event.arguments))}</span><span class="agent-progress-tool-state">Tool call</span></summary>
+        <div class="agent-progress-tool-details"><div class="agent-progress-detail"><strong>Arguments</strong><pre>${escapeHtml(JSON.stringify(event.arguments || {}, null, 2))}</pre></div></div>
+      </details>`;
     }
-    items.push({ ...event });
-  });
-  return items;
-}
-
-function toolProgressHtml(event) {
-  const result = event.result;
-  const completed = result ? progressResultTitle(result) : "Running";
-  const icon = result?.result?.error || result?.summary?.type === "error" ? "!" : "↗";
-  const resultDetail = result
-    ? `<div class="agent-progress-detail"><strong>Result</strong><pre>${escapeHtml(JSON.stringify(result.result ?? null, null, 2))}</pre></div>`
-    : '<div class="agent-progress-detail pending">Waiting for result…</div>';
-  return `<details class="agent-progress-tool${result ? " completed" : ""}">
-    <summary>
-      <span class="agent-progress-icon" aria-hidden="true">${icon}</span>
-      <span>${escapeHtml(progressToolTitle(event.tool, event.arguments))}</span>
-      <span class="agent-progress-tool-state">${escapeHtml(completed)}</span>
-    </summary>
-    <div class="agent-progress-tool-details">
-      <div class="agent-progress-detail"><strong>Arguments</strong><pre>${escapeHtml(JSON.stringify(event.arguments || {}, null, 2))}</pre></div>
-      ${resultDetail}
-    </div>
-  </details>`;
-}
-
-function agentProgressTimelineHtml(events, streaming = false) {
-  const items = groupedProgressEvents(events);
-  const rows = items.map((event) => {
-    if (event.type === "tool_call") return toolProgressHtml(event);
-    const type = event.type || "thinking";
-    const { icon, title } = progressEventPresentation({ ...event, type });
-    return `<div class="agent-progress-event agent-progress-${escapeHtml(type)}">
-      <span class="agent-progress-icon" aria-hidden="true">${icon}</span>
-      <span>${escapeHtml(title)}</span>
-    </div>`;
+    if (event.type === "tool_result") {
+      return `<details class="agent-progress-tool turn-step">
+        <summary><span class="agent-progress-icon" aria-hidden="true">${event.result?.error ? "!" : "✓"}</span><span>${escapeHtml(progressResultTitle(event))}</span><span class="agent-progress-tool-state">Result</span></summary>
+        <div class="agent-progress-tool-details"><div class="agent-progress-detail"><strong>${escapeHtml(event.tool || "Tool")}</strong><pre>${escapeHtml(JSON.stringify(event.result ?? null, null, 2))}</pre></div></div>
+      </details>`;
+    }
+    const { icon, title } = progressEventPresentation(event);
+    return `<div class="agent-progress-event turn-step"><span class="agent-progress-icon" aria-hidden="true">${icon}</span><span>${escapeHtml(title)}</span></div>`;
   }).join("");
-  if (!rows && !streaming) return "";
-  const latestType = events?.[events.length - 1]?.type;
-  const showThinking = streaming && latestType !== "tool_call";
-  return `<div class="agent-progress" aria-live="polite">
-    ${rows}
-    ${showThinking ? thinkingIndicatorHtml() : ""}
-  </div>`;
 }
 
 function buildAgentTraceEvents(message) {
@@ -706,36 +835,20 @@ function buildAgentTraceEvents(message) {
   return traceEvents;
 }
 
-function agentTraceTimelineHtml(message) {
-  if (message.streaming || !(message.debug?.length || message.reasoning?.length || message.toolResults?.length)) {
-    return "";
-  }
-  const events = buildAgentTraceEvents(message);
-  const toolCount = (message.toolResults || []).length || (message.progress || []).filter((event) => event.type === "tool_call").length;
-  const rows = events.map((event, index) => `
-    <details class="trace-event trace-${escapeHtml(event.type)}">
-      <summary>
-        <span class="trace-index">${index + 1}</span>
-        <span class="trace-kind">${escapeHtml(event.type.replaceAll("-", " "))}</span>
-        <span class="trace-title">${escapeHtml(event.title || "event")}</span>
-        <span class="trace-meta">${escapeHtml(event.meta || "")}</span>
-      </summary>
-      <pre>${escapeHtml(event.detail || "")}</pre>
-    </details>
+function agentThinkingHtml(message) {
+  const thoughts = (Array.isArray(message.reasoning) ? message.reasoning : [])
+    .filter((step) => typeof step?.content === "string" && step.content.trim());
+  if (!message.streaming && !thoughts.length && !(message.debug?.length || message.progress?.length)) return "";
+  const rows = thoughts.map((step) => `
+    <div class="thinking-step">
+      <strong>${escapeHtml(step.phase || "Model")}</strong>
+      <pre>${escapeHtml(step.content)}</pre>
+    </div>
   `).join("");
-
-  return `
-    <details class="agent-trace">
-      <summary>
-        <span class="trace-disclosure-label">
-          <span class="trace-disclosure-show">Show agent trace</span>
-          <span class="trace-disclosure-hide">Hide agent trace</span>
-        </span>
-        <span>${events.length} event${events.length === 1 ? "" : "s"} · ${toolCount} tool call${toolCount === 1 ? "" : "s"}</span>
-      </summary>
-      ${rows || '<div class="trace-empty">No trace events were recorded.</div>'}
-    </details>
-  `;
+  return `<details class="agent-trace turn-step">
+    <summary>Thinking${message.streaming ? '<span class="thinking-dots" aria-hidden="true"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span></span>' : ""}</summary>
+    <div class="thinking-steps">${rows || `<p class="trace-empty">${message.streaming ? "Waiting for model reasoning…" : "The model did not provide reasoning for this turn."}</p>`}</div>
+  </details>`;
 }
 
 function loadAgentConversation() {
@@ -777,7 +890,21 @@ function saveAgentConversation() {
   }
 }
 
+function messageTimeMarkup(message) {
+  if (!message.createdAt) return "";
+  const date = new Date(message.createdAt);
+  if (Number.isNaN(date.getTime())) return "";
+  return `<time class="message-time" datetime="${escapeHtml(date.toISOString())}">${escapeHtml(date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))}</time>`;
+}
+
+function agentRobotMarkup() {
+  return '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 8h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3Z"/><path d="M12 4v4M9 13h.01M15 13h.01M9 16h6"/><circle cx="12" cy="3" r="1"/></svg>';
+}
+
 function renderAgentConversation() {
+  const expandedDetails = [...agentChat.querySelectorAll(".chat-message.assistant")].map((article) =>
+    [...article.querySelectorAll("details")].map((detail) => detail.open)
+  );
   const chatScroller = document.body.classList.contains("agent-only")
     && window.matchMedia("(max-width: 720px)").matches
     ? result
@@ -787,8 +914,11 @@ function renderAgentConversation() {
     if (message.role === "user") {
       return `
         <article class="chat-message user">
-          <div class="chat-role">you</div>
-          <div class="chat-content">${escapeHtml(message.content)}</div>
+          <div class="speaker-avatar user" role="img" aria-label="You">FM</div>
+          <div class="message-body">
+            <div class="message-meta"><span class="message-name">You</span>${messageTimeMarkup(message)}</div>
+            <div class="message-text"><div class="chat-content">${escapeHtml(message.content)}</div></div>
+          </div>
         </article>
       `;
     }
@@ -804,23 +934,44 @@ function renderAgentConversation() {
       : "";
     return `
       <article class="chat-message assistant${message.streaming ? " streaming" : ""}">
-        <div class="chat-heading">
-          <div class="chat-role">rag agent</div>
+        <div class="speaker-avatar assistant" role="img" aria-label="RAG Agent">${agentRobotMarkup()}</div>
+        <div class="message-body">
+          <div class="message-meta"><span class="message-name">RAG Agent</span>${messageTimeMarkup(message)}</div>
+          <div class="assistant-support">
+            ${agentThinkingHtml(message)}
+            ${agentProgressTimelineHtml(message)}
+            ${sourceFold}
+          </div>
+          ${message.streaming ? "" : `<div class="message-text"><div class="chat-content">${renderChatMarkdown(message.content)}</div></div>`}
         </div>
-        ${agentProgressTimelineHtml(message.progress, message.streaming)}
-        ${message.streaming ? "" : `<div class="chat-content">${renderChatMarkdown(message.content)}</div>`}
-        ${agentTraceTimelineHtml(message)}
-        ${sourceFold}
       </article>
     `;
   }).join("");
 
   const hasVisibleConversation = agentConversation.length > 0;
   agentChat.innerHTML = messagesHtml;
+  [...agentChat.querySelectorAll(".chat-message.assistant")].forEach((article, messageIndex) => {
+    [...article.querySelectorAll("details")].forEach((detail, detailIndex) => {
+      if (expandedDetails[messageIndex]?.[detailIndex]) detail.open = true;
+    });
+  });
   agentChat.classList.toggle("visible", hasVisibleConversation);
   agentChatToolbar.classList.toggle("visible", hasVisibleConversation);
-  if (hasVisibleConversation) {
+  if (document.body.classList.contains("agent-only")) {
+    const showHome = showingChatHome;
+    chatHomeView.hidden = !showHome;
+    if (showHome) {
+      homeComposerSlot?.append(question.closest(".query-card"));
+      result.classList.remove("visible");
+    } else {
+      agentWorkspace?.append(question.closest(".query-card"));
+      result.classList.add("visible");
+    }
+    updateChatBreadcrumb();
+  } else if (hasVisibleConversation) {
     result.classList.add("visible");
+  }
+  if (hasVisibleConversation && !showingChatHome) {
     if (wasNearChatBottom) {
       chatScroller.scrollTop = chatScroller.scrollHeight;
     }
@@ -1138,6 +1289,8 @@ async function runAgent() {
     return;
   }
 
+  if (showingChatHome) resetCurrentConversation();
+  showingChatHome = false;
   const imageDataUrl = selectedImage?.dataUrl || null;
   agentConversation.push({
     role: "user",
@@ -1423,8 +1576,10 @@ clearChatButton.addEventListener("click", () => {
   localStorage.removeItem(agentHistoryKey);
   localStorage.removeItem(agentConversationIdKey);
   agentConversationId = null;
+  showingChatHome = true;
   renderAgentConversation();
   result.classList.remove("visible");
+  loadConversations();
   status.textContent = "Agent conversation cleared.";
 });
 previousButton.addEventListener("click", () => runQuery(Math.max(debugOffset - debugLimit, 0)));
@@ -1442,4 +1597,6 @@ question.addEventListener("keydown", (event) => {
   }
 });
 renderAgentConversation();
-resumeSavedAgentRequests();
+if (openNewConversation) showNewConversation();
+else if (requestedConversationId) loadConversation(requestedConversationId);
+else resumeSavedAgentRequests();
