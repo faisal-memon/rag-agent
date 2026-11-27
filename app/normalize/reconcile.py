@@ -1,14 +1,17 @@
 import json
 import logging
 import time
+from time import monotonic
 from pathlib import Path
 from queue import Empty, Queue
 
 from app.normalize.config import NormalizeSettings
 from app.core.files import SUPPORTED_SUFFIXES, file_checksum
-from app.normalize.service import NORMALIZATION_VERSION, normalize_file
+from app.normalize.service import NORMALIZATION_VERSION, normalize_file, normalize_source
 
 logger = logging.getLogger("rag-normalize-reconcile")
+STARTUP_CATCHUP_SECONDS = 60.0
+FAILURE_RETRY_SECONDS = 30.0
 
 
 class Reconciler:
@@ -16,10 +19,37 @@ class Reconciler:
         self.settings = settings
         self.work_queue = work_queue
         self.deferred: set[Path] = set()
+        self.next_full_scan = 0.0
+        self.completed_full_scans = 0
 
     def run_forever(self) -> None:
         while True:
+            if monotonic() >= self.next_full_scan:
+                self.run_full_scan()
             self.process_batch()
+
+    def run_full_scan(self) -> None:
+        """Catch changes missed while the watcher was stopped or starting."""
+        try:
+            result = normalize_source()
+        except Exception:
+            logger.exception("Full normalization scan failed; retrying soon")
+            self.next_full_scan = monotonic() + FAILURE_RETRY_SECONDS
+            return
+
+        self.completed_full_scans += 1
+        delay = (
+            STARTUP_CATCHUP_SECONDS
+            if self.completed_full_scans == 1
+            else self.settings.full_reconcile_interval_seconds
+        )
+        self.next_full_scan = monotonic() + delay
+        _log(
+            "Full normalization scan completed",
+            normalized=result.get("normalized"),
+            skipped=result.get("skipped"),
+            errors=len(result.get("errors", [])),
+        )
 
     def process_batch(self) -> None:
         seen: set[Path] = set()

@@ -19,6 +19,37 @@ class NormalizeReconcileTest(unittest.TestCase):
         os.environ.pop("NORMALIZE_WATCH_STABILITY_MAX_WAIT_SECONDS", None)
         get_normalize_settings.cache_clear()
 
+    def test_full_scan_runs_at_startup_then_catches_missed_events(self) -> None:
+        reconciler = reconcile.Reconciler(get_normalize_settings(), Queue())
+        with (
+            patch("app.normalize.reconcile.monotonic", side_effect=[100.0, 200.0]),
+            patch("app.normalize.reconcile.normalize_source", return_value={"normalized": 1, "skipped": 0, "errors": []}) as scan,
+        ):
+            reconciler.run_full_scan()
+            self.assertEqual(160.0, reconciler.next_full_scan)
+            reconciler.run_full_scan()
+
+        self.assertEqual(3800.0, reconciler.next_full_scan)
+        self.assertEqual(2, scan.call_count)
+
+    def test_full_scan_retries_startup_failure_soon(self) -> None:
+        reconciler = reconcile.Reconciler(get_normalize_settings(), Queue())
+        with (
+            patch("app.normalize.reconcile.monotonic", return_value=100.0),
+            patch("app.normalize.reconcile.normalize_source", side_effect=OSError("source unavailable")),
+            self.assertLogs("rag-normalize-reconcile", level="ERROR"),
+        ):
+            reconciler.run_full_scan()
+
+        self.assertEqual(130.0, reconciler.next_full_scan)
+        self.assertEqual(0, reconciler.completed_full_scans)
+
+    def test_zero_queue_wait_is_rejected(self) -> None:
+        os.environ["NORMALIZE_RECONCILE_INTERVAL_SECONDS"] = "0"
+        get_normalize_settings.cache_clear()
+        with self.assertRaises(ValueError):
+            get_normalize_settings()
+
     def test_reconciler_waits_for_queue_item(self) -> None:
         work_queue: Queue[Path] = Queue()
         source = Path("/documents/receipt.pdf")

@@ -92,13 +92,20 @@ By default `NORMALIZATION_BACKEND=docling`. Structured documents such as PDFs, D
 python -m app.normalize.worker
 ```
 
-The normalizer image runs as a long-lived watcher by default. For local development, you can run the watcher directly:
+The normalizer image runs as a long-lived watcher by default. It scans the source
+folder on startup, again after one minute to catch a startup race, and hourly
+thereafter. The scan skips unchanged artifacts; file events handle changes
+between scans. Set `NORMALIZE_FULL_RECONCILE_INTERVAL_SECONDS` to adjust the
+hourly interval. For local development, you can run the watcher directly:
 
 ```bash
 python -m app.normalize.main
 ```
 
-The embed image runs as a long-lived watcher by default. It watches normalized Markdown and metadata artifacts, then indexes only the changed normalized documents:
+The embed image runs as a long-lived watcher by default. It uses the same
+startup, one-minute catch-up, and hourly scan pattern for normalized Markdown
+and metadata, while indexing file events promptly between scans. Set
+`EMBED_FULL_RECONCILE_INTERVAL_SECONDS` to adjust its hourly interval:
 
 ```bash
 python -m app.embed.main
