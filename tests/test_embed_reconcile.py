@@ -13,6 +13,31 @@ class EmbedReconcileTest(unittest.TestCase):
         os.environ.pop("EMBED_RECONCILE_INTERVAL_SECONDS", None)
         get_embed_settings.cache_clear()
 
+    def test_full_scan_repeats_after_startup_to_close_watcher_race(self) -> None:
+        reconciler = reconcile.Reconciler(get_embed_settings(), Queue())
+        with (
+            patch("app.embed.reconcile.monotonic", side_effect=[100.0, 200.0]),
+            patch("app.embed.reconcile.reindex_source", return_value={"indexed_documents": 1, "skipped_documents": 0, "missing_marked_documents": 0, "errors": []}) as scan,
+        ):
+            reconciler.run_full_scan()
+            self.assertEqual(160.0, reconciler.next_full_scan)
+            reconciler.run_full_scan()
+
+        self.assertEqual(3800.0, reconciler.next_full_scan)
+        self.assertEqual(2, scan.call_count)
+
+    def test_full_scan_retries_database_unavailability_soon(self) -> None:
+        reconciler = reconcile.Reconciler(get_embed_settings(), Queue())
+        with (
+            patch("app.embed.reconcile.monotonic", return_value=100.0),
+            patch("app.embed.reconcile.reindex_source", side_effect=OSError("database unavailable")),
+            self.assertLogs("rag-embed-reconcile", level="ERROR"),
+        ):
+            reconciler.run_full_scan()
+
+        self.assertEqual(130.0, reconciler.next_full_scan)
+        self.assertEqual(0, reconciler.completed_full_scans)
+
     def test_reconciler_reindexes_queued_artifacts(self) -> None:
         work_queue: Queue[Path] = Queue()
         work_queue.put(Path("/normalized/documents/receipt.md"))

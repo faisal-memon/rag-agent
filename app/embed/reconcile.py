@@ -1,12 +1,15 @@
 import logging
+from time import monotonic
 from pathlib import Path
 from queue import Empty, Queue
 
 from app.embed.config import EmbedSettings
-from app.embed.service import reindex_artifact
+from app.embed.service import reindex_artifact, reindex_source
 
 LOGGER_NAME = "rag-embed-reconcile"
 logger = logging.getLogger(LOGGER_NAME)
+STARTUP_CATCHUP_SECONDS = 60.0
+FAILURE_RETRY_SECONDS = 30.0
 
 
 class Reconciler:
@@ -14,10 +17,38 @@ class Reconciler:
         self.settings = settings
         self.work_queue = work_queue
         self.pending_paths: set[Path] = set()
+        self.next_full_scan = 0.0
+        self.completed_full_scans = 0
 
     def run_forever(self) -> None:
         while True:
+            if monotonic() >= self.next_full_scan:
+                self.run_full_scan()
             self.process_cycle()
+
+    def run_full_scan(self) -> None:
+        """Catch normalized artifacts missed while the watcher was stopped or starting."""
+        try:
+            result = reindex_source()
+        except Exception:
+            logger.exception("Full embedding scan failed; retrying soon")
+            self.next_full_scan = monotonic() + FAILURE_RETRY_SECONDS
+            return
+
+        self.completed_full_scans += 1
+        delay = (
+            STARTUP_CATCHUP_SECONDS
+            if self.completed_full_scans == 1
+            else self.settings.full_reconcile_interval_seconds
+        )
+        self.next_full_scan = monotonic() + delay
+        _log(
+            "Full embedding scan completed",
+            indexed_documents=result.get("indexed_documents"),
+            skipped_documents=result.get("skipped_documents"),
+            missing_marked_documents=result.get("missing_marked_documents"),
+            errors=len(result.get("errors", [])),
+        )
 
     def process_cycle(self) -> None:
         event_count = 0
