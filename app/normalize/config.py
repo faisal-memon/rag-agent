@@ -14,7 +14,7 @@ class NormalizeSettings(ConfiguredSettings):
     backend: str = Field(default="docling", alias="NORMALIZATION_BACKEND")
     enabled_suffixes_csv: str = Field(default=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png", alias="RAG_ENABLED_SUFFIXES")
     watch_debounce_seconds: float = Field(default=15.0, ge=0.0, alias="NORMALIZE_WATCH_DEBOUNCE_SECONDS")
-    reconcile_interval_seconds: float = Field(default=15.0, ge=0.0, alias="NORMALIZE_RECONCILE_INTERVAL_SECONDS")
+    reconcile_interval_seconds: float = Field(default=15.0, gt=0.0, alias="NORMALIZE_RECONCILE_INTERVAL_SECONDS")
     full_reconcile_interval_seconds: float = Field(default=3600.0, gt=0.0, alias="NORMALIZE_FULL_RECONCILE_INTERVAL_SECONDS")
     stability_checks: int = Field(default=3, ge=1, alias="NORMALIZE_WATCH_STABILITY_CHECKS")
     stability_interval_seconds: float = Field(default=2.0, ge=0.0, alias="NORMALIZE_WATCH_STABILITY_INTERVAL_SECONDS")

@@ -29,7 +29,7 @@ class EmbedSettings(ConfiguredSettings):
     missing_grace_days: int = Field(default=7, alias="RAG_MISSING_GRACE_DAYS")
     indexing_version: str = Field(default="tokenizer-aligned-v1", alias="RAG_INDEXING_VERSION")
     watch_debounce_seconds: float = Field(default=15.0, ge=0.0, alias="EMBED_WATCH_DEBOUNCE_SECONDS")
-    reconcile_interval_seconds: float = Field(default=15.0, ge=0.0, alias="EMBED_RECONCILE_INTERVAL_SECONDS")
+    reconcile_interval_seconds: float = Field(default=15.0, gt=0.0, alias="EMBED_RECONCILE_INTERVAL_SECONDS")
     full_reconcile_interval_seconds: float = Field(default=3600.0, gt=0.0, alias="EMBED_FULL_RECONCILE_INTERVAL_SECONDS")
 
 

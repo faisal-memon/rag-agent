@@ -44,6 +44,12 @@ class NormalizeReconcileTest(unittest.TestCase):
         self.assertEqual(130.0, reconciler.next_full_scan)
         self.assertEqual(0, reconciler.completed_full_scans)
 
+    def test_zero_queue_wait_is_rejected(self) -> None:
+        os.environ["NORMALIZE_RECONCILE_INTERVAL_SECONDS"] = "0"
+        get_normalize_settings.cache_clear()
+        with self.assertRaises(ValueError):
+            get_normalize_settings()
+
     def test_reconciler_waits_for_queue_item(self) -> None:
         work_queue: Queue[Path] = Queue()
         source = Path("/documents/receipt.pdf")

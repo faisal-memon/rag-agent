@@ -38,6 +38,12 @@ class EmbedReconcileTest(unittest.TestCase):
         self.assertEqual(130.0, reconciler.next_full_scan)
         self.assertEqual(0, reconciler.completed_full_scans)
 
+    def test_zero_queue_wait_is_rejected(self) -> None:
+        os.environ["EMBED_RECONCILE_INTERVAL_SECONDS"] = "0"
+        get_embed_settings.cache_clear()
+        with self.assertRaises(ValueError):
+            get_embed_settings()
+
     def test_reconciler_reindexes_queued_artifacts(self) -> None:
         work_queue: Queue[Path] = Queue()
         work_queue.put(Path("/normalized/documents/receipt.md"))
