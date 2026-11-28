@@ -1479,7 +1479,11 @@ async function toggleRecording() {
         if (!response.ok) {
           throw new Error(data.detail || "Transcription failed.");
         }
-        question.value = data.text;
+        const transcript = (data.text || "").trim();
+        const draft = question.value;
+        question.value = draft && transcript && !/\s$/.test(draft)
+          ? `${draft} ${transcript}`
+          : `${draft}${transcript}`;
         status.classList.remove("error");
         if (shouldSend) {
           await runAgent();
